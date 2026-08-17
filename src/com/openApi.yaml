@@ -1,0 +1,52 @@
+openapi: 3.0.0
+info:
+  title: API de eCommerce
+  description: API para la gestión de productos en una plataforma de eCommerce.
+  version: 1.0.0
+paths:
+  /productos/{id}:
+    get:
+      summary: Obtener los detalles de un producto específico por su ID
+      description: Retorna un único producto basado en el ID proporcionado.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: ID del producto a recuperar.
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Producto encontrado
+        "404":
+          description: Producto no encontrado
+
+  /productos:
+    post:
+      summary: Añadir un nuevo producto a la tienda
+      description: Crea un nuevo producto con el nombre, precio y stock especificados.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductoRequest"
+      responses:
+        "201":
+          description: Producto creado con éxito
+
+components:
+  schemas:
+    ProductoRequest:
+      description: Esquema para la solicitud de creación de un nuevo producto.
+      type: object
+      properties:
+        nombre:
+          description: Nombre del producto.
+          type: string
+        precio:
+          description: Precio del producto.
+          type: number
+        stock:
+          description: Cantidad de productos disponibles en stock.
+          type: integer

@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>E-Commerce Axel</title>
+    <link rel="stylesheet" href="css/styles.css" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;500;800&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="app-container">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Panel de operación</p>
+          <h1>NEXUS_<span>CORE</span></h1>
+        </div>
+        <div class="topbar-tools">
+          <div class="status-chip">7 módulos activos</div>
+          <div class="status-indicator" aria-label="API en línea">
+            <span class="pulse"></span>
+            <span>API Online</span>
+          </div>
+        </div>
+      </header>
+
+      <div class="dashboard-shell">
+        <aside class="sidebar-nav" aria-label="Navegación del dashboard">
+          <div class="sidebar-top">
+            <div class="sidebar-title">Nexus</div>
+            <button
+              class="sidebar-toggle"
+              type="button"
+              aria-label="Colapsar menú"
+              aria-expanded="true"
+              title="Colapsar menú"
+            >
+              ☰
+            </button>
+          </div>
+          <nav>
+            <a href="#productos-panel" class="nav-link active">
+              <span class="nav-icon">📦</span>
+              <span>Productos</span>
+            </a>
+            <a href="#clientes-panel" class="nav-link">
+              <span class="nav-icon">👤</span>
+              <span>Clientes</span>
+            </a>
+            <a href="#cuentas-panel" class="nav-link">
+              <span class="nav-icon">💳</span>
+              <span>Cuentas</span>
+            </a>
+            <a href="#ventas-panel" class="nav-link">
+              <span class="nav-icon">🧾</span>
+              <span>Ventas</span>
+            </a>
+            <a href="#auditoria-panel" class="nav-link">
+              <span class="nav-icon">🛡️</span>
+              <span>Auditoría</span>
+            </a>
+            <a href="#stock-panel" class="nav-link">
+              <span class="nav-icon">📈</span>
+              <span>Stock</span>
+            </a>
+          </nav>
+        </aside>
+
+        <main class="dashboard">
+          <section class="entity-panel" id="productos-panel">
+            <div class="entity-panel-header">
+              <div>
+                <div class="entity-kicker">Sección</div>
+                <div class="entity-title">Productos</div>
+              </div>
+              <span class="entity-badge">📦</span>
+            </div>
+            <div class="entity-panel-body">
+              <div class="entity-panel-left">
+                <section class="command-center" aria-labelledby="form-title">
+                  <h2 id="form-title">Cargar Entidad</h2>
+                  <p class="helper-text">
+                    Registra un producto y observa el stock realimentado en
+                    tiempo inmediato.
+                  </p>
+                  <form id="add-product-form">
+                    <div class="input-group">
+                      <input type="text" id="nombre" required placeholder=" " />
+                      <label>Nombre del Producto</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        type="number"
+                        id="precio"
+                        step="0.01"
+                        required
+                        placeholder=" "
+                      />
+                      <label>Precio Unitario</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        type="number"
+                        id="stock"
+                        required
+                        placeholder=" "
+                      />
+                      <label>Stock Físico</label>
+                    </div>
+                    <div class="input-group">
+                      <select id="categoria" required>
+                        <option value="ELECTRONICA">Electrónica</option>
+                        <option value="ROPA">Ropa</option>
+                        <option value="HOGAR">Hogar</option>
+                        <option value="DEPORTES">Deportes</option>
+                        <option value="LIBROS">Libros</option>
+                      </select>
+                    </div>
+                    <button type="submit" class="btn-neon">
+                      INICIALIZAR SECUENCIA
+                    </button>
+                  </form>
+
+                  <form id="search-product-form">
+                    <div class="input-group">
+                      <input
+                        id="product-search-id"
+                        type="number"
+                        required
+                        placeholder=" "
+                      />
+                      <label>Buscar producto por ID</label>
+                    </div>
+                    <button type="submit" class="btn-neon">
+                      Buscar Producto
+                    </button>
+                  </form>
+
+                  <form id="update-product-form">
+                    <div class="input-group">
+                      <input
+                        id="product-edit-id"
+                        type="number"
+                        required
+                        placeholder=" "
+                      />
+                      <label>ID a editar</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="product-edit-nombre"
+                        required
+                        placeholder=" "
+                      />
+                      <label>Nombre</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="product-edit-precio"
+                        type="number"
+                        step="0.01"
+                        required
+                        placeholder=" "
+                      />
+                      <label>Precio</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="product-edit-stock"
+                        type="number"
+                        required
+                        placeholder=" "
+                      />
+                      <label>Stock</label>
+                    </div>
+                    <div class="input-group">
+                      <select id="product-edit-categoria" required>
+                        <option value="ELECTRONICA">Electrónica</option>
+                        <option value="ROPA">Ropa</option>
+                        <option value="HOGAR">Hogar</option>
+                        <option value="DEPORTES">Deportes</option>
+                        <option value="LIBROS">Libros</option>
+                      </select>
+                    </div>
+                    <button type="submit" class="btn-neon">
+                      Actualizar Producto
+                    </button>
+                  </form>
+                </section>
+              </div>
+              <div class="entity-panel-right">
+                <section class="data-grid" id="product-grid"></section>
+              </div>
+            </div>
+          </section>
+
+          <section class="entity-panel" id="clientes-panel">
+            <div class="entity-panel-header">
+              <div>
+                <div class="entity-kicker">Sección</div>
+                <div class="entity-title">Clientes</div>
+              </div>
+              <span class="entity-badge">👤</span>
+            </div>
+            <div class="entity-panel-body">
+              <div class="entity-panel-left">
+                <section class="command-center">
+                  <h2>Clientes</h2>
+                  <form id="add-client-form">
+                    <div class="input-group">
+                      <input id="cliente-dni" required placeholder=" " /><label
+                        >DNI</label
+                      >
+                    </div>
+                    <div class="input-group">
+                      <input id="cliente-cuit" placeholder=" " /><label
+                        >CUIT</label
+                      >
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cliente-nombre"
+                        required
+                        placeholder=" "
+                      /><label>Nombre</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cliente-apellido"
+                        required
+                        placeholder=" "
+                      /><label>Apellido</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cliente-direccion"
+                        required
+                        placeholder=" "
+                      /><label>Dirección</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cliente-fecha"
+                        type="date"
+                        required
+                        placeholder=" "
+                      /><label>Fecha de nacimiento</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cliente-localidad"
+                        required
+                        placeholder=" "
+                      /><label>Localidad</label>
+                    </div>
+                    <button type="submit" class="btn-neon">
+                      Registrar Cliente
+                    </button>
+                  </form>
+
+                  <form id="search-client-form">
+                    <div class="input-group">
+                      <input
+                        id="cliente-buscar-id"
+                        type="number"
+                        required
+                        placeholder=" "
+                      /><label>Buscar cliente por ID</label>
+                    </div>
+                    <button type="submit" class="btn-neon">
+                      Buscar Cliente
+                    </button>
+                  </form>
+
+                  <form id="update-client-form">
+                    <div class="input-group">
+                      <input
+                        id="cliente-edit-id"
+                        type="number"
+                        required
+                        placeholder=" "
+                      /><label>ID a editar</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cliente-edit-dni"
+                        required
+                        placeholder=" "
+                      /><label>DNI</label>
+                    </div>
+                    <div class="input-group">
+                      <input id="cliente-edit-cuit" placeholder=" " /><label
+                        >CUIT</label
+                      >
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cliente-edit-nombre"
+                        required
+                        placeholder=" "
+                      /><label>Nombre</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cliente-edit-apellido"
+                        required
+                        placeholder=" "
+                      /><label>Apellido</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cliente-edit-direccion"
+                        required
+                        placeholder=" "
+                      /><label>Dirección</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cliente-edit-fecha"
+                        type="date"
+                        required
+                        placeholder=" "
+                      /><label>Fecha de nacimiento</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cliente-edit-localidad"
+                        required
+                        placeholder=" "
+                      /><label>Localidad</label>
+                    </div>
+                    <button type="submit" class="btn-neon">
+                      Actualizar Cliente
+                    </button>
+                  </form>
+                </section>
+              </div>
+              <div class="entity-panel-right">
+                <div class="data-grid" id="clientes-grid"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="entity-panel" id="cuentas-panel">
+            <div class="entity-panel-header">
+              <div>
+                <div class="entity-kicker">Sección</div>
+                <div class="entity-title">Cuentas</div>
+              </div>
+              <span class="entity-badge">💳</span>
+            </div>
+            <div class="entity-panel-body">
+              <div class="entity-panel-left">
+                <section class="command-center">
+                  <h2>Cuentas</h2>
+                  <form id="add-account-form">
+                    <div class="input-group">
+                      <input
+                        id="cuenta-nombre"
+                        required
+                        placeholder=" "
+                      /><label>Nombre de cuenta</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cuenta-correo"
+                        type="email"
+                        required
+                        placeholder=" "
+                      /><label>Correo</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cuenta-pass"
+                        type="password"
+                        required
+                        placeholder=" "
+                      /><label>Contraseña</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cuenta-id-cliente"
+                        type="number"
+                        required
+                        placeholder=" "
+                      /><label>ID Cliente</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cuenta-rol"
+                        required
+                        placeholder=" "
+                        value="USER"
+                      /><label>Rol</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cuenta-saldo"
+                        type="number"
+                        step="0.01"
+                        required
+                        placeholder=" "
+                        value="0"
+                      /><label>Saldo</label>
+                    </div>
+                    <button type="submit" class="btn-neon">Crear Cuenta</button>
+                  </form>
+                  <form id="transfer-form">
+                    <div class="input-group">
+                      <input
+                        id="origen-id"
+                        type="number"
+                        required
+                        placeholder=" "
+                      /><label>ID Cuenta Origen</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="destino-id"
+                        type="number"
+                        required
+                        placeholder=" "
+                      /><label>ID Cuenta Destino</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="monto-transferencia"
+                        type="number"
+                        step="0.01"
+                        required
+                        placeholder=" "
+                      /><label>Monto</label>
+                    </div>
+                    <button type="submit" class="btn-neon">Transferir</button>
+                  </form>
+                  <form id="account-search-form">
+                    <div class="input-group">
+                      <input
+                        id="cuenta-buscar-correo"
+                        required
+                        placeholder=" "
+                      /><label>Buscar por correo</label>
+                    </div>
+                    <button type="submit" class="btn-neon">
+                      Buscar Cuenta
+                    </button>
+                  </form>
+                  <form id="search-account-by-id-form">
+                    <div class="input-group">
+                      <input
+                        id="cuenta-buscar-id"
+                        type="number"
+                        required
+                        placeholder=" "
+                      /><label>Buscar cuenta por ID</label>
+                    </div>
+                    <button type="submit" class="btn-neon">
+                      Buscar cuenta por ID
+                    </button>
+                  </form>
+                  <form id="update-account-form">
+                    <div class="input-group">
+                      <input
+                        id="cuenta-edit-id"
+                        type="number"
+                        required
+                        placeholder=" "
+                      /><label>ID a editar</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cuenta-edit-nombre"
+                        required
+                        placeholder=" "
+                      /><label>Nombre de cuenta</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cuenta-edit-correo"
+                        type="email"
+                        required
+                        placeholder=" "
+                      /><label>Correo</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cuenta-edit-pass"
+                        type="password"
+                        required
+                        placeholder=" "
+                      /><label>Contraseña</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cuenta-edit-id-cliente"
+                        type="number"
+                        required
+                        placeholder=" "
+                      /><label>ID Cliente</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cuenta-edit-rol"
+                        required
+                        placeholder=" "
+                        value="USER"
+                      /><label>Rol</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="cuenta-edit-saldo"
+                        type="number"
+                        step="0.01"
+                        required
+                        placeholder=" "
+                        value="0"
+                      /><label>Saldo</label>
+                    </div>
+                    <button type="submit" class="btn-neon">
+                      Actualizar Cuenta
+                    </button>
+                  </form>
+                </section>
+              </div>
+              <div class="entity-panel-right">
+                <div class="data-grid" id="cuentas-grid"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="entity-panel" id="ventas-panel">
+            <div class="entity-panel-header">
+              <div>
+                <div class="entity-kicker">Sección</div>
+                <div class="entity-title">Ventas</div>
+              </div>
+              <span class="entity-badge">🧾</span>
+            </div>
+            <div class="entity-panel-body">
+              <div class="entity-panel-left">
+                <section class="command-center">
+                  <h2>Ventas</h2>
+                  <form id="create-venta-form">
+                    <div class="input-group">
+                      <input
+                        id="venta-id-cliente"
+                        type="number"
+                        required
+                        placeholder=" "
+                      /><label>ID Cliente</label>
+                    </div>
+                    <div class="input-group">
+                      <select id="venta-tipo-pago" required>
+                        <option value="EFECTIVO">Efectivo</option>
+                        <option value="TARJETA">Tarjeta</option>
+                        <option value="TRANSFERENCIA">Transferencia</option>
+                      </select>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="venta-descuento-tipo"
+                        placeholder=" "
+                        value="MONTO"
+                      /><label>Tipo descuento</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="venta-descuento-valor"
+                        type="number"
+                        step="0.01"
+                        placeholder=" "
+                        value="0"
+                      /><label>Valor descuento</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="venta-id-producto"
+                        type="number"
+                        required
+                        placeholder=" "
+                      /><label>ID Producto</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="venta-cantidad"
+                        type="number"
+                        required
+                        placeholder=" "
+                        value="1"
+                      /><label>Cantidad</label>
+                    </div>
+                    <button type="submit" class="btn-neon">Crear Venta</button>
+                  </form>
+                  <form id="search-venta-form">
+                    <div class="input-group">
+                      <input
+                        id="venta-search-id"
+                        type="number"
+                        required
+                        placeholder=" "
+                      /><label>Buscar venta por ID</label>
+                    </div>
+                    <button type="submit" class="btn-neon">Buscar Venta</button>
+                  </form>
+                  <form id="venta-action-form">
+                    <div class="input-group">
+                      <input
+                        id="venta-action-id"
+                        type="number"
+                        required
+                        placeholder=" "
+                      /><label>ID de venta</label>
+                    </div>
+                    <button type="submit" data-action="pagar" class="btn-neon">
+                      Pagar
+                    </button>
+                    <button
+                      type="submit"
+                      data-action="cancelar"
+                      class="btn-neon"
+                    >
+                      Cancelar
+                    </button>
+                  </form>
+                </section>
+              </div>
+              <div class="entity-panel-right">
+                <div class="data-grid" id="ventas-grid"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="entity-panel" id="auditoria-panel">
+            <div class="entity-panel-header">
+              <div>
+                <div class="entity-kicker">Sección</div>
+                <div class="entity-title">Auditoría</div>
+              </div>
+              <span class="entity-badge">🛡️</span>
+            </div>
+            <div class="entity-panel-body">
+              <div class="entity-panel-left">
+                <section class="command-center">
+                  <h2>Auditoría</h2>
+                  <form id="auditoria-form">
+                    <div class="input-group">
+                      <select id="auditoria-accion">
+                        <option value="REGISTRAR_VENTA">REGISTRAR_VENTA</option>
+                        <option value="CANCELAR_VENTA">CANCELAR_VENTA</option>
+                        <option value="ACTUALIZAR">ACTUALIZAR</option>
+                      </select>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="auditoria-id-entidad"
+                        type="number"
+                        required
+                        placeholder=" "
+                      /><label>ID Entidad</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="auditoria-descripcion"
+                        required
+                        placeholder=" "
+                      /><label>Descripción</label>
+                    </div>
+                    <button type="submit" class="btn-neon">
+                      Registrar Auditoría
+                    </button>
+                  </form>
+                  <form id="audit-filter-form">
+                    <div class="input-group">
+                      <input
+                        id="auditoria-filter-accion"
+                        placeholder=" "
+                      /><label>Filtrar por acción</label>
+                    </div>
+                    <button type="submit" class="btn-neon">
+                      Filtrar Auditoría
+                    </button>
+                  </form>
+                  <form id="audit-product-filter-form">
+                    <div class="input-group">
+                      <input
+                        id="auditoria-filter-producto"
+                        type="number"
+                        required
+                        placeholder=" "
+                      /><label>Filtrar auditoría por producto</label>
+                    </div>
+                    <button type="submit" class="btn-neon">
+                      Buscar por producto
+                    </button>
+                  </form>
+                </section>
+              </div>
+              <div class="entity-panel-right">
+                <div class="data-grid" id="auditoria-grid"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="entity-panel" id="stock-panel">
+            <div class="entity-panel-header">
+              <div>
+                <div class="entity-kicker">Sección</div>
+                <div class="entity-title">Stock y Recomendaciones</div>
+              </div>
+              <span class="entity-badge">📈</span>
+            </div>
+            <div class="entity-panel-body">
+              <div class="entity-panel-left">
+                <section class="command-center">
+                  <h2>Stock y Recomendaciones</h2>
+                  <form id="stock-form">
+                    <div class="input-group">
+                      <input
+                        id="stock-id-producto"
+                        type="number"
+                        required
+                        placeholder=" "
+                      /><label>ID Producto</label>
+                    </div>
+                    <button type="submit" class="btn-neon">
+                      Evaluar Stock
+                    </button>
+                  </form>
+
+                  <form id="recomendaciones-form">
+                    <div class="input-group">
+                      <input
+                        id="reco-id-producto"
+                        type="number"
+                        required
+                        placeholder=" "
+                      /><label>Producto actual</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="reco-precio-min"
+                        type="number"
+                        step="0.01"
+                        required
+                        placeholder=" "
+                      /><label>Precio mínimo</label>
+                    </div>
+                    <div class="input-group">
+                      <input
+                        id="reco-precio-max"
+                        type="number"
+                        step="0.01"
+                        required
+                        placeholder=" "
+                      /><label>Precio máximo</label>
+                    </div>
+                    <button type="submit" class="btn-neon">
+                      Obtener recomendaciones
+                    </button>
+                  </form>
+                </section>
+              </div>
+              <div class="entity-panel-right">
+                <div class="data-grid" id="stock-grid"></div>
+                <div class="data-grid" id="recomendaciones-grid"></div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <script>
+      const sidebar = document.querySelector(".sidebar-nav");
+      const toggleButton = document.querySelector(".sidebar-toggle");
+      const navLinks = [...document.querySelectorAll(".nav-link")];
+      const sections = [...document.querySelectorAll(".entity-panel")];
+
+      const applySidebarState = (isCollapsed) => {
+        sidebar.classList.toggle("collapsed", isCollapsed);
+        toggleButton?.setAttribute("aria-expanded", String(!isCollapsed));
+        toggleButton.title = isCollapsed ? "Expandir menú" : "Colapsar menú";
+        toggleButton.textContent = isCollapsed ? "›" : "☰";
+        localStorage.setItem("nexusSidebarCollapsed", String(isCollapsed));
+      };
+
+      const storedCollapsed =
+        localStorage.getItem("nexusSidebarCollapsed") === "true";
+      applySidebarState(storedCollapsed);
+
+      toggleButton?.addEventListener("click", () => {
+        const isCollapsed = !sidebar.classList.contains("collapsed");
+        applySidebarState(isCollapsed);
+      });
+
+      const setActiveLink = (targetId) => {
+        navLinks.forEach((item) => {
+          const isActive = item.getAttribute("href") === `#${targetId}`;
+          item.classList.toggle("active", isActive);
+        });
+      };
+
+      navLinks.forEach((link) => {
+        link.addEventListener("click", () => {
+          const targetId = link.getAttribute("href")?.replace("#", "");
+          if (targetId) {
+            setActiveLink(targetId);
+          }
+        });
+      });
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const visibleEntry = entries
+            .filter((entry) => entry.isIntersecting)
+            .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+
+          if (visibleEntry?.target?.id) {
+            setActiveLink(visibleEntry.target.id);
+          }
+        },
+        {
+          threshold: [0.2, 0.35, 0.5],
+        },
+      );
+
+      sections.forEach((section) => observer.observe(section));
+    </script>
+  </body>
+</html>

@@ -1,0 +1,234 @@
+:root {
+  --bg-base: #09090b;
+  --surface: #18181b;
+  --accent-cyan: #00f0ff;
+  --accent-red: #ff2a2a;
+  --text-main: #f4f4f5;
+  --text-muted: #a1a1aa;
+  --font: "Inter", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-main);
+  font-family: var(--font);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+.app-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+/* Header */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 3rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 1rem;
+}
+
+h1 {
+  font-weight: 800;
+  letter-spacing: -1px;
+}
+
+h1 span {
+  color: var(--accent-cyan);
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.85rem;
+  color: var(--accent-cyan);
+}
+
+.pulse {
+  width: 8px;
+  height: 8px;
+  background: var(--accent-cyan);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--accent-cyan);
+  animation: pulsar 1.5s infinite alternate;
+}
+
+@keyframes pulsar {
+  from {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+/* Layout Principal */
+.dashboard {
+  display: grid;
+  grid-template-columns: 350px 1fr;
+  gap: 3rem;
+}
+
+/* Formulario Estilo Terminal */
+.command-center {
+  background: var(--surface);
+  padding: 2rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  height: fit-content;
+}
+
+.command-center h2 {
+  font-weight: 300;
+  margin-bottom: 2rem;
+  font-size: 1.2rem;
+  color: var(--text-muted);
+}
+
+.input-group {
+  position: relative;
+  margin-bottom: 2rem;
+}
+
+.input-group input,
+.input-group select {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--text-muted);
+  color: var(--text-main);
+  padding: 10px 0;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.3s;
+}
+
+.input-group select {
+  appearance: none;
+  background: var(--surface);
+}
+
+.input-group label {
+  position: absolute;
+  top: 10px;
+  left: 0;
+  color: var(--text-muted);
+  pointer-events: none;
+  transition: 0.3s ease all;
+}
+
+.input-group input:focus,
+.input-group input:not(:placeholder-shown) {
+  border-bottom-color: var(--accent-cyan);
+}
+
+.input-group input:focus ~ label,
+.input-group input:not(:placeholder-shown) ~ label {
+  top: -20px;
+  font-size: 0.75rem;
+  color: var(--accent-cyan);
+}
+
+.btn-neon {
+  width: 100%;
+  padding: 15px;
+  background: transparent;
+  color: var(--accent-cyan);
+  border: 1px solid var(--accent-cyan);
+  font-weight: 800;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: 0.3s;
+  border-radius: 4px;
+}
+
+.btn-neon:hover {
+  background: var(--accent-cyan);
+  color: var(--bg-base);
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.4);
+}
+
+/* Grilla de Datos */
+.data-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.5rem;
+  align-content: start;
+}
+
+.card {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 1.5rem;
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 0.3s,
+    box-shadow 0.3s;
+  border: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.card h3 {
+  font-size: 1.2rem;
+  margin-bottom: 0.5rem;
+}
+
+.card .price {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--accent-cyan);
+  margin-bottom: 1.5rem;
+}
+
+.card .badge {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+
+/* Manejo de Estados según tu lógica de backend */
+.badge.disponible {
+  background: rgba(0, 240, 255, 0.1);
+  color: var(--accent-cyan);
+  border: 1px solid var(--accent-cyan);
+}
+.badge.critico {
+  background: rgba(255, 165, 0, 0.1);
+  color: orange;
+  border: 1px solid orange;
+}
+.badge.agotado {
+  background: rgba(255, 42, 42, 0.1);
+  color: var(--accent-red);
+  border: 1px solid var(--accent-red);
+}
+
+.card .meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}

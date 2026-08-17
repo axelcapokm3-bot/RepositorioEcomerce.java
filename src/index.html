@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eCommerce-Java Frontend</title>
+    <link rel="stylesheet" href="css/main.css">
+    <link rel="stylesheet" href="css/components.css">
+</head>
+<body>
+    <header>
+        <h1>Mi eCommerce</h1>
+        <button id="theme-toggle">Toggle Dark Mode</button>
+    </header>
+    <nav>
+        <ul>
+            <li><a href="#products">Catálogo de Productos</a></li>
+            <li><a href="#account">Mi Cuenta</a></li>
+            <li><a href="#sales-management">Gestión de Ventas</a></li>
+        </ul>
+    </nav>
+    <main id="app">
+        <!-- Content will be loaded here by JavaScript -->
+        <div id="loading-spinner" class="spinner-overlay">
+            <div class="spinner"></div>
+        </div>
+        <div id="toast-container" class="toast-container"></div>
+    </main>
+
+    <script src="js/utils/spinner.js"></script>
+    <script src="js/utils/toast-notifier.js"></script>
+    <script src="js/utils/theme-switcher.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>

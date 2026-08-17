@@ -1,0 +1,222 @@
+/* Styles for product cards */
+.product-card {
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    padding: 15px;
+    margin: 10px;
+    display: inline-block;
+    width: 280px;
+    background-color: var(--card-background);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.product-card h3 {
+    color: var(--primary-color);
+    margin-top: 0;
+}
+
+.product-card button {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 8px 15px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-top: 10px;
+}
+
+.product-card button:hover {
+    opacity: 0.9;
+}
+
+/* Styles for cart sidebar */
+.cart-sidebar {
+    position: fixed;
+    right: 0;
+    top: 0;
+    width: 350px;
+    height: 100%;
+    background-color: var(--card-background);
+    border-left: 1px solid var(--border-color);
+    box-shadow: -2px 0 5px rgba(0,0,0,0.1);
+    transform: translateX(100%);
+    transition: transform 0.3s ease-in-out;
+    padding: 20px;
+    overflow-y: auto;
+    z-index: 999;
+}
+
+.cart-sidebar.open {
+    transform: translateX(0);
+}
+
+.cart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.cart-header h2 {
+    margin: 0;
+    color: var(--text-color);
+}
+
+.close-cart-btn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: var(--text-color);
+}
+
+.cart-items {
+    margin-bottom: 20px;
+}
+
+.cart-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px dashed var(--border-color);
+}
+
+.cart-item:last-child {
+    border-bottom: none;
+}
+
+.cart-total {
+    font-size: 1.2rem;
+    font-weight: bold;
+    margin-top: 20px;
+    text-align: right;
+}
+
+.payment-options {
+    margin-top: 20px;
+}
+
+.payment-options label {
+    display: block;
+    margin-bottom: 10px;
+}
+
+.checkout-btn {
+    width: 100%;
+    padding: 15px;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 1.1rem;
+    cursor: pointer;
+    margin-top: 20px;
+}
+
+.checkout-btn:hover {
+    opacity: 0.9;
+}
+
+/* Styles for Account Summary and Transfer Form */
+.account-summary,
+.transfer-form {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    background-color: var(--card-background);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.transfer-form label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.transfer-form input[type="number"] {
+    width: calc(100% - 22px);
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: var(--background-color);
+    color: var(--text-color);
+}
+
+.transfer-form button {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1rem;
+}
+
+.transfer-form button:hover {
+    opacity: 0.9;
+}
+
+/* Styles for Sales List */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+}
+
+table th,
+table td {
+    border: 1px solid var(--border-color);
+    padding: 10px;
+    text-align: left;
+}
+
+table th {
+    background-color: var(--secondary-color);
+    color: white;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 5px 10px;
+    border-radius: 15px;
+    font-weight: bold;
+    color: white;
+    font-size: 0.85em;
+}
+
+.status-creada {
+    background-color: #007bff; /* Blue */
+}
+
+.status-pagado {
+    background-color: #28a745; /* Green */
+}
+
+.status-cancelado {
+    background-color: #dc3545; /* Red */
+}
+
+.action-btn {
+    padding: 5px 10px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    color: white;
+    margin-right: 5px;
+}
+
+.pay-btn {
+    background-color: #28a745; /* Green */
+}
+
+.cancel-btn {
+    background-color: #dc3545; /* Red */
+}
+
+.action-btn:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}

@@ -1,0 +1,156 @@
+# CONTEXTO DEL PROYECTO
+
+**PROYECTO:** eCommerce-Java
+
+Este documento proporciona una visión general de la arquitectura, clases, servicios y flujos del sistema para servir como referencia rápida y completa del contexto del proyecto.
+
+---
+
+## 1. Arquitectura General
+
+*   **Estilo:** Arquitectura en Capas (Domain, Application, Infrastructure).
+    *   **Capa de Dominio (CapaDominio):** Contiene las entidades de negocio, enums, eventos y reglas fundamentales.
+    *   **Capa de Aplicación (CapaAplicacion):** Define los servicios de aplicación, interfaces, controladores, DTOs y mappers.
+    *   **Capa de Infraestructura (CapaInfraestructura):** Aloja las implementaciones concretas de repositorios, configuración y el bus de eventos en memoria.
+*   **Lenguaje:** Java (Versión .NET 10.0 en migración / Java compatibilidad).
+
+---
+
+## 2. Mapa de Clases (Dominio)
+
+### Entidades (CapaDominio.Entidades)
+
+*   **Producto.java:**
+    *   Campos principales: id (int), nombre (String), precio (double), stock (int), categoria (CategoriaProducto).
+    *   Comportamiento: Permite reducir/reponer stock, validar precios/cantidades y realizar reposición automática de stock (por defecto 100 unidades al llegar a 0).
+*   **Cliente.java:** Representa al cliente de la plataforma, posee información de contacto y métodos asociados al carrito y compras.
+*   **Cuenta.java:** Maneja las credenciales, estado de la cuenta y tokens de sesión.
+*   **Carrito.java / ItemCarrito.java:** Gestiona los productos temporales que el cliente desea comprar.
+*   **Venta.java / DetalleVenta.java:** Modela la transacción finalizada, con montos, descuentos aplicados y estados de entrega.
+*   **Auditoria.java:** Registra eventos y acciones críticas realizadas en el sistema para fines de seguridad y control.
+*   **Descuentos (Estrategias):**
+    *   IDescuentos (Interfaz) implementada por:
+        *   DescuentoPorMonto.java
+        *   DescuentoPorPorcentaje.java
+        *   DescuentosEspeciales.java
+
+### Enums (CapaDominio.Entidades)
+
+*   **EstadoStock.java:**
+    *   Valores: DISPONIBLE, CRITICO, AGOTADO, EN_REPOSICION.
+*   **CategoriaProducto.java:**
+    *   Valores: ELECTRONICA, ROPA, HOGAR, DEPORTES, LIBROS.
+*   **EstadoVenta.java:**
+    *   Valores: PENDIENTE, COMPLETADA, CANCELADA.
+*   **TipoDePago.java:**
+    *   Valores: EFECTIVO, TARJETA, TRANSFERENCIA.
+*   **AccionAuditoria.java:**
+    *   Valores: CREACION, MODIFICACION, ELIMINACION, INICIO_SESION, COMPRA.
+
+---
+
+## 3. Servicios (Lógica de Negocio - CapaAplicacion.Service)
+
+*   **RecomendacionService.java:**
+    *   Filtra productos similares de la misma categoría que se encuentren dentro del rango de precio sugerido (precioMin a precioMax).
+    *   Aplica un margen flexible adicional del 5% (MARGEN_FLEXIBLE = 0.05) sobre el precio máximo.
+    *   Excluye el producto de referencia y aquellos que no tengan stock.
+*   **StockService.java:**
+    *   Evalúa el estado cuantitativo del stock:
+        *   0 -> EstadoStock.AGOTADO (dispara una alerta de reposición urgente en consola).
+        *   1 a 5 -> EstadoStock.CRITICO.
+        *   > 5 -> EstadoStock.DISPONIBLE.
+*   **ProductoService.java:**
+    *   Implementa RepositorioProductoService.
+    *   Métodos asíncronos: guardarAsync, buscarPorIdAsync, listarTodosAsync, actualizarAsync, eliminarAsync.
+    *   Publica eventos ProductosEventos a través de EventBus.
+*   **ClienteService.java:**
+    *   Implementa IServiceCliente.
+    *   Métodos asíncronos para ABM: guardarAsync, buscarPorIdAsync, listarTodosAsync, actualizarAsync, eliminarAsync.
+    *   Utiliza ClienteMapper para la conversión DTO-Entidad.
+*   **CuentaService.java:**
+    *   Implementa IServiceCuenta.
+    *   Métodos asíncronos: guardarAsync (con validación de correo único, longitud de contraseña > 5 y hashing BCrypt + ofuscación), buscarPorIdAsync, listarTodosAsync, buscarPorCorreoAsync, actualizarAsync, eliminarAsync.
+    *   Método adicional: transferirAsync para transferencias monetarias atómicas entre cuentas (BigDecimal).
+*   **RegistroDeCuenta.java:**
+    *   Lógica utilitaria síncrona alternativa para registrar credenciales ofuscadas y hasheadas.
+*   **VentaService.java:**
+    *   Implementa IVentasService.
+    *   Métodos asíncronos: crearVentaAsync (reduce stock, actualiza base de datos, persiste la venta y publica evento CREADA), buscarPorIdAsync, registrarPagoAsync (actualiza estado a pagado y publica evento PAGADA), cancelarVentaAsync (cancela la venta, repone stock y publica evento CANCELADA).
+*   **AuditoriaService.java:**
+    *   Implementa IAuditoriaService.
+    *   Suscrito a eventos VentasEventos mediante el EventBus para auditar la creación, pago y cancelación de ventas de manera asíncrona.
+    *   Métodos asíncronos: registrarAuditoriaAsync, obtenerTodosAsync, obtenerPorProductoAsync, obtenerPorAccionAsync.
+
+---
+
+## 4. Interfaces de la Capa de Aplicación (CapaAplicacion.Interfaces)
+
+Define los contratos que desacoplan la lógica de negocio de la infraestructura:
+*   **EventBus.java:** publicar(T evento), suscribirse(Class<T>, Consumer<T>).
+*   **IAuditoriaRepository.java:** guardar(Auditoria), obtenerTodos(), obtenerPorEntidad(int), obtenerPorAccion(AccionAuditoria).
+*   **IAuditoriaService.java:** Métodos asíncronos para el log de auditoría.
+*   **IClienteRepositorio.java:** Métodos CRUD para Clientes.
+*   **ICuentaRepositorio.java:** Métodos CRUD para Cuentas y búsqueda por correo.
+*   **IProductoRepository.java:** Métodos CRUD para Productos.
+*   **IVentaRepository.java:** guardar(Venta), buscarPorId(id), listarTodas(), actualizar(id, Venta).
+*   **IServiceCliente.java:** Firma asíncrona del servicio de clientes.
+*   **IServiceCuenta.java:** Firma asíncrona del servicio de cuentas.
+*   **IVentasService.java:** Firma asíncrona del servicio de ventas.
+*   **RepositorioProductoService.java:** Firma asíncrona del servicio de productos.
+*   **IServiceAuditoria.java:** Interfaz duplicada/alternativa para auditoría (CRUD completo de auditorías).
+
+---
+
+## 5. Implementaciones de la Capa de Infraestructura (CapaInfraestructura.Implementacion)
+
+Implementa el acceso a datos y comunicación en memoria mediante colecciones concurrentes:
+*   **InMemoryEventBus.java:** Implementa EventBus utilizando un HashMap de listas de consumidores thread-safe.
+*   **RepositorioProducto.java:** Implementa IProductoRepository utilizando una lista estática CopyOnWriteArrayList en memoria.
+*   **RepositorioCliente.java:** Implementa IClienteRepositorio utilizando CopyOnWriteArrayList.
+*   **RepositorioCuenta.java:** Implementa ICuentaRepositorio utilizando CopyOnWriteArrayList.
+*   **RepositorioAuditoria.java:** Almacenamiento en memoria para logs de auditoría (Lista estática ArrayList). Nota: No implementa explícitamente IAuditoriaRepository.
+
+---
+
+## 6. Controladores (CapaAplicacion.Controller)
+
+*   **ProductoController.java:**
+    *   Expone endpoints y métodos asíncronos para gestionar productos: listarTodos(), crear(), actualizar(), eliminar().
+    *   Inyecta la interfaz RepositorioProductoService para desacoplar el acceso.
+*   **Nota de Arquitectura:** No existen controladores en la capa de Infraestructura (CapaInfraestructura). Los controladores residen en CapaAplicacion.Controller.
+
+---
+
+## 7. Diagnóstico e Inconsistencias (Para otros Agentes)
+
+Al trabajar en este proyecto, preste atención a las siguientes inconsistencias detectadas:
+1. **Implementaciones Faltantes:** No existe una clase concreta en la infraestructura que implemente la interfaz IVentaRepository. Esto provocará errores de inyección si se intenta instanciar VentaService de forma automática sin un mock/stub.
+2. **Inconsistencia de Contrato:** RepositorioAuditoria.java no implementa explícitamente la interfaz IAuditoriaRepository, a pesar de que el servicio AuditoriaService requiere IAuditoriaRepository.
+3. **Interfaz sin Uso:** La interfaz IServiceAuditoria.java está declarada pero no es implementada por ningún servicio (AuditoriaService implementa IAuditoriaService).
+4. **Nomenclatura:** La interfaz de servicio para productos se llama RepositorioProductoService, mezclando conceptos de repositorio y servicio en su nombre.
+
+---
+
+## 8. Flujo de Datos Deseado
+
+El flujo principal sugerido para la toma de decisiones de recomendación y stock es el siguiente:
+
+```mermaid
+graph TD
+    A[Inicio: Lista de productos + Producto de referencia] --> B[RecomendacionService: obtenerRecomendados]
+    B --> C{¿Misma categoría, distinto ID, con stock y precio dentro del rango + margen?}
+    C -- Sí --> D[Lista de productos candidatos recomendados]
+    C -- No --> E[Excluir producto]
+    D --> F[StockService: evaluarStock para cada candidato]
+    F --> G{Evaluar cantidad de stock}
+    G -- 0 --> H[Retorna AGOTADO + Alerta Reposición]
+    G -- 1 a 5 --> I[Retorna CRITICO]
+    G -- mayor a 5 --> J[Retorna DISPONIBLE]
+    H & I & J --> K[Main / Reporte: Imprimir reporte de candidatos y estados de disponibilidad]
+```
+
+1.  Entrada: Se recibe una lista global de productos (List<Producto>), un producto de referencia (Producto), y el rango de precios deseado.
+2.  Filtrado: RecomendacionService procesa la lista y extrae los productos recomendados según categoría y precios permitidos.
+3.  Validación de Disponibilidad: Para cada producto candidato, StockService evalúa y determina su EstadoStock.
+4.  Salida: Un reporte consolidado se imprime (por ejemplo, en un punto de entrada o Main) mostrando los candidatos y su disponibilidad respectiva.

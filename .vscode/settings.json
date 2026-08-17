@@ -1,0 +1,6 @@
+{
+  "java.project.referencedLibraries": {
+    "include": ["lib/**/*.jar", "c:\\Users\\Axel\\Downloads\\jbcrypt-0.4.jar"],
+    "exclude": ["c:\\Users\\Axel\\Downloads\\jbcrypt-0.4-javadoc.jar"]
+  }
+}

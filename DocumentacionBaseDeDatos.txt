@@ -1,0 +1,259 @@
+================================================================================
+INFORME DE MODELADO DE BASE DE DATOS
+Proyecto eCommerce - Arquitectura por Capas (Java)
+================================================================================
+
+1. ENTIDADES IDENTIFICADAS
+--------------------------------------------------------------------------------
+El dominio del sistema define las siguientes entidades:
+
+  #  Entidad              Archivo Java                Persistible?
+ --- --------------------- --------------------------- ------------
+  1  Cliente              Cliente.java                SI
+  2  Cuenta               Cuenta.java                 SI
+  3  Producto             Producto.java               SI
+  4  CategoriaProducto    CategoriaProducto.java      SI (catalogo)
+  5  Venta                Venta.java                  SI
+  6  DetalleVenta         DetalleVenta.java           SI
+  7  Carrito              Carrito.java                NO (transitorio)
+  8  ItemCarrito          ItemCarrito.java            NO (transitorio)
+  9  EstadoVenta          EstadoVenta.java (enum)     SI (catalogo)
+ 10  TipoDePago           TipoDePago.java (enum)      SI (catalogo)
+ 11  EstadoStock          EstadoStock.java (enum)     NO (derivado)
+ 12  Auditoria            Auditoria.java              SI
+ 13  AccionAuditoria      AccionAuditoria.java (enum) SI (catalogo)
+ 14  DescuentoPorMonto    DescuentoPorMonto.java      Opcional
+ 15  DescuentoPorPorcentaje DescuentoPorPorcentaje.java Opcional
+ 16  DescuentosEspeciales DescuentosEspeciales.java   Opcional
+
+NOTA:
+- Carrito e ItemCarrito son objetos en memoria (Map en el carrito) y NO
+  requieren tabla.
+- stockDisponible y EstadoStock son DERIVADOS (stock_fisico - stock_reservado),
+  por lo tanto no se guardan.
+
+
+2. TABLAS Y COLUMNAS
+--------------------------------------------------------------------------------
+
+TABLA clientes
+-------------------------------------------------------------------------------
+  Columna             Tipo SQL        Restriccion                     Descripcion
+  ------------------- --------------- ------------------------------- -----------------------------
+  id                  INT             PK, AUTO_INCREMENT              Identificador
+  dni                 VARCHAR(20)     NOT NULL, UNIQUE                Documento nacional
+  cuit                CHAR(11)        NULL                            CUIT, exactamente 11 digitos
+  nombre              VARCHAR(100)    NOT NULL                        Nombre
+  apellido            VARCHAR(100)    NOT NULL                        Apellido
+  direccion           VARCHAR(255)    NULL                            Direccion
+  fecha_nacimiento    DATE            NOT NULL                        Debe ser anterior a hoy
+  localidad           VARCHAR(100)    NULL                            Localidad
+  activo              BOOLEAN         NOT NULL DEFAULT TRUE           Alta/baja logica
+  motivo_baja         VARCHAR(255)    NULL                            Motivo de baja (vacio si activo)
+
+  Origen en Java: int id, String dni, String cuit, String nombre, String apellido,
+  String direccion, LocalDate fechaNacimiento, String localidad, boolean activo,
+  String motivoBaja.
+
+
+TABLA cuentas
+-------------------------------------------------------------------------------
+  Columna             Tipo SQL        Restriccion                     Descripcion
+  ------------------- --------------- ------------------------------- -----------------------------
+  id                  INT             PK, AUTO_INCREMENT              Identificador
+  nombre_cuenta       VARCHAR(100)    NOT NULL                        Nombre de cuenta
+  correo_electronico  VARCHAR(150)    NOT NULL, UNIQUE                Debe contener "@"
+  contrasenia         VARCHAR(255)    NOT NULL                        Minimo 6 caracteres (hasheada)
+  rol_usuario         VARCHAR(50)     NOT NULL                        Rol principal
+  token               VARCHAR(255)    NULL                            Token de sesion (vacio por defecto)
+  id_cliente          INT             FK -> clientes(id), NOT NULL    Dueno de la cuenta
+  saldo               DECIMAL(12,2)   NOT NULL DEFAULT 0              No puede ser negativo
+
+  Origen en Java: int id, String nombreCuenta, String correoElectronico,
+  String contrasenia, String rolUsuario, String token, int idCliente, BigDecimal saldo.
+
+  NOTA: el Set<String> roles (roles multiples) no se persiste. Si se quisiera,
+  agregar la tabla cuenta_roles(cuenta_id, rol).
+
+
+TABLA categorias (catalogo derivado del enum)
+-------------------------------------------------------------------------------
+  Columna             Tipo SQL        Restriccion                     Descripcion
+  ------------------- --------------- ------------------------------- -----------------------------
+  id                  INT             PK, AUTO_INCREMENT              Identificador
+  nombre              VARCHAR(50)     NOT NULL, UNIQUE                ELECTRONICA, ROPA, HOGAR,
+                                                                      DEPORTES, LIBROS
+
+
+TABLA productos
+-------------------------------------------------------------------------------
+  Columna             Tipo SQL        Restriccion                     Descripcion
+  ------------------- --------------- ------------------------------- -----------------------------
+  id                  INT             PK, AUTO_INCREMENT              Identificador
+  nombre              VARCHAR(150)    NOT NULL                        Nombre del producto
+  precio              DECIMAL(12,2)   NOT NULL                        Debe ser > 0
+  stock_fisico        INT             NOT NULL DEFAULT 0              Stock fisico (>= 0)
+  stock_reservado     INT             NOT NULL DEFAULT 0              Stock reservado (>= 0)
+  id_categoria        INT             FK -> categorias(id), NOT NULL  Categoria
+
+  Origen en Java: int id, String nombre, BigDecimal precio, int stockFisico,
+  int stockReservado, CategoriaProducto categoria.
+
+  DERIVADOS que NO se guardan:
+  - stock_disponible = stock_fisico - stock_reservado
+  - estado_stock: AGOTADO si stock 0, CRITICO si 1-10, DISPONIBLE si > 10.
+
+
+TABLA estado_venta (catalogo)
+-------------------------------------------------------------------------------
+  Columna             Tipo SQL        Restriccion                     Descripcion
+  ------------------- --------------- ------------------------------- -----------------------------
+  id                  INT             PK, AUTO_INCREMENT              Identificador
+  nombre              VARCHAR(20)     NOT NULL, UNIQUE                PENDIENTE, PAGADO, ENVIADO,
+                                                                      CANCELADO
+
+
+TABLA tipo_pago (catalogo)
+-------------------------------------------------------------------------------
+  Columna             Tipo SQL        Restriccion                     Descripcion
+  ------------------- --------------- ------------------------------- -----------------------------
+  id                  INT             PK, AUTO_INCREMENT              Identificador
+  nombre              VARCHAR(30)     NOT NULL, UNIQUE                EFECTIVO, TARJETA_CREDITO
+
+
+TABLA ventas
+-------------------------------------------------------------------------------
+  Columna             Tipo SQL        Restriccion                     Descripcion
+  ------------------- --------------- ------------------------------- -----------------------------
+  id                  INT             PK, AUTO_INCREMENT              Identificador
+  id_cliente          INT             FK -> clientes(id), NOT NULL    Comprador
+  fecha_compra        DATETIME        NOT NULL                        Momento de creacion
+  id_estado_venta     INT             FK -> estado_venta(id), NOT NULL Estado (default PENDIENTE)
+  id_tipo_pago        INT             FK -> tipo_pago(id), NOT NULL   Forma de pago
+  total               DECIMAL(12,2)   NULL                            Suma de subtotales (derivado,
+                                                                      opcional guardarlo)
+
+  Origen en Java: int id, int idCliente, LocalDateTime fechaCompra,
+  EstadoVenta estadoCompra, TipoDePago tipoPago, List<DetalleVenta> detalles.
+
+  NOTA: total es calculable con calculoTotal() desde los detalles; opcional.
+
+
+TABLA detalle_venta
+-------------------------------------------------------------------------------
+  Columna             Tipo SQL        Restriccion                     Descripcion
+  ------------------- --------------- ------------------------------- -----------------------------
+  id                  INT             PK, AUTO_INCREMENT              Identificador
+  id_venta            INT             FK -> ventas(id), NOT NULL      Venta padre
+  id_producto         INT             FK -> productos(id), NOT NULL   Producto vendido
+  precio_unitario     DECIMAL(12,2)   NOT NULL                        Precio efectivo (con descuento)
+  cantidad            INT             NOT NULL                        Cantidad (>= 1)
+  UNIQUE (id_venta, id_producto)                                      Evita duplicar el mismo producto
+
+  Origen en Java: int idProducto, BigDecimal precioUnitario, int cantidad.
+  Subtotal derivado = precio_unitario * cantidad.
+
+
+TABLA auditoria
+-------------------------------------------------------------------------------
+  Columna             Tipo SQL        Restriccion                     Descripcion
+  ------------------- --------------- ------------------------------- -----------------------------
+  id                  INT             PK, AUTO_INCREMENT              Identificador
+  id_accion           INT             FK -> accion_auditoria(id)      Accion realizada
+  id_entidad          INT             NOT NULL                        ID de la entidad afectada
+  fecha               DATETIME        NOT NULL                        Momento del registro
+  descripcion         VARCHAR(500)    NOT NULL                        Detalle del evento
+
+  Origen en Java: int id, AccionAuditoria accion, int idEntidad,
+  LocalDateTime fecha, String descripcion.
+
+
+TABLA accion_auditoria (catalogo)
+-------------------------------------------------------------------------------
+  Columna             Tipo SQL        Restriccion                     Descripcion
+  ------------------- --------------- ------------------------------- -----------------------------
+  id                  INT             PK, AUTO_INCREMENT              Identificador
+  nombre              VARCHAR(50)     NOT NULL, UNIQUE                CREAR, ACTUALIZAR, ELIMINAR,
+                                                                      REGISTRAR_VENTA, CANCELAR_VENTA
+  descripcion         VARCHAR(100)    NULL                            Codigo (ej. PRODUCTO_CREADO)
+
+
+TABLA descuentos (OPCIONAL, unifica los 3 tipos)
+-------------------------------------------------------------------------------
+  Columna             Tipo SQL        Restriccion                     Descripcion
+  ------------------- --------------- ------------------------------- -----------------------------
+  id                  INT             PK, AUTO_INCREMENT              Identificador
+  nombre              VARCHAR(100)    NOT NULL                        Nombre del descuento
+  tipo                VARCHAR(20)     NOT NULL                        MONTO, PORCENTAJE, ESPECIAL
+  monto_descuento     DECIMAL(12,2)   NULL                            Solo si tipo = MONTO
+  monto_minimo        DECIMAL(12,2)   NULL                            Solo si tipo = MONTO
+  porcentaje          DECIMAL(5,2)    NULL                            Solo si tipo = PORCENTAJE (0.50)
+  exclusivo           BOOLEAN         NOT NULL DEFAULT FALSE          DescuentosEspeciales es exclusivo
+
+  Origen en Java: DescuentoPorMonto(montoDescuento, montoMinimoRequerido),
+  DescuentoPorPorcentaje(porcentaje), DescuentosEspeciales (fijo "BLACK FRIDAY 50%").
+  Si no se requiere persistir promociones, esta tabla puede omitirse.
+
+
+3. RELACIONES ENTRE TABLAS
+--------------------------------------------------------------------------------
+  clientes         1 --- * cuentas         (1 cliente tiene N cuentas; id_cliente FK)
+  clientes         1 --- * ventas          (1 cliente hace N compras; id_cliente FK)
+  ventas           1 --- * detalle_venta   (1 venta tiene N lineas; id_venta FK)
+  productos        1 --- * detalle_venta   (1 producto aparece en N lineas; id_producto FK)
+  categorias       1 --- * productos       (1 categoria agrupa N productos; id_categoria FK)
+  estado_venta     1 --- * ventas          (catalogo; id_estado_venta FK)
+  tipo_pago        1 --- * ventas          (catalogo; id_tipo_pago FK)
+  accion_auditoria 1 --- * auditoria       (catalogo; id_accion FK)
+
+Esquema resumido (texto):
+  clientes ----< cuentas
+  clientes ----< ventas ----< detalle_venta >---- productos >---- categorias
+  ventas >---- estado_venta
+  ventas >---- tipo_pago
+  auditoria >---- accion_auditoria
+
+Multiplicidades:
+  - Cliente / Cuenta:        1:N  (cuenta pertenece a exactamente un cliente)
+  - Cliente / Venta:         1:N
+  - Venta / DetalleVenta:    1:N  (composicion)
+  - Producto / DetalleVenta: 1:N
+  - Producto / Categoria:    N:1
+  - Auditoria:               referencia polimorfica por idEntidad (sin FK dura)
+
+
+4. TIPOS DE DATOS (mapeo Java -> SQL)
+--------------------------------------------------------------------------------
+  Java              SQL (MySQL / PostgreSQL)
+  ----------------  ---------------------------
+  int               INT
+  boolean           BOOLEAN
+  String            VARCHAR(n)
+  BigDecimal        DECIMAL(12,2)
+  LocalDate         DATE
+  LocalDateTime     DATETIME / TIMESTAMP
+  enum              Tabla catalogo o VARCHAR con CHECK
+
+
+5. OBSERVACIONES / NOTAS DEL MODELO
+--------------------------------------------------------------------------------
+  1. Baja logica de clientes: se usa 'activo' + 'motivo_baja'; no se eliminan
+     filas (las FK se mantienen intactas).
+  2. Contrasenas: la columna 'contrasenia' debe guardarse HASHEADA, nunca en
+     texto plano (el dominio hoy la ofusca con OfuscadorDeContrasenas).
+  3. Roles (Set) en Cuenta: no se persiste en el modelo actual; si se usa la
+     gestion multi-rol, agregar la tabla cuenta_roles(cuenta_id, rol).
+  4. Campos derivados que NO se guardan: stock_disponible, estado_stock,
+     subtotal de detalle, total de venta (opcional).
+  5. Pagos: TipoDePago solo contempla EFECTIVO y TARJETA_CREDITO; el pago con
+     Cuenta (saldo) se resuelve debitando saldo, no queda registrado como tabla.
+  6. Carrito / ItemCarrito: transitorios. Si se quisiera persistir carritos
+     abandonados, crear tablas carritos y carrito_items.
+  7. Auditoria polimorfica: id_entidad no tiene FK; documentar la convencion
+     (productos: id de producto, ventas: id de venta).
+  8. Integridad referencial: usar ON DELETE RESTRICT en las FK hacia clientes,
+     productos y ventas para respetar la baja logica.
+
+================================================================================
+FIN DEL INFORME
+================================================================================
