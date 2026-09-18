@@ -9,6 +9,7 @@ import java.util.concurrent.CompletableFuture;
 public interface IVentasService {
   
   CompletableFuture<Void> crearVentaAsync(final Carrito carrito, final  String tipoPago ,final IDescuentos descuento) ;
+    CompletableFuture<Void> crearVentaAsync(final int idCliente, final String tipoPago, final IDescuentos descuento);
     CompletableFuture<Optional<Venta>> buscarPorIdAsync(final int id);
     
 

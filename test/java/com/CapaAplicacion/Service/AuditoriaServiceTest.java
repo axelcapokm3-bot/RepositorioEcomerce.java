@@ -73,7 +73,7 @@ class AuditoriaServiceTest {
     void obtenerTodos() throws Exception {
         AuditoriaService service = new AuditoriaService(auditoriaRepository, new InMemoryEventBus());
         Auditoria a = new Auditoria(AccionAuditoria.CREAR, 1, "desc");
-        when(auditoriaRepository.obtenerTodos()).thenReturn(List.of(a));
+        when(auditoriaRepository.listarTodas()).thenReturn(List.of(a));
 
         List<Auditoria> resultado = service.obtenerTodosAsync().get();
         assertEquals(1, resultado.size());
@@ -83,7 +83,7 @@ class AuditoriaServiceTest {
     @DisplayName("obtenerPorAccionAsync: filtra por acción")
     void obtenerPorAccion() throws Exception {
         AuditoriaService service = new AuditoriaService(auditoriaRepository, new InMemoryEventBus());
-        when(auditoriaRepository.obtenerPorAccion(AccionAuditoria.ELIMINAR)).thenReturn(List.of());
+        when(auditoriaRepository.buscarPorAccion(AccionAuditoria.ELIMINAR)).thenReturn(List.of());
 
         assertEquals(0, service.obtenerPorAccionAsync(AccionAuditoria.ELIMINAR).get().size());
     }
@@ -92,7 +92,7 @@ class AuditoriaServiceTest {
     @DisplayName("obtenerPorProductoAsync: filtra por entidad")
     void obtenerPorEntidad() throws Exception {
         AuditoriaService service = new AuditoriaService(auditoriaRepository, new InMemoryEventBus());
-        when(auditoriaRepository.obtenerPorEntidad(9)).thenReturn(List.of());
+        when(auditoriaRepository.buscarPorEntidad("Venta", 9)).thenReturn(List.of());
 
         assertEquals(0, service.obtenerPorProductoAsync(9).get().size());
     }

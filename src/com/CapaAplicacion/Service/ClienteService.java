@@ -4,7 +4,10 @@ import com.CapaAplicacion.DTOentrada.ClienteRequestDTO;
 import com.CapaAplicacion.DTOsalida.ClienteResponseDTO;
 import com.CapaAplicacion.Interfaces.IClienteRepositorio;
 import com.CapaAplicacion.Interfaces.IServiceCliente;
+import com.CapaAplicacion.Interfaces.IServiceExecutor;
+import com.CapaAplicacion.Interfaces.TipoServicio;
 import com.CapaAplicacion.Mapper.ClienteMapper;
+import com.CapaInfraestructura.Implementacion.RegistroExecutors;
 import com.CapaDominio.Entidades.Cliente;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,15 +18,17 @@ import java.util.function.Supplier;
 public class ClienteService implements IServiceCliente {
 
     private final IClienteRepositorio repository;
+    private final IServiceExecutor executor;
 
 
     public ClienteService(IClienteRepositorio repository) {
         this.repository = repository;
+        this.executor = RegistroExecutors.obtener(TipoServicio.CLIENTE);
     }
 
 @Override
 public CompletableFuture<Void> guardarAsync(final ClienteRequestDTO dto) {
-    return CompletableFuture.runAsync(new Runnable() {
+    return executor.ejecutar(new Runnable() {
         @Override
         public void run() {
             Cliente cliente = ClienteMapper.toEntidad(0, dto);
@@ -34,9 +39,9 @@ public CompletableFuture<Void> guardarAsync(final ClienteRequestDTO dto) {
 
     @Override
     public CompletableFuture<Optional<ClienteResponseDTO>> buscarPorIdAsync(final int id) {
-        return CompletableFuture.supplyAsync(new Supplier<Optional<ClienteResponseDTO>>() {
+        return executor.ejecutar(new java.util.concurrent.Callable<Optional<ClienteResponseDTO>>() {
             @Override
-            public Optional<ClienteResponseDTO> get() {
+            public Optional<ClienteResponseDTO> call() {
                 Optional<Cliente> opt = repository.buscarPorId(id);
                 if (opt.isPresent()) {
                     return Optional.of(ClienteMapper.toResponseDTO(opt.get()));
@@ -48,9 +53,9 @@ public CompletableFuture<Void> guardarAsync(final ClienteRequestDTO dto) {
 
     @Override
     public CompletableFuture<List<ClienteResponseDTO>> listarTodosAsync() {
-        return CompletableFuture.supplyAsync(new Supplier<List<ClienteResponseDTO>>() {
+        return executor.ejecutar(new java.util.concurrent.Callable<List<ClienteResponseDTO>>() {
             @Override
-            public List<ClienteResponseDTO> get() {
+            public List<ClienteResponseDTO> call() {
                 List<Cliente> listaEntidades = repository.listarTodos();
                 List<ClienteResponseDTO> listaDTOs = new ArrayList<>();
                 for (Cliente c : listaEntidades) {
@@ -63,7 +68,7 @@ public CompletableFuture<Void> guardarAsync(final ClienteRequestDTO dto) {
 
     @Override
     public CompletableFuture<Void> actualizarAsync(final int id, final ClienteRequestDTO dto) {
-        return CompletableFuture.runAsync(new Runnable() {
+        return executor.ejecutar(new Runnable() {
             @Override
             public void run() {
                 repository.buscarPorId(id)
@@ -77,7 +82,7 @@ public CompletableFuture<Void> guardarAsync(final ClienteRequestDTO dto) {
 
     @Override
     public CompletableFuture<Void> eliminarAsync(final int id) {
-        return CompletableFuture.runAsync(new Runnable() {
+        return executor.ejecutar(new Runnable() {
             @Override
             public void run() {
                 repository.eliminar(id);

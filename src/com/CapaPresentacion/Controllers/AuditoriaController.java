@@ -1,10 +1,11 @@
 package com.CapaPresentacion.Controllers;
 
+import java.io.IOException;
+
 import com.CapaAplicacion.Interfaces.IAuditoriaService;
 import com.CapaDominio.Entidades.AccionAuditoria;
 import com.CapaDominio.Entidades.Auditoria;
 import com.sun.net.httpserver.HttpExchange;
-import java.io.IOException;
 
 public class AuditoriaController extends BaseController {
 
@@ -31,43 +32,64 @@ public class AuditoriaController extends BaseController {
                     handleAsync(exchange, servicio.obtenerTodosAsync(), 200);
                 } else if ("POST".equalsIgnoreCase(method)) {
                     CrearAuditoriaRequest req = parseRequestBody(exchange, CrearAuditoriaRequest.class);
-                    if (req == null || req.accion() == null || req.descripcion() == null) {
-                        sendError(exchange, 400, "La acción, el ID y la descripción son obligatorios.");
-                        return;
+                    if (req == null || req.accion() == null || req.accion().isBlank()
+                            || req.descripcion() == null || req.descripcion().isBlank()
+                            || req.idEntidad() <= 0) {
+                        throw new ControllerException.Validacion(
+                                "Los datos de auditoría no son válidos.",
+                                "La acción, el ID de entidad y la descripción son obligatorios."
+                        );
                     }
-                    AccionAuditoria accion = AccionAuditoria.valueOf(req.accion().toUpperCase());
+                    AccionAuditoria accion;
+                    try {
+                        accion = AccionAuditoria.valueOf(req.accion().trim().toUpperCase());
+                    } catch (IllegalArgumentException ex) {
+                        throw new ControllerException.Validacion(
+                                "La acción de auditoría no es válida.",
+                                "La acción recibida no existe en el catálogo permitido."
+                        );
+                    }
                     handleAsync(exchange, servicio.registrarAuditoriaAsync(new Auditoria(accion, req.idEntidad(), req.descripcion())), 201);
                 } else {
-                    sendError(exchange, 405, "Método no permitido");
+                    throw new ControllerException.Validacion("Método no permitido.", "La ruta no admite este método HTTP.");
                 }
             } else if (path.startsWith("/api/auditoria/producto/")) {
                 Integer id = getIntIdFromPath(exchange, "/api/auditoria/producto/");
-                if (id == null) {
-                    sendError(exchange, 400, "ID de entidad inválido o ausente.");
-                    return;
+                if (id == null || id <= 0) {
+                    throw new ControllerException.Validacion("El ID de entidad no es válido.", "Debe ser un entero positivo.");
                 }
                 if ("GET".equalsIgnoreCase(method)) {
                     handleAsync(exchange, servicio.obtenerPorProductoAsync(id), 200);
                 } else {
-                    sendError(exchange, 405, "Método no permitido");
+                    throw new ControllerException.Validacion("Método no permitido.", "La ruta no admite este método HTTP.");
                 }
             } else if (path.startsWith("/api/auditoria/accion/")) {
                 String accionRaw = path.substring("/api/auditoria/accion/".length());
                 if (accionRaw == null || accionRaw.trim().isEmpty()) {
-                    sendError(exchange, 400, "Parámetro de acción requerido.");
-                    return;
+                    throw new ControllerException.Validacion("La acción es obligatoria.", "No se recibió el parámetro de acción.");
                 }
                 if ("GET".equalsIgnoreCase(method)) {
-                    AccionAuditoria accion = AccionAuditoria.valueOf(accionRaw.toUpperCase());
+                    AccionAuditoria accion;
+                    try {
+                        accion = AccionAuditoria.valueOf(accionRaw.trim().toUpperCase());
+                    } catch (IllegalArgumentException ex) {
+                        throw new ControllerException.Validacion("La acción de auditoría no es válida.", "La acción recibida no existe.");
+                    }
                     handleAsync(exchange, servicio.obtenerPorAccionAsync(accion), 200);
                 } else {
-                    sendError(exchange, 405, "Método no permitido");
+                    throw new ControllerException.Validacion("Método no permitido.", "La ruta no admite este método HTTP.");
                 }
             } else {
-                sendError(exchange, 404, "Ruta no encontrada");
+                throw new ControllerException.NoEncontrado("Ruta no encontrada.", "No existe un recurso para la URL solicitada.");
             }
+        } catch (ControllerException e) {
+            sendError(exchange, e.status(), e.respuesta());
+        } catch (IOException e) {
+            sendError(exchange, 503, new ControllerException.ServicioNoDisponible(
+                    "No fue posible responder al cliente.", "Problema de red o comunicación."
+            ).respuesta());
         } catch (Exception e) {
-            sendError(exchange, 400, "Error en la petición: " + e.getMessage());
+            sendError(exchange, 500, "Código: ERROR_SERVIDOR | Mensaje: Error interno del servidor. | Causa: Fallo inesperado.");
         }
     }
 }

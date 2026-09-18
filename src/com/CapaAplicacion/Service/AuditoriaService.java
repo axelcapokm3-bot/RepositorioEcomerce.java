@@ -5,6 +5,7 @@ import com.CapaDominio.Entidades.Auditoria;
 import com.CapaDominio.Entidades.AccionAuditoria;
 import com.CapaDominio.Entidades.VentasEventos;
 import com.CapaDominio.Entidades.Venta;
+import com.CapaInfraestructura.Implementacion.RegistroExecutors;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
@@ -14,10 +15,12 @@ import java.util.List;
 public class AuditoriaService implements IAuditoriaService {
     private final IAuditoriaRepository auditoriaRepository;
     private final EventBus eventBus;
+    private final IServiceExecutor executor;
 
     public AuditoriaService(IAuditoriaRepository auditoriaRepository, EventBus eventBus) {
         this.auditoriaRepository = auditoriaRepository;
         this.eventBus = eventBus;
+        this.executor = RegistroExecutors.obtener(TipoServicio.AUDITORIA);
 
         this.eventBus.suscribirse(VentasEventos.class, new Consumer<VentasEventos>() {
             @Override
@@ -36,7 +39,7 @@ return CompletableFuture.completedFuture(null);
 
 
 
-        return CompletableFuture.runAsync(new Runnable() {
+        return executor.ejecutar(new Runnable() {
             @Override
             public void run() {
                 try {
@@ -69,10 +72,14 @@ return CompletableFuture.completedFuture(null);
 
     @Override
     public CompletableFuture<Void> registrarAuditoriaAsync(final Auditoria auditoria) {
-        return CompletableFuture.runAsync(new Runnable() {
+        return executor.ejecutar(new Runnable() {
             @Override
             public void run() {
-                auditoriaRepository.guardar(auditoria);
+                try {
+                    auditoriaRepository.guardar(auditoria);
+                } catch (Exception e) {
+                    System.err.println("Error al guardar auditoría: " + e.getMessage());
+                }
             }
         });
     }
@@ -80,10 +87,10 @@ return CompletableFuture.completedFuture(null);
  
     @Override
     public CompletableFuture<List<Auditoria>> obtenerTodosAsync() {
-        return CompletableFuture.supplyAsync(new Supplier<List<Auditoria>>() {
+        return executor.ejecutar(new java.util.concurrent.Callable<List<Auditoria>>() {
             @Override
-            public List<Auditoria> get() {
-                return auditoriaRepository.obtenerTodos();
+            public List<Auditoria> call() {
+                return auditoriaRepository.listarTodas();
             }
         });
     }
@@ -91,23 +98,22 @@ return CompletableFuture.completedFuture(null);
  
     @Override
     public CompletableFuture<List<Auditoria>> obtenerPorProductoAsync(final int idProducto) {
-        return CompletableFuture.supplyAsync(new Supplier<List<Auditoria>>() {
+        return executor.ejecutar(new java.util.concurrent.Callable<List<Auditoria>>() {
             @Override
-            public List<Auditoria> get() {
-                return auditoriaRepository.obtenerPorEntidad(idProducto);
+            public List<Auditoria> call() {
+                return auditoriaRepository.buscarPorEntidad("Venta", idProducto);
             }
         });
     }
 
     @Override
     public CompletableFuture<List<Auditoria>> obtenerPorAccionAsync(final AccionAuditoria accion) {
-        return CompletableFuture.supplyAsync(new Supplier<List<Auditoria>>() {
+        return executor.ejecutar(new java.util.concurrent.Callable<List<Auditoria>>() {
             @Override
-            public List<Auditoria> get() {
-                return auditoriaRepository.obtenerPorAccion(accion);
+            public List<Auditoria> call() {
+                return auditoriaRepository.buscarPorAccion(accion);
             }
         });
     }
 
 }
-

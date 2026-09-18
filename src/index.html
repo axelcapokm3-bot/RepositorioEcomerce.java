@@ -1,36 +1,125 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>eCommerce-Java Frontend</title>
-    <link rel="stylesheet" href="css/main.css">
-    <link rel="stylesheet" href="css/components.css">
+    <title>SurCommerce - Enterprise Operations Suite</title>
+    <!-- Google Fonts & Material Symbols -->
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { DEFAULT: "#EA580C", hover: "#C2410C", accent: "#F97316" },
+                        carbon: { 950: "#05080E", 900: "#070A12", 850: "#0B0F19", 800: "#0F172A", 750: "#141D34", 700: "#1E293B" }
+                    },
+                    fontFamily: { sans: ['Geist', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Geist', sans-serif; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #070A12; }
+        ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 9999px; }
+    </style>
 </head>
-<body>
-    <header>
-        <h1>Mi eCommerce</h1>
-        <button id="theme-toggle">Toggle Dark Mode</button>
-    </header>
-    <nav>
-        <ul>
-            <li><a href="#products">Catálogo de Productos</a></li>
-            <li><a href="#account">Mi Cuenta</a></li>
-            <li><a href="#sales-management">Gestión de Ventas</a></li>
-        </ul>
-    </nav>
-    <main id="app">
-        <!-- Content will be loaded here by JavaScript -->
-        <div id="loading-spinner" class="spinner-overlay">
-            <div class="spinner"></div>
-        </div>
-        <div id="toast-container" class="toast-container"></div>
-    </main>
+<body class="bg-carbon-850 text-slate-200 antialiased selection:bg-brand selection:text-white min-h-screen flex flex-col">
 
-    <script src="js/utils/spinner.js"></script>
-    <script src="js/utils/toast-notifier.js"></script>
-    <script src="js/utils/theme-switcher.js"></script>
-    <script src="js/api.js"></script>
-    <script src="js/main.js"></script>
+    <!-- Sidebar Fija -->
+    <aside class="fixed left-0 top-0 bottom-0 w-64 bg-carbon-800 border-r border-carbon-700 z-50 flex flex-col justify-between select-none">
+        <div class="flex flex-col">
+            <div class="h-16 px-6 border-b border-carbon-700 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg bg-brand flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-orange-600/30">S</div>
+                    <div class="flex flex-col">
+                        <span class="font-bold text-[17px] text-white tracking-tight leading-none">SurCommerce</span>
+                        <span class="text-[10px] text-orange-400 font-semibold uppercase tracking-wider mt-1">Enterprise AR</span>
+                    </div>
+                </div>
+            </div>
+            <div class="px-5 pt-6 pb-2">
+                <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Módulos del Sistema</span>
+            </div>
+            <nav class="flex flex-col gap-1.5 px-3">
+                <a href="#dashboard" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium text-slate-400 hover:text-white hover:bg-carbon-750 transition-all active-tab" data-view="dashboard">
+                    <span class="material-symbols-outlined text-[20px]">grid_view</span>
+                    <span>Dashboard General</span>
+                </a>
+                <a href="#clientes" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium text-slate-400 hover:text-white hover:bg-carbon-750 transition-all" data-view="clientes">
+                    <span class="material-symbols-outlined text-[20px]">group</span>
+                    <span>Gestión de Clientes</span>
+                </a>
+                <a href="#catalogo" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium text-slate-400 hover:text-white hover:bg-carbon-750 transition-all" data-view="catalogo">
+                    <span class="material-symbols-outlined text-[20px]">inventory_2</span>
+                    <span>Catálogo & Stock</span>
+                </a>
+                <a href="#terminal" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium text-slate-400 hover:text-white hover:bg-carbon-750 transition-all" data-view="terminal">
+                    <span class="material-symbols-outlined text-[20px]">point_of_sale</span>
+                    <span>Terminal de Ventas (POS)</span>
+                </a>
+                <a href="#auditoria" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium text-slate-400 hover:text-white hover:bg-carbon-750 transition-all" data-view="auditoria">
+                    <span class="material-symbols-outlined text-[20px]">verified_user</span>
+                    <span>Auditoría & Logs</span>
+                </a>
+            </nav>
+        </div>
+        <div class="p-4 border-t border-carbon-700 bg-carbon-900/60">
+            <div class="p-3.5 rounded-xl bg-carbon-750/70 border border-carbon-700 flex flex-col gap-2.5">
+                <div class="flex items-center justify-between">
+                    <span class="text-[11px] font-medium text-slate-400">SLA Operativo AFIP</span>
+                    <span class="text-[12px] font-bold text-emerald-400 font-mono">99.98%</span>
+                </div>
+                <div class="w-full bg-carbon-700 h-1.5 rounded-full overflow-hidden">
+                    <div class="bg-emerald-400 h-full w-[99.98%] rounded-full"></div>
+                </div>
+                <span class="text-[10px] text-orange-400 font-semibold uppercase">API Backend Conectada</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Header Superior -->
+    <div class="pl-64 flex flex-col flex-1">
+        <header class="h-16 bg-carbon-900/90 backdrop-blur-md border-b border-carbon-700 sticky top-0 z-40 px-8 flex items-center justify-between">
+            <div class="flex items-center w-96">
+                <div class="flex items-center w-full px-3 py-1.5 bg-carbon-800 border border-carbon-700 rounded-lg gap-2.5 text-slate-400">
+                    <span class="material-symbols-outlined text-[18px] text-brand">search</span>
+                    <input type="text" id="global-search" placeholder="Buscar productos, clientes o transacciones..." class="bg-transparent w-full text-xs text-white placeholder-slate-500 focus:outline-none border-0 p-0">
+                    <kbd class="text-[10px] bg-carbon-700 px-1.5 py-0.5 rounded text-slate-400 font-mono">Ctrl+K</kbd>
+                </div>
+            </div>
+            <div class="flex items-center gap-4">
+                <div id="toast-container" class="fixed top-20 right-8 z-50 flex flex-col gap-2"></div>
+                <div class="flex items-center gap-3 cursor-pointer">
+                    <div class="w-9 h-9 rounded-full bg-carbon-700 text-orange-400 flex items-center justify-center font-bold text-xs border-2 border-brand shadow-md">MS</div>
+                    <div class="flex flex-col text-left">
+                        <span class="text-xs font-bold text-white leading-tight">Martín Silva</span>
+                        <span class="text-[11px] text-slate-400 leading-tight">Gerente de Operaciones</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Contenedor Dinámico de Vistas -->
+        <main id="app-view" class="flex-1 p-8 max-w-[1520px] w-full mx-auto space-y-6">
+            <!-- Las vistas se cargarán dinámicamente aquí según el backend -->
+            <div class="flex items-center justify-center h-64 text-slate-400">
+                <span class="material-symbols-outlined animate-spin text-[32px] text-brand mr-2">refresh</span>
+                Cargando datos desde el servidor Java...
+            </div>
+        </main>
+    </div>
+
+    <!-- Scripts como Módulos ES6 -->
+    <script type="module" src="js/utils/spinner.js"></script>
+    <script type="module" src="js/utils/toast-notifier.js"></script>
+    <script type="module" src="js/api.js"></script>
+    <script type="module" src="js/app.js"></script>
 </body>
 </html>

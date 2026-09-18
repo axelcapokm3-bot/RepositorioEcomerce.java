@@ -57,25 +57,6 @@ this.detalles.add(new DetalleVenta(
     }
 
 
-    public void procesarPagoConCuenta(Cuenta cuenta) { 
-        if (this.estadoCompra != EstadoVenta.PENDIENTE) {
-            throw new IllegalStateException("La venta no se encuentra en estado PENDIENTE.");
-        }
-        if (this.detalles.isEmpty()) {
-            throw new IllegalStateException("No se puede pagar una venta sin productos.");
-        }
-        if (cuenta.getIdCliente() != this.idCliente) {
-            throw new IllegalArgumentException("La cuenta ingresada no pertenece a este cliente.");
-        }
-
-        BigDecimal totalPago = this.calculoTotal() ; 
-        cuenta.debitar(totalPago)  ; 
-
-        this.estadoCompra = EstadoVenta.PAGADO ;
-    }
-
-   
-
     public List<DetalleVenta> getDetalles() {
         return detalles;
     }

@@ -1,68 +1,100 @@
 package com.CapaInfraestructura.Implementacion;
-import com.CapaDominio.Entidades.Auditoria;
-import com.CapaDominio.Entidades.AccionAuditoria;
-import com.CapaAplicacion.Interfaces.IAuditoriaRepository;
 
+import com.CapaAplicacion.Interfaces.IAuditoriaRepository;
+import com.CapaDominio.Entidades.AccionAuditoria;
+import com.CapaDominio.Entidades.Auditoria;
+
+import java.sql.*;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * Repositorio de auditoría en memoria (Implementación para tests y desarrollo sin DB).
+ */
 public class RepositorioAuditoria implements IAuditoriaRepository {
     
-private static final List<Auditoria> logs = new CopyOnWriteArrayList<>();
+    private static final List<Auditoria> logs = new CopyOnWriteArrayList<>();
+    private static final AtomicLong siguienteId = new AtomicLong(1);
 
-private static int maximoId() {
-    if (logs.isEmpty()) {
-        return 1;
-    }
-    int maxId = 0;
-    for (Auditoria log : logs) {
-        if (log.getId() > maxId) {
-            maxId = log.getId();
-        }
-    }
-    return maxId + 1;
-}
-
-private static final AtomicInteger siguienteId = new AtomicInteger(maximoId());
-
+    @Override
     public void guardar(Auditoria log) {
         if (log == null) {
             throw new IllegalArgumentException("El registro de auditoría no puede ser nulo.");
         }
         if (log.getId() == 0) {
-            siguienteId.accumulateAndGet(maximoId(), Math::max);
             log.setId(siguienteId.getAndIncrement());
+        }
+        if (log.getFecha() == null) {
+            log.setFecha(LocalDateTime.now());
         }
         logs.add(log);
     }
 
-    public List<Auditoria> obtenerTodos() {
+    @Override
+    public List<Auditoria> listarTodas() {
         return new ArrayList<>(logs);
     }
 
-  public List<Auditoria> obtenerPorEntidad(int idProducto) {
-    List<Auditoria> listaA = new ArrayList<>(); 
-
-    for (Auditoria A : logs) {
-       
-        if (A.getIdEntidad() == idProducto) {
-            listaA.add(A); 
+    @Override
+    public List<Auditoria> buscarPorEntidad(String entidad, int idEntidad) {
+        List<Auditoria> resultado = new ArrayList<>();
+        for (Auditoria log : logs) {
+            boolean coincideEntidad = entidad == null || entidad.equalsIgnoreCase(log.getEntidad());
+            if (coincideEntidad && log.getIdEntidad() == idEntidad) {
+                resultado.add(log);
+            }
         }
+        return resultado;
     }
-    return listaA;
-}
 
-  @Override
-  public List<Auditoria> obtenerPorAccion(AccionAuditoria accion) {
-    List<Auditoria> resultado = new ArrayList<>();
-    for (Auditoria auditoria : logs) {
-      if (auditoria.getAccion() == accion) {
-        resultado.add(auditoria);
-      }
+    // Método auxiliar mantenido para compatibilidad si algún test antiguo llama a obtenerPorEntidad(int)
+    public List<Auditoria> obtenerPorEntidad(int idEntidad) {
+        return buscarPorEntidad(null, idEntidad);
     }
-    return resultado;
-  }
 
+    @Override
+    public List<Auditoria> buscarPorUsuario(String usuario) {
+        List<Auditoria> resultado = new ArrayList<>();
+        for (Auditoria log : logs) {
+            if (usuario != null && usuario.equalsIgnoreCase(log.getUsuario())) {
+                resultado.add(log);
+            }
+        }
+        return resultado;
+    }
+
+    @Override
+    public List<Auditoria> buscarPorAccion(AccionAuditoria accion) {
+        List<Auditoria> resultado = new ArrayList<>();
+        for (Auditoria log : logs) {
+            if (log.getAccion() == accion) {
+                resultado.add(log);
+            }
+        }
+        return resultado;
+    }
+
+    @Override
+    public List<Auditoria> buscarPorRangoFecha(LocalDateTime desde, LocalDateTime hasta) {
+        List<Auditoria> resultado = new ArrayList<>();
+        for (Auditoria log : logs) {
+            LocalDateTime fecha = log.getFecha();
+            if (fecha != null) {
+                boolean des = desde == null || !fecha.isBefore(desde);
+                boolean has = hasta == null || !fecha.isAfter(hasta);
+                if (des && has) {
+                    resultado.add(log);
+                }
+            }
+        }
+        return resultado;
+    }
+
+    // Compatibilidad para test antiguos
+    public List<Auditoria> obtenerTodos() {
+        return listarTodas();
+    }
 }

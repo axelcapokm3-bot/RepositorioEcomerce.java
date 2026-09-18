@@ -1,34 +1,40 @@
 package com.CapaExterna;
 
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.net.InetSocketAddress;
 import java.util.concurrent.Executors;
 
 import com.CapaAplicacion.Interfaces.EventBus;
+import com.CapaAplicacion.Interfaces.INotificadorEmail;
+import com.CapaAplicacion.Interfaces.ITransaccion;
+import com.CapaInfraestructura.Implementacion.JDBCTransaccion;
+import com.CapaInfraestructura.Implementacion.NotificadorEmailMock;
+import com.CapaInfraestructura.Implementacion.NotificacionListener;
 import com.CapaAplicacion.Interfaces.IAuditoriaRepository;
 import com.CapaAplicacion.Interfaces.IClienteRepositorio;
-import com.CapaAplicacion.Interfaces.ICuentaRepositorio;
+import com.CapaAplicacion.Interfaces.IMetodoPagoRepositorio;
 import com.CapaAplicacion.Interfaces.IProductoRepository;
 import com.CapaAplicacion.Interfaces.IVentaRepository;
+import com.CapaAplicacion.Interfaces.ICarritoRepository;
 import com.CapaAplicacion.Service.AuditoriaService;
 import com.CapaAplicacion.Service.ClienteService;
-import com.CapaAplicacion.Service.CuentaService;
+import com.CapaAplicacion.Service.MetodoPagoService;
 import com.CapaAplicacion.Service.ProductoService;
 import com.CapaAplicacion.Service.RecomendacionService;
 import com.CapaAplicacion.Service.StockService;
 import com.CapaAplicacion.Service.VentaService;
-import com.CapaDominio.Entidades.CategoriaProducto;
-import com.CapaDominio.Entidades.Producto;
 import com.CapaInfraestructura.Implementacion.InMemoryEventBus;
-import com.CapaInfraestructura.Implementacion.RepositorioAuditoria;
-import com.CapaInfraestructura.Implementacion.RepositorioCliente;
-import com.CapaInfraestructura.Implementacion.RepositorioCuenta;
-import com.CapaInfraestructura.Implementacion.RepositorioProducto;
-import com.CapaInfraestructura.Implementacion.RepositorioVentas;
+import com.CapaInfraestructura.Implementacion.RegistroExecutors;
+import com.CapaInfraestructura.Implementacion.MySqlRepositorioCliente;
+import com.CapaInfraestructura.Implementacion.MySqlRepositorioProducto;
+import com.CapaInfraestructura.Implementacion.MySqlRepositorioVenta;
+import com.CapaInfraestructura.Implementacion.MySqlRepositorioAuditoria;
+import com.CapaInfraestructura.Implementacion.RepositorioMetodoPago;
+import com.CapaInfraestructura.Implementacion.RedisCarritoRepository;
+import redis.clients.jedis.JedisPool;
 import com.CapaPresentacion.Controllers.AuditoriaController;
 import com.CapaPresentacion.Controllers.ClienteController;
-import com.CapaPresentacion.Controllers.CuentaController;
+import com.CapaPresentacion.Controllers.MetodoPagoController;
 import com.CapaPresentacion.Controllers.ProductoController;
 import com.CapaPresentacion.Controllers.RecomendacionController;
 import com.CapaPresentacion.Controllers.StockController;
@@ -39,27 +45,37 @@ public class ServerMain {
 
     public static void main(String[] args) {
         try {
+            Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    RegistroExecutors.cerrarTodos();
+                }
+            }, "executor-shutdown-hook"));
+
             System.out.println("==================================================");
             System.out.println("🚀 INICIANDO SERVIDOR HTTP E-COMMERCE EN PUERTO 8080");
             System.out.println("==================================================\n");
 
          
-            IProductoRepository productoRepo = new RepositorioProducto();
-            IVentaRepository ventaRepo = new RepositorioVentas();
-            IClienteRepositorio clienteRepo = new RepositorioCliente();
-            ICuentaRepositorio cuentaRepo = new RepositorioCuenta();
-            IAuditoriaRepository auditoriaRepo = new RepositorioAuditoria();
+            IProductoRepository productoRepo = new MySqlRepositorioProducto();
+            IVentaRepository ventaRepo = new MySqlRepositorioVenta();
+            IClienteRepositorio clienteRepo = new MySqlRepositorioCliente();
+            IMetodoPagoRepositorio metodoPagoRepo = new RepositorioMetodoPago();
+            IAuditoriaRepository auditoriaRepo = new MySqlRepositorioAuditoria();
+            ICarritoRepository carritoRepo = new RedisCarritoRepository(new JedisPool("localhost", 6379));
 
 
+            ITransaccion transaccion = new JDBCTransaccion();
             EventBus eventBus = new InMemoryEventBus();
-
-            prepopulateData(productoRepo);
+            INotificadorEmail notificador = new NotificadorEmailMock();
+            new NotificacionListener(eventBus, notificador);
 
           
             ProductoService productoService = new ProductoService(productoRepo, eventBus);
             ClienteService clienteService = new ClienteService(clienteRepo);
-            CuentaService cuentaService = new CuentaService(cuentaRepo);
-            VentaService ventaService = new VentaService(ventaRepo, productoRepo, cuentaRepo, eventBus);
+            MetodoPagoService metodoPagoService = new MetodoPagoService(metodoPagoRepo);
+                VentaService ventaService = new VentaService(transaccion, ventaRepo, productoRepo, clienteRepo,
+                    metodoPagoRepo, eventBus, carritoRepo);
             AuditoriaService auditoriaService = new AuditoriaService(auditoriaRepo, eventBus);
             StockService stockService = new StockService();
             RecomendacionService recomendacionService = new RecomendacionService();
@@ -70,7 +86,7 @@ public class ServerMain {
    
             server.createContext("/api/productos", new ProductoController(productoService));
             server.createContext("/api/clientes", new ClienteController(clienteService));
-            server.createContext("/api/cuentas", new CuentaController(cuentaService));
+            server.createContext("/api/metodos-pago", new MetodoPagoController(metodoPagoService));
             server.createContext("/api/ventas", new VentaController(ventaService, productoRepo));
             server.createContext("/api/auditoria", new AuditoriaController(auditoriaService));
             server.createContext("/api/stock", new StockController(stockService, productoRepo));
@@ -85,8 +101,7 @@ public class ServerMain {
             System.out.println("Rutas disponibles:");
             System.out.println("  - Productos: GET/POST/PUT/DELETE /api/productos");
             System.out.println("  - Clientes: GET/POST/PUT/DELETE /api/clientes");
-            System.out.println("  - Cuentas: GET/POST/PUT/DELETE /api/cuentas, POST /api/cuentas/transferir, GET /api/cuentas/buscarPorCorreo");
-            System.out.println("  - Ventas: POST /api/ventas/crear, GET /api/ventas/{id}, POST /api/ventas/{id}/pago, POST /api/ventas/{id}/cancelar");
+            System.out.println("  - Ventas: POST /api/ventas/previsualizar, POST /api/ventas/crear, GET /api/ventas/{id}, POST /api/ventas/{id}/pago, POST /api/ventas/{id}/cancelar");
             System.out.println("\nPresione Ctrl+C para detener el servidor.");
 
         } catch (IOException e) {
@@ -95,17 +110,4 @@ public class ServerMain {
         }
     }
 
-    private static void prepopulateData(IProductoRepository productoRepo) {
-        try {
-
-            productoRepo.guardar(new Producto("Laptop Gamer", BigDecimal.valueOf(1000.0), 10, 0, 1, CategoriaProducto.ELECTRONICA));
-            productoRepo.guardar(new Producto("Mouse Vertical", BigDecimal.valueOf(50.0), 15, 0, 2, CategoriaProducto.ELECTRONICA));
-            productoRepo.guardar(new Producto("Teclado Mecanico", BigDecimal.valueOf(120.0), 8, 0, 3, CategoriaProducto.ELECTRONICA));
-
-            System.out.println("📦 Catálogo inicial cargado con éxito.");
-        } catch (Exception e) {
-            System.err.println("⚠️ Advertencia al precargar datos: " + e.getMessage());
-        }
-    }
 }
-

@@ -11,11 +11,23 @@ import com.CapaDominio.Entidades.VentasEventos;
 import com.CapaAplicacion.Interfaces.IVentasService;
 import com.CapaAplicacion.Interfaces.IVentaRepository;
 import com.CapaAplicacion.Interfaces.IProductoRepository;
-import com.CapaAplicacion.Interfaces.ICuentaRepositorio;
+import com.CapaAplicacion.Interfaces.IClienteRepositorio;
+import com.CapaAplicacion.Interfaces.IMetodoPagoRepositorio;
+import com.CapaAplicacion.Interfaces.ITransaccion;
 import com.CapaAplicacion.Interfaces.EventBus;
-import com.CapaDominio.Entidades.Cuenta;
+import com.CapaAplicacion.Interfaces.ICarritoRepository;
+import com.CapaAplicacion.Interfaces.IServiceExecutor;
+import com.CapaAplicacion.Interfaces.TipoServicio;
+import com.CapaDominio.Entidades.MetodoPago;
+import com.CapaDominio.Excepciones.PagoInvalidoException;
+import com.CapaDominio.Excepciones.RecursoNoEncontradoException;
+import com.CapaDominio.Excepciones.ReglaNegocioException;
+import com.CapaDominio.Excepciones.StockInsuficienteException;
+import com.CapaDominio.Excepciones.CarritoVacioException;
+import com.CapaInfraestructura.Implementacion.RegistroExecutors;
 
 import java.math.BigDecimal;
+import java.sql.Connection;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -25,60 +37,202 @@ public class VentaService implements IVentasService {
 
     private final IVentaRepository ventaRepository;
     private final IProductoRepository productoRepository;
-    private final ICuentaRepositorio cuentaRepository;
+    private final IClienteRepositorio clienteRepository;
+    private final IMetodoPagoRepositorio metodoPagoRepository;
+    private final ITransaccion transaccion;
     private final EventBus eventBus;
+    private final ICarritoRepository carritoRepository;
+    private final IServiceExecutor executor;
 
-    public VentaService(IVentaRepository ventaRepository, IProductoRepository productoRepository, ICuentaRepositorio cuentaRepository, EventBus eventBus) {
+    public VentaService(ITransaccion transaccion,
+                        IVentaRepository ventaRepository,
+                        IProductoRepository productoRepository,
+                        IClienteRepositorio clienteRepository,
+                        IMetodoPagoRepositorio metodoPagoRepository,
+                        EventBus eventBus,
+                        ICarritoRepository carritoRepository) {
+        this.transaccion = transaccion;
         this.ventaRepository = ventaRepository;
         this.productoRepository = productoRepository;
-        this.cuentaRepository = cuentaRepository;
+        this.clienteRepository = clienteRepository;
+        this.metodoPagoRepository = metodoPagoRepository;
         this.eventBus = eventBus;
+        this.carritoRepository = carritoRepository;
+        this.executor = RegistroExecutors.obtener(TipoServicio.VENTA);
     }
 
+    public VentaService(IVentaRepository ventaRepository,
+                        IProductoRepository productoRepository,
+                        IMetodoPagoRepositorio metodoPagoRepository,
+                        EventBus eventBus) {
+        this(null, ventaRepository, productoRepository, null, metodoPagoRepository, eventBus, null);
+    }
 
-public CompletableFuture<Void> crearVentaAsync(final Carrito carrito, 
-                                                  final String tipoPago, 
-                                                  final IDescuentos descuento) {
-        return CompletableFuture.runAsync(() -> {
-                if(carrito == null || carrito.getItems().isEmpty()) {
-                    throw new IllegalArgumentException("El carrito no puede estar vacío para crear una venta.");
+    public VentaService(ITransaccion transaccion,
+                        IVentaRepository ventaRepository,
+                        IProductoRepository productoRepository,
+                        IClienteRepositorio clienteRepository,
+                        IMetodoPagoRepositorio metodoPagoRepository,
+                        EventBus eventBus) {
+        this(transaccion, ventaRepository, productoRepository, clienteRepository,
+                metodoPagoRepository, eventBus, null);
+    }
+
+    public VentaService(IVentaRepository ventaRepository,
+                        IProductoRepository productoRepository,
+                        IMetodoPagoRepositorio metodoPagoRepository,
+                        EventBus eventBus,
+                        ICarritoRepository carritoRepository) {
+        this(null, ventaRepository, productoRepository, null, metodoPagoRepository, eventBus, carritoRepository);
+    }
+
+    @Override
+    public CompletableFuture<Void> crearVentaAsync(final Carrito carrito,
+                                                   final String tipoPago,
+                                                   final IDescuentos descuento) {
+        return executor.ejecutar(new Runnable() {
+            @Override
+            public void run() {
+            Carrito carritoOrigen = carrito;
+            if (carritoRepository != null) {
+                carritoOrigen = obtenerCarrito(carrito == null ? 0 : carrito.getIdCliente());
+                persistirVentaAtomica(carritoOrigen, tipoPago, descuento, true);
+                carritoRepository.eliminarPorClienteId(carritoOrigen.getIdCliente());
+                return;
+            }
+            persistirVentaAtomica(carritoOrigen, tipoPago, descuento, false);
+            }
+        });
+    }
+
+    public CompletableFuture<Void> crearVentaAsync(final int idCliente,
+                                                   final String tipoPago,
+                                                   final IDescuentos descuento) {
+        return executor.ejecutar(new Runnable() {
+            @Override
+            public void run() {
+            if (carritoRepository == null) {
+                throw new ReglaNegocioException("El repositorio de carritos no está configurado.");
+            }
+
+            Carrito carrito = obtenerCarrito(idCliente);
+            persistirVentaAtomica(carrito, tipoPago, descuento, true);
+            carritoRepository.eliminarPorClienteId(idCliente);
+            }
+        });
+    }
+
+    private Carrito obtenerCarrito(int idCliente) {
+        if (idCliente <= 0) {
+            throw new ReglaNegocioException("El ID del cliente debe ser positivo.");
+        }
+
+        return carritoRepository.obtenerPorClienteId(idCliente)
+                .filter(carrito -> carrito.getItems() != null && !carrito.getItems().isEmpty())
+                .orElseThrow(() -> new CarritoVacioException(
+                        "No existe un carrito con artículos para el cliente solicitado."));
+    }
+
+    private void persistirVentaAtomica(Carrito carrito,
+                                       String tipoPago,
+                                       IDescuentos descuento,
+                                       boolean procesarPago) {
+        validarCarrito(carrito);
+        TipoDePago tipoDePago = convertirTipoPago(tipoPago);
+        Venta nuevaVenta = new Venta(carrito.getIdCliente(), tipoDePago);
+        nuevaVenta.cargarDetallesDesdeCarrito(carrito, descuento);
+
+        if (transaccion == null) {
+            validarYActualizarStock(carrito);
+            if (procesarPago) {
+                procesarPago(nuevaVenta, null);
+            }
+            ventaRepository.guardar(nuevaVenta);
+        } else {
+            ejecutarTransaccion(connection -> {
+                validarYActualizarStock(carrito, connection);
+                if (procesarPago) {
+                    procesarPago(nuevaVenta, connection);
                 }
-//primer pasada de validacion 
-                for(ItemCarrito item : carrito.getItems().values()){
-                        Producto prod = item.getProducto(); 
-                    if(prod.getStockDisponible() < item.getCantidad()){
-                        throw new IllegalArgumentException("No hay suficiente stock para el producto: " + prod.getNombre());
-
-                    }
-                }
-                TipoDePago tipoDePagoEnum = TipoDePago.valueOf(tipoPago.toUpperCase());
-                
-           
-                Venta nuevaVenta = new Venta(carrito.getIdCliente(), tipoDePagoEnum);
-
-               
-                nuevaVenta.cargarDetallesDesdeCarrito(carrito, descuento);
-
-                
-                for (ItemCarrito item : carrito.getItems().values()) {
-                    Producto prod = item.getProducto();
-                    prod.reducirStock(item.getCantidad());
-                    productoRepository.actualizar(prod.getId(), prod);
-                }
-
-                ventaRepository.guardar(nuevaVenta);
-                carrito.vaciar(); 
-
-      
-                eventBus.publicar(new VentasEventos("CREADA", nuevaVenta));
+                ventaRepository.guardar(nuevaVenta, connection);
             });
+        }
+
+        if (!procesarPago) {
+            carrito.vaciar();
+        }
+        eventBus.publicar(new VentasEventos("CREADA", nuevaVenta));
+    }
+
+    private void validarCarrito(Carrito carrito) {
+        if (carrito == null || carrito.getItems() == null || carrito.getItems().isEmpty()) {
+            throw new CarritoVacioException("El carrito no puede estar vacío para crear una venta.");
+        }
+    }
+
+    private TipoDePago convertirTipoPago(String tipoPago) {
+        if (tipoPago == null || tipoPago.isBlank()) {
+            throw new ReglaNegocioException("Debe especificarse un tipo de pago.");
+        }
+        try {
+            return TipoDePago.valueOf(tipoPago.trim().toUpperCase());
+        } catch (IllegalArgumentException exception) {
+            throw new ReglaNegocioException("El tipo de pago indicado no es válido.");
+        }
+    }
+
+    private void validarYActualizarStock(Carrito carrito) {
+        validarYActualizarStock(carrito, null);
+    }
+
+    private void validarYActualizarStock(Carrito carrito, Connection connection) {
+        for (ItemCarrito item : carrito.getItems().values()) {
+            if (item == null || item.getProducto() == null) {
+                throw new ReglaNegocioException("El carrito contiene un artículo inválido.");
+            }
+            Producto producto = item.getProducto();
+            if (producto.getStockDisponible() < item.getCantidad()) {
+                throw new StockInsuficienteException(
+                        "No hay stock suficiente para el producto: " + producto.getNombre());
+            }
+        }
+        for (ItemCarrito item : carrito.getItems().values()) {
+            Producto producto = item.getProducto();
+            producto.reducirStock(item.getCantidad());
+            if (connection == null) {
+                productoRepository.actualizar(producto.getId(), producto);
+            } else {
+                try {
+                    productoRepository.actualizar(producto.getId(), producto, connection);
+                } catch (java.sql.SQLException exception) {
+                    throw new IllegalStateException("No se pudo actualizar el stock dentro de la transacción.", exception);
+                }
+            }
+        }
+    }
+
+    private void procesarPago(Venta venta, Connection connection) {
+        Optional<MetodoPago> metodoPagoOpt = metodoPagoRepository.buscarPorIdCliente(venta.getIdCliente());
+        MetodoPago metodoPago = metodoPagoOpt.orElseThrow(() -> new PagoInvalidoException(
+                "El cliente no posee un método de pago registrado."));
+        metodoPago.debitar(venta.calculoTotal());
+        if (connection == null) {
+            metodoPagoRepository.actualizar(metodoPago.getIdCliente(), metodoPago);
+        } else {
+            metodoPagoRepository.actualizar(metodoPago.getIdCliente(), metodoPago, connection);
+        }
+        venta.Pagar();
+    }
+
+    private void ejecutarTransaccion(com.CapaAplicacion.Interfaces.OperacionTransaccional accion) {
+        transaccion.ejecutarTransaccion(accion);
     }
 
     @Override
     public CompletableFuture<Optional<Venta>> buscarPorIdAsync(final int id) {
-        return CompletableFuture.supplyAsync(new Supplier<Optional<Venta>>() {
+        return executor.ejecutar(new java.util.concurrent.Callable<Optional<Venta>>() {
             @Override
-            public Optional<Venta> get() {
+            public Optional<Venta> call() {
                 return ventaRepository.buscarPorId(id);
             }
         });
@@ -87,39 +241,33 @@ public CompletableFuture<Void> crearVentaAsync(final Carrito carrito,
 
     @Override
     public CompletableFuture<Void> registrarPagoAsync(final int idVenta) {
-        return CompletableFuture.runAsync(new Runnable() {
+        return executor.ejecutar(new Runnable() {
             @Override
             public void run() {
                 try {
-                    
-                    
                     Optional<Venta> ventaOpt = ventaRepository.buscarPorId(idVenta);
                     if (!ventaOpt.isPresent()) {
                         throw new RuntimeException("No se puede pagar. Venta no encontrada con ID: " + idVenta);
                     }
                     Venta venta = ventaOpt.get();
 
-                    List<Cuenta> cuentasCliente = cuentaRepository.buscarPorIdCliente(venta.getIdCliente());
-                    if (cuentasCliente.isEmpty()) {
-                        throw new RuntimeException("El cliente no posee cuentas registradas para realizar el pago.");
+                    Optional<MetodoPago> metodoPagoOpt = metodoPagoRepository.buscarPorIdCliente(venta.getIdCliente());
+                    if (!metodoPagoOpt.isPresent()) {
+                        throw new RuntimeException("El cliente no posee un método de pago registrado para realizar el pago.");
                     }
 
+                    MetodoPago metodoPago = metodoPagoOpt.get();
                     BigDecimal totalVenta = venta.calculoTotal();
-                    Cuenta cuentaSeleccionada = cuentasCliente.stream()
-                            .filter(cuenta -> cuenta.getSaldo().compareTo(totalVenta) >= 0)
-                            .findFirst()
-                            .orElseThrow(() -> new RuntimeException(
-                                    "Saldo insuficiente. Ninguna cuenta del cliente cubre el total de la venta."));
+                    metodoPago.debitar(totalVenta);
 
-                    venta.procesarPagoConCuenta(cuentaSeleccionada);
+                    venta.Pagar();
 
-                    cuentaRepository.actualizar(cuentaSeleccionada.getId(), cuentaSeleccionada);
+                    metodoPagoRepository.actualizar(metodoPago.getIdCliente(), metodoPago);
                     ventaRepository.actualizar(idVenta, venta);
 
                     eventBus.publicar(new VentasEventos("PAGADA", venta));
                     
                 } catch (Exception e) {
-                
                     throw new RuntimeException("Error al registrar el pago: " + e.getMessage(), e);
                 }
             }
@@ -128,7 +276,7 @@ public CompletableFuture<Void> crearVentaAsync(final Carrito carrito,
 
 @Override
     public CompletableFuture<Void> cancelarVentaAsync(final int idVenta) {
-        return CompletableFuture.runAsync(new Runnable() {
+        return executor.ejecutar(new Runnable() {
             @Override
             public void run() {
                 try {

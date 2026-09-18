@@ -27,29 +27,29 @@ class ProductoTest {
     @DisplayName("Constructor: rechaza nombre vacío o nulo")
     void constructorRechazaNombreInvalido() {
         assertThrows(IllegalArgumentException.class,
-                () -> new Producto(null, new BigDecimal("10"), 5, 0, 1, CategoriaProducto.LIBROS));
+                () -> new Producto(null, new BigDecimal("10"), 5, 0, 1, CategoriaProducto.INFORMATICA));
         assertThrows(IllegalArgumentException.class,
-                () -> new Producto("", new BigDecimal("10"), 5, 0, 1, CategoriaProducto.LIBROS));
+                () -> new Producto("", new BigDecimal("10"), 5, 0, 1, CategoriaProducto.INFORMATICA));
     }
 
     @Test
     @DisplayName("Constructor: rechaza precio nulo o menor/igual a cero")
     void constructorRechazaPrecioInvalido() {
         assertThrows(IllegalArgumentException.class,
-                () -> new Producto("X", null, 5, 0, 1, CategoriaProducto.LIBROS));
+                () -> new Producto("X", null, 5, 0, 1, CategoriaProducto.INFORMATICA));
         assertThrows(IllegalArgumentException.class,
-                () -> new Producto("X", BigDecimal.ZERO, 5, 0, 1, CategoriaProducto.LIBROS));
+                () -> new Producto("X", BigDecimal.ZERO, 5, 0, 1, CategoriaProducto.INFORMATICA));
         assertThrows(IllegalArgumentException.class,
-                () -> new Producto("X", new BigDecimal("-1"), 5, 0, 1, CategoriaProducto.LIBROS));
+                () -> new Producto("X", new BigDecimal("-1"), 5, 0, 1, CategoriaProducto.INFORMATICA));
     }
 
     @Test
     @DisplayName("Constructor: rechaza stock negativo, id negativo y categoría nula")
     void constructorRechazaRestoInvalido() {
         assertThrows(IllegalArgumentException.class,
-                () -> new Producto("X", new BigDecimal("10"), -1, 0, 1, CategoriaProducto.LIBROS));
+                () -> new Producto("X", new BigDecimal("10"), -1, 0, 1, CategoriaProducto.INFORMATICA));
         assertThrows(IllegalArgumentException.class,
-                () -> new Producto("X", new BigDecimal("10"), 5, 0, -1, CategoriaProducto.LIBROS));
+                () -> new Producto("X", new BigDecimal("10"), 5, 0, -1, CategoriaProducto.INFORMATICA));
         assertThrows(IllegalArgumentException.class,
                 () -> new Producto("X", new BigDecimal("10"), 5, 0, 1, null));
     }
@@ -111,7 +111,7 @@ class ProductoTest {
     @Test
     @DisplayName("Reponer stock en estado crítico repone 50 unidades")
     void reponerStockCritico() {
-        Producto p = new Producto("Critico", new BigDecimal("50"), 10, 0, 3, CategoriaProducto.HOGAR);
+        Producto p = new Producto("Critico", new BigDecimal("50"), 10, 0, 3, CategoriaProducto.HOGAR_Y_MUEBLES);
         p.reponerStock();
         assertEquals(60, p.getStockFisico());
     }
@@ -136,7 +136,7 @@ class ProductoTest {
     @Test
     @DisplayName("El ID solo puede asignarse una vez")
     void setIdUnaSolaVez() {
-        Producto p = new Producto("X", new BigDecimal("10"), 5, 0, 0, CategoriaProducto.LIBROS);
+        Producto p = new Producto("X", new BigDecimal("10"), 5, 0, 0, CategoriaProducto.INFORMATICA);
         p.setId(7);
         assertEquals(7, p.getId());
         assertThrows(IllegalArgumentException.class, () -> p.setId(8));

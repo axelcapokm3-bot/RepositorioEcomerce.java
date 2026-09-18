@@ -78,10 +78,7 @@ export async function checkout() {
     const createVentaRequest = {
         idCliente: 1, // Hardcoded for now, will be dynamic with auth
         tipoPago: tipoPago,
-        descuento: {
-            tipo: "PORCENTAJE", // Example, can be dynamic
-            valor: 0.0
-        },
+        descuento: null,
         items: itemsForSale
     };
 

@@ -1,12 +1,17 @@
 package com.CapaPresentacion.Controllers;
 
-import com.CapaPresentacion.Utilidades.JsonUtils;
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpHandler;
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+
+import com.CapaPresentacion.Utilidades.JsonUtils;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
 
 public abstract class BaseController implements HttpHandler {
     protected boolean handlePreflight(HttpExchange exchange) throws IOException {
@@ -84,10 +89,27 @@ public abstract class BaseController implements HttpHandler {
             }
         }).exceptionally(ex -> {
             Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
-            if (cause instanceof IllegalArgumentException || cause instanceof IllegalStateException) {
-                sendError(exchange, 400, cause.getMessage());
+            if (cause instanceof ControllerException controllerException) {
+                sendError(exchange, controllerException.status(), controllerException.respuesta());
+            } else if (cause instanceof IllegalArgumentException) {
+                sendError(exchange, 400, new ControllerException.Validacion(
+                        "Los datos enviados no son válidos.",
+                        "El servicio rechazó uno o más valores recibidos."
+                ).respuesta());
+            } else if (cause instanceof IllegalStateException) {
+                sendError(exchange, 409, new ControllerException.Conflicto(
+                        "La operación no puede realizarse en el estado actual.",
+                        "La regla de negocio impide completar la operación."
+                ).respuesta());
+            } else if (cause instanceof java.io.IOException) {
+                sendError(exchange, 503, new ControllerException.ServicioNoDisponible(
+                        "No fue posible comunicarse con el servicio requerido.",
+                        "Se produjo un problema de red o de comunicación."
+                ).respuesta());
             } else {
-                sendError(exchange, 500, "Error interno del servidor: " + cause.getMessage());
+                sendError(exchange, 500,
+                        "Código: ERROR_SERVIDOR | Mensaje: Error interno del servidor."
+                                + " | Causa: Fallo inesperado al procesar la operación.");
             }
             return null;
         });

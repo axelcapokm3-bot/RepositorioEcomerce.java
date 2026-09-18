@@ -32,13 +32,12 @@ public class ProductoController extends BaseController {
                     ProductoRequestDTO dto = parseRequestBody(exchange, ProductoRequestDTO.class);
                     handleAsync(exchange, servicio.guardarAsync(dto), 201);
                 } else {
-                    sendError(exchange, 405, "Método no permitido");
+                    throw new ControllerException.Validacion("Método no permitido.", "La ruta no admite este método HTTP.");
                 }
             } else {
                 Integer id = getIntIdFromPath(exchange, "/api/productos/");
                 if (id == null) {
-                    sendError(exchange, 400, "ID de producto inválido o ausente.");
-                    return;
+                    throw new ControllerException.Validacion("El ID de producto no es válido.", "Debe ser un entero positivo.");
                 }
 
                 if ("GET".equalsIgnoreCase(method)) {
@@ -49,11 +48,17 @@ public class ProductoController extends BaseController {
                 } else if ("DELETE".equalsIgnoreCase(method)) {
                     handleAsync(exchange, servicio.eliminarAsync(id), 200);
                 } else {
-                    sendError(exchange, 405, "Método no permitido");
+                    throw new ControllerException.Validacion("Método no permitido.", "La ruta no admite este método HTTP.");
                 }
             }
+        } catch (ControllerException e) {
+            sendError(exchange, e.status(), e.respuesta());
+        } catch (IOException e) {
+            sendError(exchange, 503, new ControllerException.ServicioNoDisponible(
+                    "No fue posible responder al cliente.", "Problema de red o comunicación."
+            ).respuesta());
         } catch (Exception e) {
-            sendError(exchange, 400, "Error en la petición: " + e.getMessage());
+            sendError(exchange, 500, "Código: ERROR_SERVIDOR | Mensaje: Error interno del servidor. | Causa: Fallo inesperado.");
         }
     }
 }

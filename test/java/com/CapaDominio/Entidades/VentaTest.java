@@ -1,8 +1,10 @@
 package com.CapaDominio.Entidades;
 
-import static org.junit.jupiter.api.Assertions.*;
-
 import java.math.BigDecimal;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -17,10 +19,6 @@ class VentaTest {
         Carrito carrito = new Carrito(1);
         carrito.agregarItem(new ItemCarrito(p, 2));
         return carrito;
-    }
-
-    private Cuenta cuentaConSaldo(int idCliente) {
-        return new Cuenta(1, "jperez", "jperez@gmail.com", "Password123", "CLIENTE", idCliente, new BigDecimal("1000"));
     }
 
     @Test
@@ -69,29 +67,12 @@ class VentaTest {
     }
 
     @Test
-    @DisplayName("Procesar pago con cuenta: debita saldo y pasa a PAGADO")
-    void procesarPagoConCuenta() {
+    @DisplayName("Pagar: pasa una venta con detalles a PAGADO")
+    void pagarVentaConDetalles() {
         Venta v = ventaPendiente();
         v.cargarDetallesDesdeCarrito(carritoConUnItem(), null);
-        Cuenta cuenta = cuentaConSaldo(1);
-        v.procesarPagoConCuenta(cuenta);
+        v.Pagar();
         assertEquals(EstadoVenta.PAGADO, v.getEstadoCompra());
-        assertBigDecimalIgual(new BigDecimal("900"), cuenta.getSaldo());
-    }
-
-    @Test
-    @DisplayName("Procesar pago: rechaza cuenta de otro cliente o saldo insuficiente")
-    void procesarPagoRechazos() {
-        Venta v = ventaPendiente();
-        v.cargarDetallesDesdeCarrito(carritoConUnItem(), null);
-        assertThrows(IllegalArgumentException.class,
-                () -> v.procesarPagoConCuenta(cuentaConSaldo(999)));
-        assertThrows(IllegalStateException.class,
-                () -> v.procesarPagoConCuenta(cuentaConSaldoConMontoBajo()));
-    }
-
-    private Cuenta cuentaConSaldoConMontoBajo() {
-        return new Cuenta(2, "jperez", "jperez@gmail.com", "Password123", "CLIENTE", 1, new BigDecimal("5"));
     }
 
     @Test
@@ -136,7 +117,4 @@ class VentaTest {
         assertThrows(IllegalStateException.class, () -> v.setId(10));
     }
 
-    private void assertBigDecimalIgual(BigDecimal esperado, BigDecimal actual) {
-        assertEquals(0, esperado.compareTo(actual), () -> "Esperado " + esperado + " pero fue " + actual);
-    }
 }

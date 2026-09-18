@@ -7,7 +7,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const routes = {
         '#products': renderProductCatalog,
-        '#account': renderAccountSection,
         '#sales-management': renderSalesManagement,
         '': renderProductCatalog // Default route
     };
@@ -52,16 +51,6 @@ async function renderProductCatalog(element) {
         console.error('Error loading products:', error);
         element.innerHTML = '<p>No se pudieron cargar los productos.</p>';
     }
-}
-
-import { renderAccountSummary } from './components/account-summary.js';
-import { renderTransferForm } from './components/transfer-form.js';
-
-function renderAccountSection(element) {
-    element.innerHTML = '<h2>Mi Cuenta</h2><div id="account-details"></div>';
-    const accountDetailsDiv = document.getElementById('account-details');
-    renderAccountSummary(accountDetailsDiv);
-    renderTransferForm(accountDetailsDiv);
 }
 
 import { renderSalesList } from './components/sales-list.js';

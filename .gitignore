@@ -1,0 +1,17 @@
+﻿# Maven
+target/
+
+# Compilación
+bin/
+
+# Config local (tiene passwords)
+config.properties
+
+# JFR (archivos de profiling)
+*.jfr
+
+# IDE
+.vscode/
+
+# Logs
+*.log

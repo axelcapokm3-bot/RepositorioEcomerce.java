@@ -33,37 +33,43 @@ public class StockController extends BaseController {
             if ("/api/stock/evaluar".equals(path)) {
                 if ("POST".equalsIgnoreCase(method)) {
                     EvaluarStockRequest req = parseRequestBody(exchange, EvaluarStockRequest.class);
+                    if (req == null || req.idProducto() <= 0) {
+                        throw new ControllerException.Validacion("El ID de producto no es válido.", "Debe ser un entero positivo.");
+                    }
                     Optional<Producto> productoOpt = productoRepository.buscarPorId(req.idProducto());
                     if (productoOpt.isEmpty()) {
-                        sendError(exchange, 404, "Producto no encontrado.");
-                        return;
+                        throw new ControllerException.NoEncontrado("Producto no encontrado.", "No existe el producto solicitado.");
                     }
                     CompletableFuture<Object> future = CompletableFuture.supplyAsync(() -> servicio.evaluarStock(productoOpt.get()));
                     handleAsync(exchange, future, 200);
                 } else {
-                    sendError(exchange, 405, "Método no permitido");
+                    throw new ControllerException.Validacion("Método no permitido.", "La ruta no admite este método HTTP.");
                 }
             } else if (path.startsWith("/api/stock/")) {
                 Integer id = getIntIdFromPath(exchange, "/api/stock/");
                 if (id == null) {
-                    sendError(exchange, 400, "ID de producto inválido o ausente.");
-                    return;
+                    throw new ControllerException.Validacion("El ID de producto no es válido.", "Debe ser un entero positivo.");
                 }
                 if ("GET".equalsIgnoreCase(method)) {
                     Optional<Producto> productoOpt = productoRepository.buscarPorId(id);
                     if (productoOpt.isEmpty()) {
-                        sendError(exchange, 404, "Producto no encontrado.");
-                        return;
+                        throw new ControllerException.NoEncontrado("Producto no encontrado.", "No existe el producto solicitado.");
                     }
                     handleAsync(exchange, CompletableFuture.supplyAsync(() -> servicio.evaluarStock(productoOpt.get())), 200);
                 } else {
-                    sendError(exchange, 405, "Método no permitido");
+                    throw new ControllerException.Validacion("Método no permitido.", "La ruta no admite este método HTTP.");
                 }
             } else {
-                sendError(exchange, 404, "Ruta no encontrada");
+                throw new ControllerException.NoEncontrado("Ruta no encontrada.", "No existe un recurso para la URL solicitada.");
             }
+        } catch (ControllerException e) {
+            sendError(exchange, e.status(), e.respuesta());
+        } catch (IOException e) {
+            sendError(exchange, 503, new ControllerException.ServicioNoDisponible(
+                    "No fue posible responder al cliente.", "Problema de red o comunicación."
+            ).respuesta());
         } catch (Exception e) {
-            sendError(exchange, 400, "Error en la petición: " + e.getMessage());
+            sendError(exchange, 500, "Código: ERROR_SERVIDOR | Mensaje: Error interno del servidor. | Causa: Fallo inesperado.");
         }
     }
 }

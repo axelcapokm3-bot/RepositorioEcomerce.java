@@ -1,20 +1,22 @@
 package com.CapaDominio.Entidades;
 
 public enum AccionAuditoria {
-CREAR("PRODUCTO_CREADO"),
-ACTUALIZAR("PRODUCTO_ACTUALIZADO"),
-ELIMINAR("PRODUCTO_ELIMINADO"),
-REGISTRAR_VENTA("VENTA_REGISTRADA"),
-CANCELAR_VENTA("VENTA_CANCELADA");
-
-    private final String descripcion;
-
-    // Constructor privado para los enums
-    AccionAuditoria(String descripcion) {
-        this.descripcion = descripcion;
-    }
+    VENTA_CREADA,
+    VENTA_PAGADA,
+    VENTA_CANCELADA,
+    PAGO_FALLIDO,
+    STOCK_INSUFICIENTE,
+    PRODUCTO_CREADO,
+    PRODUCTO_ACTUALIZADO,
+    CLIENTE_ALTA,
+    CLIENTE_BAJA,
+    CREAR,
+    ACTUALIZAR,
+    ELIMINAR,
+    REGISTRAR_VENTA,
+    CANCELAR_VENTA;
 
     public String getDescripcion() {
-        return descripcion;
+        return this.name();
     }
 }

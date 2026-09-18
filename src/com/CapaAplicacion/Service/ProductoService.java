@@ -5,6 +5,7 @@ import com.CapaAplicacion.DTOsalida.ProductoResponseDTO;
 import com.CapaAplicacion.Interfaces.*;
 
 import com.CapaAplicacion.Mapper.ProductoMapper;
+import com.CapaInfraestructura.Implementacion.RegistroExecutors;
 import com.CapaDominio.Entidades.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -16,15 +17,17 @@ public class ProductoService implements RepositorioProductoService {
 
     private final IProductoRepository repository;
     private final EventBus eventBus;
+    private final IServiceExecutor executor;
 
     public ProductoService(IProductoRepository repository, EventBus eventBus) {
         this.repository = repository;
         this.eventBus = eventBus;
+        this.executor = RegistroExecutors.obtener(TipoServicio.PRODUCTO);
     }
 
     @Override
     public CompletableFuture<Void> guardarAsync(final ProductoRequestDTO dto) {
-        return CompletableFuture.runAsync(new Runnable() {
+        return executor.ejecutar(new Runnable() {
             @Override
             public void run() {
                 Producto producto = new Producto(dto.nombre(), dto.precio(), dto.stock(), 0, 0, dto.categoria());
@@ -36,9 +39,9 @@ public class ProductoService implements RepositorioProductoService {
 
     @Override
     public CompletableFuture<Optional<ProductoResponseDTO>> buscarPorIdAsync(final int id) {
-        return CompletableFuture.supplyAsync(new Supplier<Optional<ProductoResponseDTO>>() {
+        return executor.ejecutar(new java.util.concurrent.Callable<Optional<ProductoResponseDTO>>() {
             @Override
-            public Optional<ProductoResponseDTO> get() {
+            public Optional<ProductoResponseDTO> call() {
                 Optional<Producto> opt = repository.buscarPorId(id);
                 if (opt.isPresent()) {
                     return Optional.of(ProductoMapper.toResponseDTO(opt.get()));
@@ -50,9 +53,9 @@ public class ProductoService implements RepositorioProductoService {
 
     @Override
     public CompletableFuture<List<ProductoResponseDTO>> listarTodosAsync() {
-        return CompletableFuture.supplyAsync(new Supplier<List<ProductoResponseDTO>>() {
+        return executor.ejecutar(new java.util.concurrent.Callable<List<ProductoResponseDTO>>() {
             @Override
-            public List<ProductoResponseDTO> get() {
+            public List<ProductoResponseDTO> call() {
                 List<Producto> listaEntidades = repository.listarTodos();
                 List<ProductoResponseDTO> listaDTOs = new ArrayList<>();
                 for (Producto p : listaEntidades) {
@@ -65,7 +68,7 @@ public class ProductoService implements RepositorioProductoService {
 
     @Override
     public CompletableFuture<Void> actualizarAsync(final int id, final ProductoRequestDTO dto) {
-        return CompletableFuture.runAsync(new Runnable() {
+        return executor.ejecutar(new Runnable() {
             @Override
             public void run() {
                 Producto producto = repository.buscarPorId(id)
@@ -82,7 +85,7 @@ public class ProductoService implements RepositorioProductoService {
 
     @Override
     public CompletableFuture<Void> eliminarAsync(final int id) {
-        return CompletableFuture.runAsync(new Runnable() {
+        return executor.ejecutar(new Runnable() {
             @Override
             public void run() {
                 repository.eliminar(id);

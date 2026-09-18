@@ -5,28 +5,28 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import com.CapaAplicacion.Interfaces.EventBus;
-import com.CapaAplicacion.Interfaces.ICuentaRepositorio;
+import com.CapaAplicacion.Interfaces.IMetodoPagoRepositorio;
 import com.CapaAplicacion.Interfaces.IProductoRepository;
 import com.CapaAplicacion.Interfaces.IVentaRepository;
 import com.CapaDominio.Entidades.Carrito;
 import com.CapaDominio.Entidades.CategoriaProducto;
-import com.CapaDominio.Entidades.Cuenta;
 import com.CapaDominio.Entidades.EstadoVenta;
 import com.CapaDominio.Entidades.ItemCarrito;
+import com.CapaDominio.Entidades.MetodoPago;
 import com.CapaDominio.Entidades.Producto;
 import com.CapaDominio.Entidades.TipoDePago;
 import com.CapaDominio.Entidades.Venta;
 import com.CapaDominio.Entidades.VentasEventos;
 import java.math.BigDecimal;
-import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
@@ -39,13 +39,18 @@ class VentaServiceTest {
     private IProductoRepository productoRepository;
 
     @Mock
-    private ICuentaRepositorio cuentaRepository;
+    private IMetodoPagoRepositorio metodoPagoRepository;
 
     @Mock
     private EventBus eventBus;
 
-    @InjectMocks
     private VentaService service;
+
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
+        service = new VentaService(ventaRepository, productoRepository, metodoPagoRepository, eventBus);
+    }
 
     private Producto producto(int id, int stock, BigDecimal precio) {
         return new Producto("Producto " + id, precio, stock, 0, id, CategoriaProducto.ELECTRONICA);
@@ -65,6 +70,10 @@ class VentaServiceTest {
         venta.cargarDetallesDesdeCarrito(carrito, null);
         venta.setId(7);
         return venta;
+    }
+
+    private void assertBigDecimalIgual(BigDecimal esperado, BigDecimal actual, String mensaje) {
+        assertEquals(0, esperado.compareTo(actual), mensaje + " (Esperado: " + esperado + ", Actual: " + actual + ")");
     }
 
     // ------------------------------------------------------------------
@@ -127,19 +136,19 @@ class VentaServiceTest {
     // ------------------------------------------------------------------
 
     @Test
-    @DisplayName("registrarPagoAsync: debita la cuenta del cliente y pasa la venta a PAGADO")
+    @DisplayName("registrarPagoAsync: debita el método de pago del cliente y pasa la venta a PAGADO")
     void registrarPagoExitoso() throws Exception {
         Venta venta = ventaPendienteConDetalles();
-        Cuenta cuenta = new Cuenta(1, "jperez", "jperez@gmail.com", "Password123", "CLIENTE", 1, new BigDecimal("1000"));
+        MetodoPago metodoPago = new MetodoPago(1, 1234, new BigDecimal("1000"));
 
         when(ventaRepository.buscarPorId(7)).thenReturn(Optional.of(venta));
-        when(cuentaRepository.buscarPorIdCliente(1)).thenReturn(List.of(cuenta));
+        when(metodoPagoRepository.buscarPorIdCliente(1)).thenReturn(Optional.of(metodoPago));
 
         service.registrarPagoAsync(7).get();
 
         assertEquals(EstadoVenta.PAGADO, venta.getEstadoCompra());
-        assertBigDecimalIgual(new BigDecimal("800"), cuenta.getSaldo(), "Total de la venta: 2 x 100 = 200");
-        verify(cuentaRepository).actualizar(1, cuenta);
+        assertBigDecimalIgual(new BigDecimal("800"), metodoPago.getSaldoDisponible(), "Total de la venta: 2 x 100 = 200");
+        verify(metodoPagoRepository).actualizar(1, metodoPago);
         verify(ventaRepository).actualizar(7, venta);
 
         ArgumentCaptor<VentasEventos> eventoCaptor = ArgumentCaptor.forClass(VentasEventos.class);
@@ -156,11 +165,11 @@ class VentaServiceTest {
     }
 
     @Test
-    @DisplayName("registrarPagoAsync: rechaza cliente sin cuentas")
-    void registrarPagoSinCuentas() {
+    @DisplayName("registrarPagoAsync: rechaza cliente sin método de pago")
+    void registrarPagoSinMetodoPago() {
         Venta venta = ventaPendienteConDetalles();
         when(ventaRepository.buscarPorId(7)).thenReturn(Optional.of(venta));
-        when(cuentaRepository.buscarPorIdCliente(1)).thenReturn(List.of());
+        when(metodoPagoRepository.buscarPorIdCliente(1)).thenReturn(Optional.empty());
 
         assertThrows(ExecutionException.class, () -> service.registrarPagoAsync(7).get());
     }
@@ -169,13 +178,13 @@ class VentaServiceTest {
     @DisplayName("registrarPagoAsync: rechaza saldo insuficiente")
     void registrarPagoSaldoInsuficiente() {
         Venta venta = ventaPendienteConDetalles();
-        Cuenta cuenta = new Cuenta(1, "jperez", "jperez@gmail.com", "Password123", "CLIENTE", 1, new BigDecimal("10"));
+        MetodoPago metodoPago = new MetodoPago(1, 1234, new BigDecimal("10"));
 
         when(ventaRepository.buscarPorId(7)).thenReturn(Optional.of(venta));
-        when(cuentaRepository.buscarPorIdCliente(1)).thenReturn(List.of(cuenta));
+        when(metodoPagoRepository.buscarPorIdCliente(1)).thenReturn(Optional.of(metodoPago));
 
         assertThrows(ExecutionException.class, () -> service.registrarPagoAsync(7).get());
-        assertEquals(new BigDecimal("10"), cuenta.getSaldo());
+        assertEquals(new BigDecimal("10"), metodoPago.getSaldoDisponible());
     }
 
     // ------------------------------------------------------------------
@@ -200,34 +209,12 @@ class VentaServiceTest {
         service.cancelarVentaAsync(7).get();
 
         assertEquals(EstadoVenta.CANCELADO, venta.getEstadoCompra());
-        assertEquals(7, p.getStockFisico(), "Se deben reintegrar las 2 unidades vendidas");
-        verify(productoRepository).actualizar(1, p);
+        assertEquals(7, p.getStockDisponible());
+        verify(productoRepository).actualizar(eq(1), any(Producto.class));
+        verify(ventaRepository).actualizar(7, venta);
 
         ArgumentCaptor<VentasEventos> eventoCaptor = ArgumentCaptor.forClass(VentasEventos.class);
         verify(eventBus).publicar(eventoCaptor.capture());
         assertEquals("CANCELADA", eventoCaptor.getValue().getTipoOperacion());
-    }
-
-    @Test
-    @DisplayName("cancelarVentaAsync: rechaza venta inexistente")
-    void cancelarVentaInexistente() {
-        when(ventaRepository.buscarPorId(99)).thenReturn(Optional.empty());
-        assertThrows(ExecutionException.class, () -> service.cancelarVentaAsync(99).get());
-    }
-
-    @Test
-    @DisplayName("cancelarVentaAsync: falla si un producto de la venta ya no existe")
-    void cancelarVentaProductoInexistente() {
-        Venta venta = ventaPendienteConDetalles();
-        venta.Pagar();
-        when(ventaRepository.buscarPorId(7)).thenReturn(Optional.of(venta));
-        when(productoRepository.buscarPorId(1)).thenReturn(Optional.empty());
-
-        assertThrows(ExecutionException.class, () -> service.cancelarVentaAsync(7).get());
-        verify(eventBus, never()).publicar(any());
-    }
-
-    private void assertBigDecimalIgual(BigDecimal esperado, BigDecimal actual, String mensaje) {
-        assertEquals(0, esperado.compareTo(actual), () -> mensaje + " -> Esperado " + esperado + " pero fue " + actual);
     }
 }

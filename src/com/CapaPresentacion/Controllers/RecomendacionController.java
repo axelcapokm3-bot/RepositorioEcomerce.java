@@ -1,14 +1,15 @@
 package com.CapaPresentacion.Controllers;
 
-import com.CapaAplicacion.Interfaces.IProductoRepository;
-import com.CapaAplicacion.Service.RecomendacionService;
-import com.CapaDominio.Entidades.Producto;
-import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+
+import com.CapaAplicacion.Interfaces.IProductoRepository;
+import com.CapaAplicacion.Service.RecomendacionService;
+import com.CapaDominio.Entidades.Producto;
+import com.sun.net.httpserver.HttpExchange;
 
 public class RecomendacionController extends BaseController {
 
@@ -38,10 +39,25 @@ public class RecomendacionController extends BaseController {
             if ("/api/recomendaciones".equals(path) || "/api/recomendaciones/".equals(path)) {
                 if ("POST".equalsIgnoreCase(method)) {
                     RecomendacionRequest req = parseRequestBody(exchange, RecomendacionRequest.class);
+                    if (req == null || req.idProductoActual() <= 0) {
+                        throw new ControllerException.Validacion(
+                                "La solicitud de recomendación no es válida.",
+                                "Debe indicar un ID de producto positivo."
+                        );
+                    }
+                    if (req.precioMin() != null && req.precioMax() != null
+                            && req.precioMin().compareTo(req.precioMax()) > 0) {
+                        throw new ControllerException.Validacion(
+                                "El rango de precios no es válido.",
+                                "El precio mínimo no puede superar al precio máximo."
+                        );
+                    }
                     Optional<Producto> productoActualOpt = productoRepository.buscarPorId(req.idProductoActual());
                     if (productoActualOpt.isEmpty()) {
-                        sendError(exchange, 404, "Producto base no encontrado.");
-                        return;
+                        throw new ControllerException.NoEncontrado(
+                                "El producto base no existe.",
+                                "No se encontró el producto solicitado."
+                        );
                     }
                     List<Producto> catalogo = productoRepository.listarTodos();
                     CompletableFuture<Object> future = CompletableFuture.supplyAsync(() ->
@@ -49,13 +65,19 @@ public class RecomendacionController extends BaseController {
                     );
                     handleAsync(exchange, future, 200);
                 } else {
-                    sendError(exchange, 405, "Método no permitido");
+                    throw new ControllerException.Validacion("Método no permitido.", "La ruta no admite este método HTTP.");
                 }
             } else {
-                sendError(exchange, 404, "Ruta no encontrada");
+                throw new ControllerException.NoEncontrado("Ruta no encontrada.", "No existe un recurso para la URL solicitada.");
             }
+        } catch (ControllerException e) {
+            sendError(exchange, e.status(), e.respuesta());
+        } catch (IOException e) {
+            sendError(exchange, 503, new ControllerException.ServicioNoDisponible(
+                    "No fue posible responder al cliente.", "Problema de red o comunicación."
+            ).respuesta());
         } catch (Exception e) {
-            sendError(exchange, 400, "Error en la petición: " + e.getMessage());
+            sendError(exchange, 500, "Código: ERROR_SERVIDOR | Mensaje: Error interno del servidor. | Causa: Fallo inesperado.");
         }
     }
 }

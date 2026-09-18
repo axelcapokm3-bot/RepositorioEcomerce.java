@@ -5,9 +5,9 @@ package com.CapaDominio.Entidades;
 public enum CategoriaProducto {
     ELECTRONICA,
     ROPA,
-    HOGAR,
+    HOGAR_Y_MUEBLES,
     DEPORTES,
-    LIBROS
+    INFORMATICA
 } 
     
 
