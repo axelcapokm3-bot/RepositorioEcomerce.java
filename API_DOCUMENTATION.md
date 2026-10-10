@@ -387,13 +387,15 @@ Posibles valores: `DISPONIBLE`, `CRITICO`, `AGOTADO`, `EN_REPOSICION` (`EN_REPOS
 
 ### 7.1 `POST /api/ventas/crear`
 
-- **Caso de uso:** Crear y persistir una orden de compra. Valida stock disponible, descuenta stock físico (con reposición automática si llega a 0), publica evento `VentasEventos("CREADA", venta)`.
+- **Caso de uso:** Crear una venta y comenzar su checkout. Valida stock y persiste la venta antes de iniciar el pago. El checkout público admite `MERCADO_PAGO` o `STRIPE`.
+- **Encabezado obligatorio:** `Idempotency-Key`, una clave estable de hasta 255 caracteres para reintentar esta misma solicitud.
+- **Idempotencia:** la misma clave con cliente, tipo de pago, total y productos idénticos reutiliza la venta y el intento de pago ya creados. La misma clave con datos diferentes se rechaza. La venta y el descuento de inventario se guardan en una transacción.
 - **Request** — body `CreateVentaRequest` (records internos del controller):
 
 ```json
 {
   "idCliente": 1,
-  "tipoPago": "EFECTIVO",
+  "tipoPago": "MERCADO_PAGO",
   "descuento": {
     "tipo": "PORCENTAJE",
     "valor": 0.10
@@ -408,7 +410,7 @@ Posibles valores: `DISPONIBLE`, `CRITICO`, `AGOTADO`, `EN_REPOSICION` (`EN_REPOS
 | Campo | Tipo | Regla |
 |---|---|---|
 | `idCliente` | int | obligatorio, > 0 |
-| `tipoPago` | string enum | `EFECTIVO` \| `TARJETA_CREDITO` (case-insensitive) |
+| `tipoPago` | string enum | `MERCADO_PAGO` \| `STRIPE` (case-insensitive) |
 | `descuento` | object \| `null` | opcional. Si se omite, no hay descuento |
 | `descuento.tipo` | string enum | `PORCENTAJE` \| `MONTO` \| `ESPECIAL` |
 | `descuento.valor` | number | valor del descuento (para `ESPECIAL` se ignora) |
@@ -416,7 +418,8 @@ Posibles valores: `DISPONIBLE`, `CRITICO`, `AGOTADO`, `EN_REPOSICION` (`EN_REPOS
 | `items[].idProducto` | int | debe existir en el catálogo |
 | `items[].cantidad` | int | > 0 y <= `stockDisponible` |
 
-- **Response `201 Created`:** sin cuerpo.
+- **Response `201 Created`:** resultado del checkout, incluido su estado y `urlPago` cuando la pasarela devuelve una URL. Mercado Pago usa Orders API y devuelve su `checkout_url`; no crea una Preference.
+- **Configuración local de Mercado Pago:** `MERCADOPAGO_PUBLIC_BASE_URL` debe contener una URL HTTPS pública del frontend. Para desarrollo, apunta esa variable a la URL HTTPS temporal del túnel, incluyendo la ruta de la aplicación si corresponde, por ejemplo `https://<túnel>/src/index.html`. El backend deriva los retornos con `payment_status=success`, `payment_status=failure` y `payment_status=pending`; el `auto_return` queda en `approved`. No uses `localhost` ni `127.0.0.1` en estos retornos. La URL del túnel se configura solo en el entorno de desarrollo y no se guarda como valor de producción.
 - **Errores de negocio `400`:**
   - `"La venta debe incluir al menos un ítem."` (items vacío/nulo)
   - `"Producto no encontrado con ID: X"` (producto inexistente)

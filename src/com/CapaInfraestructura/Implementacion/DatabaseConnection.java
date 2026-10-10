@@ -27,6 +27,7 @@ private static HikariDataSource createDataSource() {
         HikariConfig config = new HikariConfig();
         
         config.setJdbcUrl(value(properties, "db.url", "ECOMMERCE_DB_URL", "jdbc:mysql://localhost:3306/ecommerce_db"));
+        config.setDriverClassName("com.mysql.cj.jdbc.Driver");
         config.setUsername(value(properties, "db.username", "ECOMMERCE_DB_USERNAME", "root"));
         config.setPassword(value(properties, "db.password", "ECOMMERCE_DB_PASSWORD", "1234"));
         config.setMaximumPoolSize(Integer.parseInt(value(properties, "db.maximumPoolSize", "ECOMMERCE_DB_POOL_SIZE", "10")));

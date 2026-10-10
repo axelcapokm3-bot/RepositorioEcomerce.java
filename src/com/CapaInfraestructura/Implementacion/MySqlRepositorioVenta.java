@@ -18,7 +18,8 @@ import com.CapaDominio.Entidades.Venta;
 
 public class MySqlRepositorioVenta implements IVentaRepository {
     private static final String DETALLE_TABLE = "detalle_ventas";
-    private static final String VENTA_COLUMNS = "id, id_cliente, fecha_compra, id_estado_venta, id_tipo_pago";
+    private static final String VENTA_COLUMNS =
+            "id, id_cliente, fecha_compra, id_estado_venta, id_tipo_pago, clave_idempotencia";
 
     @Override
     public void guardar(Venta venta) {
@@ -61,6 +62,46 @@ public class MySqlRepositorioVenta implements IVentaRepository {
     }
 
     @Override
+    public Optional<Venta> buscarPorClaveIdempotenciaSolicitud(String claveIdempotenciaSolicitud) {
+        if (claveIdempotenciaSolicitud == null || claveIdempotenciaSolicitud.isBlank()) {
+            throw new IllegalArgumentException("La clave de idempotencia es obligatoria.");
+        }
+        String sql = "SELECT v." + VENTA_COLUMNS.replace(", ", ", v.")
+                + ", ev.nombre AS estado, tp.nombre AS tipo_pago FROM ventas v "
+                + "JOIN estado_venta ev ON ev.id = v.id_estado_venta "
+                + "JOIN tipo_pago tp ON tp.id = v.id_tipo_pago WHERE v.clave_idempotencia = ?";
+        try (Connection connection = DatabaseConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, claveIdempotenciaSolicitud);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) {
+                    return Optional.empty();
+                }
+                Venta venta = mapVenta(result);
+                cargarDetalles(connection, venta);
+                return Optional.of(venta);
+            }
+        } catch (SQLException exception) {
+            throw databaseError("buscar venta por clave de idempotencia", exception);
+        }
+    }
+
+    @Override
+    public boolean marcarComoPagada(int id) {
+        String sql = "UPDATE ventas SET id_estado_venta = "
+                + "(SELECT id FROM estado_venta WHERE nombre = 'PAGADO') "
+                + "WHERE id = ? AND id_estado_venta = "
+                + "(SELECT id FROM estado_venta WHERE nombre = 'PENDIENTE')";
+        try (Connection connection = DatabaseConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, id);
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            throw databaseError("marcar venta como pagada", exception);
+        }
+    }
+
+    @Override
     public List<Venta> listarTodas() {
         List<Venta> ventas = new ArrayList<>();
         String sql = "SELECT v." + VENTA_COLUMNS.replace(", ", ", v.")
@@ -97,12 +138,13 @@ public class MySqlRepositorioVenta implements IVentaRepository {
     }
 
     private void persistirVenta(Venta venta, boolean update, int id, Connection connection) throws SQLException {
-        String insertVenta = "INSERT INTO ventas (id_cliente, fecha_compra, id_estado_venta, id_tipo_pago, total) "
-                + "VALUES (?, ?, (SELECT id FROM estado_venta WHERE nombre = ?), "
-                + "(SELECT id FROM tipo_pago WHERE nombre = ?), ?)";
+        String insertVenta = "INSERT INTO ventas (id_cliente, fecha_compra, id_estado_venta, id_tipo_pago, "
+                + "total, clave_idempotencia) VALUES (?, ?, (SELECT id FROM estado_venta WHERE nombre = ?), "
+                + "(SELECT id FROM tipo_pago WHERE nombre = ?), ?, ?)";
         String updateVenta = "UPDATE ventas SET id_cliente = ?, fecha_compra = ?, "
                 + "id_estado_venta = (SELECT id FROM estado_venta WHERE nombre = ?), "
-                + "id_tipo_pago = (SELECT id FROM tipo_pago WHERE nombre = ?), total = ? WHERE id = ?";
+                + "id_tipo_pago = (SELECT id FROM tipo_pago WHERE nombre = ?), total = ?, "
+                + "clave_idempotencia = ? WHERE id = ?";
         
         try (PreparedStatement ventaStatement = connection.prepareStatement(
                 update ? updateVenta : insertVenta, Statement.RETURN_GENERATED_KEYS)) {
@@ -154,7 +196,10 @@ public class MySqlRepositorioVenta implements IVentaRepository {
     }
 
     private Venta mapVenta(ResultSet result) throws SQLException {
-        Venta venta = new Venta(result.getInt("id_cliente"), TipoDePago.valueOf(result.getString("tipo_pago")));
+        Venta venta = new Venta(
+                result.getInt("id_cliente"),
+                TipoDePago.valueOf(result.getString("tipo_pago")),
+                result.getString("clave_idempotencia"));
         venta.setId(result.getInt("id"));
         restaurarEstado(venta, EstadoVenta.valueOf(result.getString("estado")));
         return venta;
@@ -172,7 +217,8 @@ public class MySqlRepositorioVenta implements IVentaRepository {
         statement.setString(3, venta.getEstadoCompra().name());
         statement.setString(4, venta.getTipoPago().name());
         statement.setBigDecimal(5, venta.calculoTotal());
-        if (update) statement.setInt(6, id);
+        statement.setString(6, venta.getClaveIdempotenciaSolicitud());
+        if (update) statement.setInt(7, id);
     }
 
     private static void requireVenta(Venta venta) {

@@ -118,7 +118,9 @@ TABLA tipo_pago (catalogo)
   Columna             Tipo SQL        Restriccion                     Descripcion
   ------------------- --------------- ------------------------------- -----------------------------
   id                  INT             PK, AUTO_INCREMENT              Identificador
-  nombre              VARCHAR(30)     NOT NULL, UNIQUE                EFECTIVO, TARJETA_CREDITO
+  nombre              VARCHAR(30)     NOT NULL, UNIQUE                EFECTIVO, TARJETA_CREDITO,
+                                                                      TRANSFERENCIA,
+                                                                      MERCADO_PAGO, STRIPE
 
 
 TABLA ventas
@@ -130,13 +132,56 @@ TABLA ventas
   fecha_compra        DATETIME        NOT NULL                        Momento de creacion
   id_estado_venta     INT             FK -> estado_venta(id), NOT NULL Estado (default PENDIENTE)
   id_tipo_pago        INT             FK -> tipo_pago(id), NOT NULL   Forma de pago
+  clave_idempotencia  VARCHAR(255)    UNIQUE, NULL                    Clave Idempotency-Key del cliente
   total               DECIMAL(12,2)   NULL                            Suma de subtotales (derivado,
                                                                       opcional guardarlo)
 
   Origen en Java: int id, int idCliente, LocalDateTime fechaCompra,
-  EstadoVenta estadoCompra, TipoDePago tipoPago, List<DetalleVenta> detalles.
+  EstadoVenta estadoCompra, TipoDePago tipoPago, List<DetalleVenta> detalles,
+  String claveIdempotencia.
 
   NOTA: total es calculable con calculoTotal() desde los detalles; opcional.
+
+
+TABLA pagos
+-------------------------------------------------------------------------------
+  Columna             Tipo SQL        Restriccion                     Descripcion
+  ------------------- --------------- ------------------------------- -----------------------------
+  id                  INT             PK, AUTO_INCREMENT              Identificador
+  id_venta            INT             FK -> ventas(id), NOT NULL       Venta asociada
+  pasarela            VARCHAR(20)     NOT NULL                         MERCADO_PAGO, STRIPE, etc.
+  mp_payment_id       VARCHAR(255)    NULL                             Identificador de pago de pasarela
+  preferencia_id      VARCHAR(64)     NULL                             Identificador histórico de Preference
+  mp_payer_id         BIGINT          NULL                             Identificador del pagador en MP
+  mp_status           VARCHAR(30)     NULL                             Estado informado por MP
+  mp_status_detail    VARCHAR(60)     NULL                             Detalle del estado informado por MP
+  mp_payment_method_id VARCHAR(30)    NULL                             Método de pago informado por MP
+  mp_payment_type_id  VARCHAR(30)     NULL                             Tipo de pago informado por MP
+  monto               DECIMAL(12,2)   NOT NULL                         Importe calculado desde la venta
+  moneda              VARCHAR(3)      NOT NULL DEFAULT 'ARS'            Moneda de la operación
+  cuotas              INT             NOT NULL DEFAULT 1               Cantidad de cuotas (>= 1)
+  external_reference  VARCHAR(100)    NULL                             Referencia externa de la venta
+  url_pago            TEXT            NULL                             checkout_url de la Order
+  fecha_creacion_mp   DATETIME        NULL                             Fecha de creación en Mercado Pago
+  fecha_aprobacion_mp DATETIME        NULL                             Fecha de aprobación en Mercado Pago
+  raw_response        JSON            NULL                             Última respuesta JSON del proveedor
+  idempotency_key     VARCHAR(64)     UNIQUE, NULL                     Clave estable de pasarela
+  fecha_registro      DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP Registro del pago
+  fecha_actualizacion DATETIME        NULL ON UPDATE CURRENT_TIMESTAMP  Actualización automática al modificar
+  estado              VARCHAR(50)     NOT NULL DEFAULT 'PENDIENTE'     Estado del pago
+  fecha_creacion      DATETIME        NULL DEFAULT CURRENT_TIMESTAMP   Creación del registro
+  order_id            VARCHAR(255)    UNIQUE, NULL                     ID de Order (agregado por migración)
+  PRIMARY KEY (id)
+  UNIQUE (mp_payment_id)                                               Evita duplicar pagos de pasarela
+  KEY (id_venta), KEY idx_pagos_status (mp_status)
+  FK id_venta -> ventas(id)                                            ON DELETE RESTRICT, ON UPDATE CASCADE
+  CHECK (cuotas >= 1)
+  CHECK (monto >= 0)
+
+  `ventas.clave_idempotencia` identifica la solicitud de nuestra API (Idempotency-Key).
+  `pagos.idempotency_key` (VARCHAR(64), ya existente en el esquema) identifica
+  la operación enviada a la pasarela (X-Idempotency-Key en Mercado Pago).
+  Son claves distintas y tienen restricciones UNIQUE independientes.
 
 
 TABLA detalle_venta

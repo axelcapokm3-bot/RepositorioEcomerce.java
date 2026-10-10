@@ -6,14 +6,11 @@
     <groupId>com.ecommerce</groupId>
     <artifactId>ecommerce</artifactId>
     <version>1.0.0-SNAPSHOT</version>
-
     <properties>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
-
     <dependencies>
-        <!-- MySQL & Connection Pool -->
         <dependency>
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
@@ -24,22 +21,26 @@
             <artifactId>HikariCP</artifactId>
             <version>5.1.0</version>
         </dependency>
-
-        <!-- Redis Client -->
         <dependency>
             <groupId>redis.clients</groupId>
             <artifactId>jedis</artifactId>
             <version>5.1.0</version>
         </dependency>
-
-        <!-- JSON Mapper -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
             <version>2.17.0</version>
         </dependency>
-
-        <!-- Testing -->
+        <dependency>
+            <groupId>com.mercadopago</groupId>
+            <artifactId>sdk-java</artifactId>
+            <version>3.7.0</version>
+        </dependency>
+        <dependency>
+            <groupId>com.stripe</groupId>
+            <artifactId>stripe-java</artifactId>
+            <version>24.14.0</version>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
@@ -59,11 +60,19 @@
             <scope>test</scope>
         </dependency>
     </dependencies>
-
     <build>
         <sourceDirectory>src</sourceDirectory>
         <testSourceDirectory>test/java</testSourceDirectory>
         <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.5.0</version>
+                <configuration>
+                    <mainClass>com.CapaExterna.ServerMain</mainClass>
+                    <classpathScope>runtime</classpathScope>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>

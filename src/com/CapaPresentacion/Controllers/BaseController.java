@@ -10,14 +10,22 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import com.CapaPresentacion.Utilidades.JsonUtils;
+import com.CapaDominio.Excepciones.PagoRechazadoException;
+import com.CapaDominio.Excepciones.PasarelaNoDisponibleException;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public abstract class BaseController implements HttpHandler {
+    private static final Logger LOGGER = Logger.getLogger(BaseController.class.getName());
+
     protected boolean handlePreflight(HttpExchange exchange) throws IOException {
         exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
         exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-        exchange.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type, Authorization");
+        exchange.getResponseHeaders().add(
+                "Access-Control-Allow-Headers",
+                "Content-Type, Authorization, Idempotency-Key");
 
         if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
             exchange.sendResponseHeaders(204, -1);
@@ -85,12 +93,24 @@ public abstract class BaseController implements HttpHandler {
                     sendResponse(exchange, successStatus, result);
                 }
             } catch (Exception e) {
+                LOGGER.log(Level.SEVERE, "Error procesando la respuesta HTTP.", e);
                 sendError(exchange, 500, "Error procesando respuesta: " + e.getMessage());
             }
         }).exceptionally(ex -> {
-            Throwable cause = ex.getCause() != null ? ex.getCause() : ex;
+            Throwable cause = obtenerCausa(ex);
             if (cause instanceof ControllerException controllerException) {
                 sendError(exchange, controllerException.status(), controllerException.respuesta());
+            } else if (cause instanceof PasarelaNoDisponibleException) {
+                LOGGER.log(Level.WARNING, "No se pudo iniciar el checkout con la pasarela.", cause);
+                sendError(exchange, 503, new ControllerException.ServicioNoDisponible(
+                        "La pasarela seleccionada no está disponible.",
+                        "Verifique la configuración del checkout y vuelva a intentarlo."
+                ).respuesta());
+            } else if (cause instanceof PagoRechazadoException) {
+                sendError(exchange, 400, new ControllerException.Validacion(
+                        cause.getMessage(),
+                        "La pasarela rechazó los datos del checkout."
+                ).respuesta());
             } else if (cause instanceof IllegalArgumentException) {
                 sendError(exchange, 400, new ControllerException.Validacion(
                         "Los datos enviados no son válidos.",
@@ -107,12 +127,23 @@ public abstract class BaseController implements HttpHandler {
                         "Se produjo un problema de red o de comunicación."
                 ).respuesta());
             } else {
+                LOGGER.log(Level.SEVERE, "Error inesperado al procesar una solicitud asíncrona.", cause);
                 sendError(exchange, 500,
                         "Código: ERROR_SERVIDOR | Mensaje: Error interno del servidor."
                                 + " | Causa: Fallo inesperado al procesar la operación.");
             }
             return null;
         });
+    }
+
+    private Throwable obtenerCausa(Throwable exception) {
+        Throwable cause = exception;
+        while ((cause instanceof java.util.concurrent.CompletionException
+                || cause instanceof java.util.concurrent.ExecutionException)
+                && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        return cause;
     }
 
     protected Integer getIntIdFromPath(HttpExchange exchange, String contextPath) {

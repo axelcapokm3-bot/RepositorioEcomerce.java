@@ -2,6 +2,28 @@ import { api } from './api.js';
 import { showToast } from './utils/toast-notifier.js';
 
 let carritoTemporal = [];
+let procesandoVenta = false;
+
+const CLAVE_SOLICITUD_CHECKOUT = 'ecommerce.checkout.pending-request';
+
+function obtenerClaveIdempotenciaCheckout(payload) {
+    const payloadSerializado = JSON.stringify(payload);
+    const solicitudGuardada = sessionStorage.getItem(CLAVE_SOLICITUD_CHECKOUT);
+
+    if (solicitudGuardada) {
+        const solicitud = JSON.parse(solicitudGuardada);
+        if (solicitud.payload === payloadSerializado) {
+            return solicitud.clave;
+        }
+    }
+
+    const clave = crypto.randomUUID();
+    sessionStorage.setItem(CLAVE_SOLICITUD_CHECKOUT, JSON.stringify({
+        payload: payloadSerializado,
+        clave
+    }));
+    return clave;
+}
 
 document.addEventListener('DOMContentLoaded', () => {
     const navLinks = document.querySelectorAll('.nav-link');
@@ -263,10 +285,10 @@ async function renderTerminal(container) {
                         </select>
                     </div>
                     <div class="flex items-center justify-between border-t border-carbon-700 pt-3">
-                        <span class="text-xs font-semibold text-slate-300">Método de Pago:</span>
+                        <span class="text-xs font-semibold text-slate-300">Pasarela de Pago:</span>
                         <select id="pos-tipopago" class="h-9 px-3 bg-carbon-900 border border-carbon-700 text-white rounded-lg text-xs w-64">
-                            <option value="EFECTIVO">EFECTIVO</option>
-                            <option value="TARJETA_CREDITO">TARJETA_CREDITO</option>
+                            <option value="MERCADO_PAGO">Mercado Pago</option>
+                            <option value="STRIPE">Stripe</option>
                         </select>
                     </div>
                     <div class="flex items-center justify-between border-t border-carbon-700 pt-3">
@@ -316,7 +338,7 @@ async function renderTerminal(container) {
                         <span>Descuento calculado por backend:</span>
                         <span id="pos-descuento-backend" class="font-mono">$ 0,00</span>
                     </div>
-                    <button onclick="window.procesarVenta()" class="w-full py-3 bg-brand hover:bg-brand-hover text-white font-bold rounded-lg text-xs shadow-glow-orange cursor-pointer">Finalizar Venta & Descontar Stock</button>
+                    <button id="pos-finalizar-venta" onclick="window.procesarVenta()" class="w-full py-3 bg-brand hover:bg-brand-hover text-white font-bold rounded-lg text-xs shadow-glow-orange cursor-pointer">Continuar al pago</button>
                 </div>
             </div>
         </div>
@@ -457,7 +479,9 @@ function actualizarVistaCarrito() {
 }
 
 document.addEventListener('change', (e) => {
-    if (e.target.id === 'pos-desc-tipo' || e.target.id === 'pos-cliente') {
+    if (e.target.id === 'pos-desc-tipo'
+        || e.target.id === 'pos-cliente'
+        || e.target.id === 'pos-tipopago') {
         actualizarVistaCarrito();
     }
 });
@@ -472,7 +496,7 @@ async function actualizarTotalDesdeBackend(descTipo) {
     try {
         const preview = await api.ventas.previsualizar({
             idCliente: parseInt(document.getElementById('pos-cliente')?.value || '1'),
-            tipoPago: document.getElementById('pos-tipopago')?.value || 'EFECTIVO',
+            tipoPago: document.getElementById('pos-tipopago')?.value || 'MERCADO_PAGO',
             descuento: descTipo === 'ninguno' ? null : { tipo: descTipo },
             items: carritoTemporal.map(i => ({ idProducto: i.idProducto, cantidad: i.cantidad }))
         });
@@ -489,6 +513,9 @@ async function actualizarTotalDesdeBackend(descTipo) {
 }
 
 window.procesarVenta = async () => {
+    if (procesandoVenta) {
+        return;
+    }
     if (carritoTemporal.length === 0) {
         showToast('El carrito está vacío', 'error');
         return;
@@ -498,7 +525,7 @@ window.procesarVenta = async () => {
     const descTipoSelect = document.getElementById('pos-desc-tipo');
 
     const idCliente = clienteSelect ? parseInt(clienteSelect.value) : 1;
-    const tipoPago = tipoPagoSelect ? tipoPagoSelect.value : 'EFECTIVO';
+    const tipoPago = tipoPagoSelect ? tipoPagoSelect.value : 'MERCADO_PAGO';
     
     let descuentoObj = null;
     if (descTipoSelect && descTipoSelect.value !== 'ninguno') {
@@ -507,20 +534,47 @@ window.procesarVenta = async () => {
         };
     }
 
+    const solicitudVenta = {
+        idCliente: idCliente,
+        tipoPago: tipoPago,
+        descuento: descuentoObj,
+        items: carritoTemporal.map(i => ({ idProducto: i.idProducto, cantidad: i.cantidad }))
+    };
+    const botonFinalizar = document.getElementById('pos-finalizar-venta');
+
+    procesandoVenta = true;
+    if (botonFinalizar) {
+        botonFinalizar.disabled = true;
+        botonFinalizar.textContent = 'Preparando checkout...';
+    }
+
     try {
-        await api.ventas.crear({
-            idCliente: idCliente,
-            tipoPago: tipoPago,
-            descuento: descuentoObj,
-            items: carritoTemporal.map(i => ({ idProducto: i.idProducto, cantidad: i.cantidad }))
-        });
-        showToast('¡Venta registrada! Stock descontado correctamente en el backend.', 'success');
-        carritoTemporal = [];
-        actualizarVistaCarrito();
-        // Recargar vista para reflejar stock actualizado
-        const appView = document.getElementById('app-view');
-        if (appView) renderTerminal(appView);
+        const claveIdempotencia = obtenerClaveIdempotenciaCheckout(solicitudVenta);
+        const resultadoPago = await api.ventas.crear(solicitudVenta, claveIdempotencia);
+
+        if (resultadoPago.estado === 'APROBADO') {
+            sessionStorage.removeItem(CLAVE_SOLICITUD_CHECKOUT);
+            showToast('El pago de esta venta ya está aprobado.', 'success');
+            carritoTemporal = [];
+            actualizarVistaCarrito();
+            const appView = document.getElementById('app-view');
+            if (appView) renderTerminal(appView);
+            return;
+        }
+
+        if (!resultadoPago.urlPago) {
+            throw new Error('La pasarela no devolvió una URL de checkout.');
+        }
+
+        showToast(`Redirigiendo a ${resultadoPago.pasarelaUsada} para completar el pago.`, 'success');
+        window.location.assign(resultadoPago.urlPago);
     } catch (e) {
         showToast(e.message, 'error');
+    } finally {
+        procesandoVenta = false;
+        if (botonFinalizar && botonFinalizar.isConnected) {
+            botonFinalizar.disabled = false;
+            botonFinalizar.textContent = 'Continuar al pago';
+        }
     }
 };

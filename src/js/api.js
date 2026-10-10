@@ -2,7 +2,7 @@ import { showToast } from './utils/toast-notifier.js';
 
 const API_BASE_URL = 'http://localhost:8080/api';
 
-async function request(endpoint, options = {}) {
+async function request(endpoint, options = {}, mostrarError = true) {
     try {
         const response = await fetch(`${API_BASE_URL}${endpoint}`, {
             ...options,
@@ -27,7 +27,9 @@ async function request(endpoint, options = {}) {
         return data;
     } catch (error) {
         console.error(`API Error [${endpoint}]:`, error);
-        showToast(error.message, 'error');
+        if (mostrarError) {
+            showToast(error.message, 'error');
+        }
         throw error;
     }
 }
@@ -48,7 +50,11 @@ export const api = {
         eliminar: (id) => request(`/clientes/${id}`, { method: 'DELETE' })
     },
     ventas: {
-        crear: (payload) => request('/ventas/crear', { method: 'POST', body: payload }),
+        crear: (payload, claveIdempotencia) => request('/ventas/crear', {
+            method: 'POST',
+            headers: { 'Idempotency-Key': claveIdempotencia },
+            body: payload
+        }, false),
         previsualizar: (payload) => request('/ventas/previsualizar', { method: 'POST', body: payload }),
         obtener: (id) => request(`/ventas/${id}`),
         pagar: (id) => request(`/ventas/${id}/pago`, { method: 'POST' }),

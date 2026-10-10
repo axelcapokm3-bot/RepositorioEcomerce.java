@@ -12,13 +12,21 @@ public class Venta {
     private EstadoVenta estadoCompra; 
     private TipoDePago tipoPago;
     private List<DetalleVenta> detalles;
+    private String claveIdempotenciaSolicitud;
 
     public Venta(int idCliente, TipoDePago tipoPago) {
+        this(idCliente, tipoPago, null);
+    }
+
+    public Venta(int idCliente, TipoDePago tipoPago, String claveIdempotenciaSolicitud) {
         if (idCliente <= 0) {
             throw new IllegalArgumentException("El ID del cliente debe ser válido.");
         }
         if (tipoPago == null) {
             throw new IllegalArgumentException("Debe especificar un tipo de pago.");
+        }
+        if (claveIdempotenciaSolicitud != null && claveIdempotenciaSolicitud.isBlank()) {
+            throw new IllegalArgumentException("La clave de idempotencia no puede estar vacía.");
         }
 
         this.idCliente = idCliente;
@@ -26,6 +34,7 @@ public class Venta {
         this.fechaCompra = LocalDateTime.now(); 
         this.estadoCompra = EstadoVenta.PENDIENTE;  
         this.tipoPago = tipoPago;
+        this.claveIdempotenciaSolicitud = claveIdempotenciaSolicitud;
     }
 
  
@@ -91,6 +100,10 @@ this.detalles.add(new DetalleVenta(
 
     public TipoDePago getTipoPago() {
         return tipoPago;
+    }
+
+    public String getClaveIdempotenciaSolicitud() {
+        return claveIdempotenciaSolicitud;
     }
 
   private void cambiarEstado(EstadoVenta nuevoEstado) {

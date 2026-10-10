@@ -1,0 +1,23 @@
+# Copiar este archivo como src/main/resources/config.properties y completar
+# los valores con credenciales propias. No guardar secretos reales aquí.
+db.url=jdbc:mysql://localhost:3306/ecommerce_db?serverTimezone=UTC&useSSL=false
+db.username=root
+db.password=CAMBIAR_POR_TU_PASSWORD
+db.maximumPoolSize=10
+
+# Mercado Pago
+mercadopago.access-token=REEMPLAZAR_POR_TU_ACCESS_TOKEN
+mercadopago.public-key=REEMPLAZAR_POR_TU_PUBLIC_KEY
+mercadopago.webhook-secret=REEMPLAZAR_POR_TU_SECRETO_WEBHOOK
+mercadopago.checkout-return-url=https://TU_URL_PUBLICA/index.html
+
+# Stripe (usar claves de prueba en desarrollo)
+stripe.secret-key=sk_test_REEMPLAZAR_POR_TU_SECRET_KEY
+stripe.public-key=pk_test_REEMPLAZAR_POR_TU_PUBLIC_KEY
+stripe.webhook-secret=whsec_REEMPLAZAR_POR_TU_SECRETO_WEBHOOK
+stripe.success-url=http://localhost:5500/index.html?view=checkout-return&session_id={CHECKOUT_SESSION_ID}
+stripe.cancel-url=http://localhost:5500/index.html?view=checkout-return&resultado=failure
+
+# URLs del sistema
+app.frontend.url=http://localhost:5500
+app.backend.url=http://localhost:8080

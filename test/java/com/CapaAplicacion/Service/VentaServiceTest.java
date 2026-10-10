@@ -12,11 +12,12 @@ import com.CapaDominio.Entidades.Carrito;
 import com.CapaDominio.Entidades.CategoriaProducto;
 import com.CapaDominio.Entidades.EstadoVenta;
 import com.CapaDominio.Entidades.ItemCarrito;
-import com.CapaDominio.Entidades.MetodoPago;
 import com.CapaDominio.Entidades.Producto;
+import com.CapaDominio.Entidades.ResultadoPago;
 import com.CapaDominio.Entidades.TipoDePago;
 import com.CapaDominio.Entidades.Venta;
 import com.CapaDominio.Entidades.VentasEventos;
+import com.CapaDominio.Excepciones.PasarelaNoDisponibleException;
 import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
@@ -44,12 +45,23 @@ class VentaServiceTest {
     @Mock
     private EventBus eventBus;
 
+    @Mock
+    private PagoService pagoService;
+
     private VentaService service;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        service = new VentaService(ventaRepository, productoRepository, metodoPagoRepository, eventBus);
+        service = new VentaService(
+                null,
+                ventaRepository,
+                productoRepository,
+                null,
+                metodoPagoRepository,
+                eventBus,
+                null,
+                pagoService);
     }
 
     private Producto producto(int id, int stock, BigDecimal precio) {
@@ -70,10 +82,6 @@ class VentaServiceTest {
         venta.cargarDetallesDesdeCarrito(carrito, null);
         venta.setId(7);
         return venta;
-    }
-
-    private void assertBigDecimalIgual(BigDecimal esperado, BigDecimal actual, String mensaje) {
-        assertEquals(0, esperado.compareTo(actual), mensaje + " (Esperado: " + esperado + ", Actual: " + actual + ")");
     }
 
     // ------------------------------------------------------------------
@@ -131,29 +139,132 @@ class VentaServiceTest {
         verify(ventaRepository, never()).guardar(any());
     }
 
+    @Test
+    @DisplayName("crearVentaConPagoAsync: reutiliza venta para la misma clave y el mismo contenido")
+    void crearVentaConPagoReutilizaVentaExistente() throws Exception {
+        String claveSolicitud = "solicitud-venta-1";
+        Carrito carrito = new Carrito(1);
+        carrito.agregarItem(new ItemCarrito(producto(1, 10, new BigDecimal("100")), 2));
+        Venta ventaExistente = new Venta(1, TipoDePago.MERCADO_PAGO, claveSolicitud);
+        ventaExistente.cargarDetallesDesdeCarrito(carrito, null);
+        ventaExistente.setId(7);
+        ResultadoPago resultadoEsperado = ResultadoPago.pendiente(
+                "7",
+                new BigDecimal("200"),
+                "MERCADO_PAGO",
+                "https://checkout.example/7",
+                "order-7",
+                "{}");
+
+        when(ventaRepository.buscarPorClaveIdempotenciaSolicitud(claveSolicitud))
+                .thenReturn(Optional.of(ventaExistente));
+        when(pagoService.iniciarCheckout(ventaExistente)).thenReturn(resultadoEsperado);
+
+        ResultadoPago resultado = service.crearVentaConPagoAsync(
+                carrito, "MERCADO_PAGO", null, claveSolicitud).get();
+
+        assertSame(resultadoEsperado, resultado);
+        verify(pagoService).iniciarCheckout(ventaExistente);
+        verify(ventaRepository, never()).guardar(any(), any());
+        verify(productoRepository, never()).actualizar(anyInt(), any(Producto.class), any());
+    }
+
+    @Test
+    @DisplayName("crearVentaConPagoAsync: rechaza clave existente con contenido diferente")
+    void crearVentaConPagoRechazaContenidoDiferente() throws Exception {
+        String claveSolicitud = "solicitud-venta-1";
+        Carrito carrito = new Carrito(1);
+        carrito.agregarItem(new ItemCarrito(producto(1, 10, new BigDecimal("100")), 2));
+        Venta ventaExistente = new Venta(1, TipoDePago.MERCADO_PAGO, claveSolicitud);
+        Carrito carritoExistente = new Carrito(1);
+        carritoExistente.agregarItem(new ItemCarrito(
+                producto(1, 10, new BigDecimal("100")), 1));
+        ventaExistente.cargarDetallesDesdeCarrito(carritoExistente, null);
+        ventaExistente.setId(7);
+        when(ventaRepository.buscarPorClaveIdempotenciaSolicitud(claveSolicitud))
+                .thenReturn(Optional.of(ventaExistente));
+
+        assertThrows(ExecutionException.class,
+                () -> service.crearVentaConPagoAsync(
+                        carrito, "MERCADO_PAGO", null, claveSolicitud).get());
+
+        verify(pagoService, never()).iniciarCheckout(any());
+        verify(ventaRepository, never()).guardar(any(), any());
+    }
+
+    @Test
+    @DisplayName("crearVentaConPagoAsync: exige transacción para guardar una venta nueva")
+    void crearVentaConPagoExigeTransaccion() {
+        when(ventaRepository.buscarPorClaveIdempotenciaSolicitud("solicitud-nueva"))
+                .thenReturn(Optional.empty());
+
+        assertThrows(ExecutionException.class,
+                () -> service.crearVentaConPagoAsync(
+                        carritoValido(), "MERCADO_PAGO", null, "solicitud-nueva").get());
+
+        verify(productoRepository, never()).actualizar(anyInt(), any(Producto.class));
+        verify(ventaRepository, never()).guardar(any());
+        verify(pagoService, never()).iniciarCheckout(any());
+    }
+
+    @Test
+    @DisplayName("crearVentaConPagoAsync: valida la pasarela antes de guardar venta y descontar stock")
+    void crearVentaConPagoSinConfiguracionNoGuardaNiDescuentaStock() throws Exception {
+        Carrito carrito = carritoValido();
+        doThrow(new PasarelaNoDisponibleException("Falta configurar la pasarela."))
+                .when(pagoService).validarConfiguracionCheckout(TipoDePago.MERCADO_PAGO);
+        when(ventaRepository.buscarPorClaveIdempotenciaSolicitud("solicitud-nueva"))
+                .thenReturn(Optional.empty());
+
+        assertThrows(ExecutionException.class,
+                () -> service.crearVentaConPagoAsync(
+                        carrito, "MERCADO_PAGO", null, "solicitud-nueva").get());
+
+        assertEquals(2, carrito.getItems().size());
+        verify(ventaRepository, never()).guardar(any(), any());
+        verify(productoRepository, never()).actualizar(anyInt(), any(Producto.class), any());
+        verify(pagoService, never()).iniciarCheckout(any());
+    }
+
+    @Test
+    @DisplayName("crearVentaConPagoAsync: rechaza claves vacías y mayores al límite")
+    void crearVentaConPagoValidaClaveSolicitud() {
+        assertThrows(ExecutionException.class,
+                () -> service.crearVentaConPagoAsync(
+                        carritoValido(), "MERCADO_PAGO", null, " ").get());
+        assertThrows(ExecutionException.class,
+                () -> service.crearVentaConPagoAsync(
+                        carritoValido(), "MERCADO_PAGO", null, "k".repeat(256)).get());
+
+        verify(ventaRepository, never()).buscarPorClaveIdempotenciaSolicitud(anyString());
+    }
+
     // ------------------------------------------------------------------
     // PAGO DE VENTA
     // ------------------------------------------------------------------
 
     @Test
-    @DisplayName("registrarPagoAsync: debita el método de pago del cliente y pasa la venta a PAGADO")
+    @DisplayName("registrarPagoAsync: inicia checkout sin aprobar la venta")
     void registrarPagoExitoso() throws Exception {
         Venta venta = ventaPendienteConDetalles();
-        MetodoPago metodoPago = new MetodoPago(1, 1234, new BigDecimal("1000"));
+        ResultadoPago resultadoEsperado = ResultadoPago.pendiente(
+                "7",
+                new BigDecimal("200"),
+                "MERCADO_PAGO",
+                "https://checkout.example/7",
+                "order-7",
+                "{}");
 
         when(ventaRepository.buscarPorId(7)).thenReturn(Optional.of(venta));
-        when(metodoPagoRepository.buscarPorIdCliente(1)).thenReturn(Optional.of(metodoPago));
+        when(pagoService.iniciarCheckout(venta)).thenReturn(resultadoEsperado);
 
-        service.registrarPagoAsync(7).get();
+        ResultadoPago resultado = service.registrarPagoAsync(7).get();
 
-        assertEquals(EstadoVenta.PAGADO, venta.getEstadoCompra());
-        assertBigDecimalIgual(new BigDecimal("800"), metodoPago.getSaldoDisponible(), "Total de la venta: 2 x 100 = 200");
-        verify(metodoPagoRepository).actualizar(1, metodoPago);
-        verify(ventaRepository).actualizar(7, venta);
-
-        ArgumentCaptor<VentasEventos> eventoCaptor = ArgumentCaptor.forClass(VentasEventos.class);
-        verify(eventBus).publicar(eventoCaptor.capture());
-        assertEquals("PAGADA", eventoCaptor.getValue().getTipoOperacion());
+        assertSame(resultadoEsperado, resultado);
+        assertEquals(EstadoVenta.PENDIENTE, venta.getEstadoCompra());
+        verify(pagoService).iniciarCheckout(venta);
+        verify(metodoPagoRepository, never()).actualizar(anyInt(), any());
+        verify(ventaRepository, never()).actualizar(anyInt(), any());
     }
 
     @Test
@@ -165,26 +276,19 @@ class VentaServiceTest {
     }
 
     @Test
-    @DisplayName("registrarPagoAsync: rechaza cliente sin método de pago")
-    void registrarPagoSinMetodoPago() {
-        Venta venta = ventaPendienteConDetalles();
-        when(ventaRepository.buscarPorId(7)).thenReturn(Optional.of(venta));
-        when(metodoPagoRepository.buscarPorIdCliente(1)).thenReturn(Optional.empty());
+    @DisplayName("registrarPagoAsync: falla si el servicio de pagos no está configurado")
+    void registrarPagoSinServicioDePagos() {
+        service = new VentaService(
+                null,
+                ventaRepository,
+                productoRepository,
+                null,
+                metodoPagoRepository,
+                eventBus,
+                null,
+                null);
 
         assertThrows(ExecutionException.class, () -> service.registrarPagoAsync(7).get());
-    }
-
-    @Test
-    @DisplayName("registrarPagoAsync: rechaza saldo insuficiente")
-    void registrarPagoSaldoInsuficiente() {
-        Venta venta = ventaPendienteConDetalles();
-        MetodoPago metodoPago = new MetodoPago(1, 1234, new BigDecimal("10"));
-
-        when(ventaRepository.buscarPorId(7)).thenReturn(Optional.of(venta));
-        when(metodoPagoRepository.buscarPorIdCliente(1)).thenReturn(Optional.of(metodoPago));
-
-        assertThrows(ExecutionException.class, () -> service.registrarPagoAsync(7).get());
-        assertEquals(new BigDecimal("10"), metodoPago.getSaldoDisponible());
     }
 
     // ------------------------------------------------------------------

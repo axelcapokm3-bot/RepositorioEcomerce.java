@@ -15,3 +15,6 @@ config.properties
 
 # Logs
 *.log
+# Cachés y temporales locales
+.m2/
+opencode-tmp/

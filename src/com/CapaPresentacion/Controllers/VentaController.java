@@ -69,11 +69,26 @@ public class VentaController extends BaseController {
             } else if (path.equals("/api/ventas/crear")) {
                 if ("POST".equalsIgnoreCase(method)) {
                     CreateVentaRequest req = parseRequestBody(exchange, CreateVentaRequest.class);
-                    
+                    String claveIdempotenciaSolicitud =
+                            exchange.getRequestHeaders().getFirst("Idempotency-Key");
+                    if (claveIdempotenciaSolicitud == null || claveIdempotenciaSolicitud.isBlank()) {
+                        throw new ControllerException.Validacion(
+                                "Falta el encabezado Idempotency-Key.",
+                                "Debe enviar una clave única y estable para esta creación de venta.");
+                    }
+                    if (claveIdempotenciaSolicitud.length() > 255) {
+                        throw new ControllerException.Validacion(
+                                "El encabezado Idempotency-Key no es válido.",
+                                "La clave no puede superar 255 caracteres.");
+                    }
                     Carrito carrito = construirCarrito(req);
                     IDescuentos descuento = resolverDescuento(req.descuento());
 
-                    handleAsync(exchange, servicio.crearVentaAsync(carrito, req.tipoPago(), descuento), 201);
+                    handleAsync(
+                            exchange,
+                            servicio.crearVentaConPagoAsync(
+                                    carrito, req.tipoPago(), descuento, claveIdempotenciaSolicitud),
+                            201);
                 } else {
                     throw new ControllerException.Validacion("Método no permitido.", "La ruta no admite este método HTTP.");
                 }
