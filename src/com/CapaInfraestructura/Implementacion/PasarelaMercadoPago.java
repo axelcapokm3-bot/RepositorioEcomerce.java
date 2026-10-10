@@ -162,6 +162,9 @@ public class PasarelaMercadoPago implements IPasarelaPago {
         String publicBaseUrl = buscarValor(
                 "mercadopago.public-base-url",
                 "mercadopago_public_base_url");
+        if (vacio(publicBaseUrl)) {
+            publicBaseUrl = ConfigLoader.getProperty("mercadopago.checkout-return-url");
+        }
         String successUrl = buscarValor(
                 "mercadopago.back_url.success",
                 "mercadopago_back_url_success");

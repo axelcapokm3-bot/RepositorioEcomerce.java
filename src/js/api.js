@@ -1,6 +1,9 @@
 import { showToast } from './utils/toast-notifier.js';
 
-const API_BASE_URL = 'http://localhost:8080/api';
+const API_BASE_URL = window.location.port === '5500'
+    && ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)
+    ? 'http://localhost:8080/api'
+    : '/api';
 
 async function request(endpoint, options = {}, mostrarError = true) {
     try {

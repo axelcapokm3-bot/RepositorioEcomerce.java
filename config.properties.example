@@ -9,7 +9,10 @@ db.maximumPoolSize=10
 mercadopago.access-token=REEMPLAZAR_POR_TU_ACCESS_TOKEN
 mercadopago.public-key=REEMPLAZAR_POR_TU_PUBLIC_KEY
 mercadopago.webhook-secret=REEMPLAZAR_POR_TU_SECRETO_WEBHOOK
-mercadopago.checkout-return-url=https://TU_URL_PUBLICA/index.html
+# URL HTTPS pública del frontend expuesta por Caddy/ngrok; usar el host vigente del túnel.
+# mercadopago.public-base-url=https://<host-ngrok-actual>/<ruta-publica-del-frontend>
+# Alternativa: definir MERCADOPAGO_PUBLIC_BASE_URL en el entorno del proceso Java.
+# mercadopago.checkout-return-url también se admite como alias.
 
 # Stripe (usar claves de prueba en desarrollo)
 stripe.secret-key=sk_test_REEMPLAZAR_POR_TU_SECRET_KEY

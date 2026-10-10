@@ -26,6 +26,7 @@ function obtenerClaveIdempotenciaCheckout(payload) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    mostrarResultadoCheckout();
     const navLinks = document.querySelectorAll('.nav-link');
     const appView = document.getElementById('app-view');
 
@@ -65,6 +66,34 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('hashchange', router);
     router();
 });
+
+function mostrarResultadoCheckout() {
+    const url = new URL(window.location.href);
+    const estado = url.searchParams.get('payment_status');
+    const mensajes = {
+        success: {
+            texto: 'Mercado Pago informó que el pago fue aprobado. El estado definitivo se confirma al procesar el webhook.',
+            tipo: 'success'
+        },
+        failure: {
+            texto: 'Mercado Pago informó que el pago no fue aprobado. Puedes revisar el medio de pago e intentarlo nuevamente.',
+            tipo: 'error'
+        },
+        pending: {
+            texto: 'El pago quedó pendiente. El estado se actualizará cuando el backend procese la notificación de Mercado Pago.',
+            tipo: 'info'
+        }
+    };
+    const resultado = mensajes[estado];
+
+    if (!resultado) {
+        return;
+    }
+
+    showToast(resultado.texto, resultado.tipo);
+    url.searchParams.delete('payment_status');
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+}
 
 async function renderDashboard(container) {
     const productos = await api.productos.listar();
