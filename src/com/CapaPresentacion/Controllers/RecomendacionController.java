@@ -7,6 +7,8 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 import com.CapaAplicacion.Interfaces.IProductoRepository;
+import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
+import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaAplicacion.Service.RecomendacionService;
 import com.CapaDominio.Entidades.Producto;
 import com.sun.net.httpserver.HttpExchange;
@@ -15,15 +17,21 @@ public class RecomendacionController extends BaseController {
 
     private final RecomendacionService servicio;
     private final IProductoRepository productoRepository;
+    private final IProveedorTokenAcceso proveedor;
 
    public record RecomendacionRequest(
         int idProductoActual, 
         BigDecimal precioMin, 
         BigDecimal precioMax
     ) {}
-    public RecomendacionController(RecomendacionService servicio, IProductoRepository productoRepository) {
+    public RecomendacionController(RecomendacionService servicio, IProductoRepository productoRepository,
+                                   IProveedorTokenAcceso proveedor) {
+        if (servicio == null || productoRepository == null || proveedor == null) {
+            throw new IllegalArgumentException("Las dependencias del controlador son obligatorias.");
+        }
         this.servicio = servicio;
         this.productoRepository = productoRepository;
+        this.proveedor = proveedor;
     }
 
     @Override
@@ -34,6 +42,8 @@ public class RecomendacionController extends BaseController {
         if (handlePreflight(exchange)) {
             return;
         }
+        Principal principal = exigirAutenticacion(exchange, proveedor);
+        long idNegocio = negocioAutorizado(exchange, principal);
 
         try {
             if ("/api/recomendaciones".equals(path) || "/api/recomendaciones/".equals(path)) {
@@ -52,14 +62,14 @@ public class RecomendacionController extends BaseController {
                                 "El precio mínimo no puede superar al precio máximo."
                         );
                     }
-                    Optional<Producto> productoActualOpt = productoRepository.buscarPorId(req.idProductoActual());
+                    Optional<Producto> productoActualOpt = productoRepository.buscarPorId(idNegocio, req.idProductoActual());
                     if (productoActualOpt.isEmpty()) {
                         throw new ControllerException.NoEncontrado(
                                 "El producto base no existe.",
                                 "No se encontró el producto solicitado."
                         );
                     }
-                    List<Producto> catalogo = productoRepository.listarTodos();
+                    List<Producto> catalogo = productoRepository.listarTodos(idNegocio);
                     CompletableFuture<Object> future = CompletableFuture.supplyAsync(() ->
                         servicio.obtenerRecomendados(productoActualOpt.get(), catalogo, req.precioMin(), req.precioMax())
                     );

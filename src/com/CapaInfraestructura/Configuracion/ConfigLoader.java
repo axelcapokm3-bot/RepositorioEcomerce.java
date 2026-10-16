@@ -43,7 +43,25 @@ public final class ConfigLoader {
         if (value != null) {
             return value;
         }
-        String environmentName = switch (key) {
+        String environmentName = obtenerNombreVariableEntorno(key);
+        return environmentName == null ? null : System.getenv(environmentName);
+    }
+
+    static String obtenerPropiedadJava(String key) {
+        return valorNoVacio(System.getProperty(key));
+    }
+
+    static String obtenerVariableEntorno(String key) {
+        String environmentName = obtenerNombreVariableEntorno(key);
+        return environmentName == null ? null : valorNoVacio(System.getenv(environmentName));
+    }
+
+    static String obtenerPropiedadArchivo(String key) {
+        return valorNoVacio(properties.getProperty(key));
+    }
+
+    private static String obtenerNombreVariableEntorno(String key) {
+        return switch (key) {
             case "db.url" -> "ECOMMERCE_DB_URL";
             case "db.username" -> "ECOMMERCE_DB_USERNAME";
             case "db.password" -> "ECOMMERCE_DB_PASSWORD";
@@ -56,8 +74,16 @@ public final class ConfigLoader {
             case "stripe.success-url" -> "STRIPE_SUCCESS_URL";
             case "stripe.cancel-url" -> "STRIPE_CANCEL_URL";
             case "stripe.webhook-secret" -> "STRIPE_WEBHOOK_SECRET";
+            case "auth.token-secret" -> "AUTH_TOKEN_SECRET";
+            case "auth.bootstrap-token" -> "AUTH_BOOTSTRAP_TOKEN";
+            case "auth.expiracion-horas" -> "AUTH_EXPIRACION_HORAS";
+            case "app.perfil" -> "APP_PERFIL";
+            case "app.cors.allowed-origins" -> "APP_CORS_ALLOWED_ORIGINS";
             default -> null;
         };
-        return environmentName == null ? null : System.getenv(environmentName);
+    }
+
+    private static String valorNoVacio(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 }

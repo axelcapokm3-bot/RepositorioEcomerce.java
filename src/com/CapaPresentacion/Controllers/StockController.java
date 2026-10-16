@@ -1,6 +1,8 @@
 package com.CapaPresentacion.Controllers;
 
 import com.CapaAplicacion.Interfaces.IProductoRepository;
+import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
+import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaAplicacion.Service.StockService;
 import com.CapaDominio.Entidades.Producto;
 import com.sun.net.httpserver.HttpExchange;
@@ -12,12 +14,18 @@ public class StockController extends BaseController {
 
     private final StockService servicio;
     private final IProductoRepository productoRepository;
+    private final IProveedorTokenAcceso proveedor;
 
     public record EvaluarStockRequest(int idProducto) {}
 
-    public StockController(StockService servicio, IProductoRepository productoRepository) {
+    public StockController(StockService servicio, IProductoRepository productoRepository,
+                           IProveedorTokenAcceso proveedor) {
+        if (servicio == null || productoRepository == null || proveedor == null) {
+            throw new IllegalArgumentException("Las dependencias del controlador de stock son obligatorias.");
+        }
         this.servicio = servicio;
         this.productoRepository = productoRepository;
+        this.proveedor = proveedor;
     }
 
     @Override
@@ -28,6 +36,8 @@ public class StockController extends BaseController {
         if (handlePreflight(exchange)) {
             return;
         }
+        Principal principal = exigirAutenticacion(exchange, proveedor);
+        long idNegocio = negocioAutorizado(exchange, principal);
 
         try {
             if ("/api/stock/evaluar".equals(path)) {
@@ -36,7 +46,7 @@ public class StockController extends BaseController {
                     if (req == null || req.idProducto() <= 0) {
                         throw new ControllerException.Validacion("El ID de producto no es válido.", "Debe ser un entero positivo.");
                     }
-                    Optional<Producto> productoOpt = productoRepository.buscarPorId(req.idProducto());
+                    Optional<Producto> productoOpt = productoRepository.buscarPorId(idNegocio, req.idProducto());
                     if (productoOpt.isEmpty()) {
                         throw new ControllerException.NoEncontrado("Producto no encontrado.", "No existe el producto solicitado.");
                     }
@@ -51,7 +61,7 @@ public class StockController extends BaseController {
                     throw new ControllerException.Validacion("El ID de producto no es válido.", "Debe ser un entero positivo.");
                 }
                 if ("GET".equalsIgnoreCase(method)) {
-                    Optional<Producto> productoOpt = productoRepository.buscarPorId(id);
+                    Optional<Producto> productoOpt = productoRepository.buscarPorId(idNegocio, id);
                     if (productoOpt.isEmpty()) {
                         throw new ControllerException.NoEncontrado("Producto no encontrado.", "No existe el producto solicitado.");
                     }

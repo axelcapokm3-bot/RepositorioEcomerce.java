@@ -52,8 +52,8 @@ class AuditoriaMockIntegrationTest {
         assertNotNull(auditoriaGuardada.getFecha());
 
         // Verificamos métodos de consulta con Mockito
-        when(auditoriaRepositoryMock.buscarPorEntidad("Venta", 88)).thenReturn(List.of(auditoriaGuardada));
-        List<Auditoria> resultadoBusqueda = auditoriaService.obtenerPorProductoAsync(88).get();
+        when(auditoriaRepositoryMock.buscarPorEntidad(1L, "Venta", 88)).thenReturn(List.of(auditoriaGuardada));
+        List<Auditoria> resultadoBusqueda = auditoriaService.obtenerPorProductoAsync(1L, 88).get();
         
         assertEquals(1, resultadoBusqueda.size());
         assertEquals(88, resultadoBusqueda.get(0).getIdEntidad());

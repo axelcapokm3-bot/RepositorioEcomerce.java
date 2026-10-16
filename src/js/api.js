@@ -5,12 +5,90 @@ const API_BASE_URL = window.location.port === '5500'
     ? 'http://localhost:8080/api'
     : '/api';
 
+const CLAVE_SESION = 'ecommerce.sesion';
+const CLAVE_NEGOCIO = 'ecommerce.negocio';
+const HEADER_NEGOCIO = 'X-Negocio-Subdominio';
+
+export const sesion = {
+    obtener() {
+        try {
+            const crudo = sessionStorage.getItem(CLAVE_SESION);
+            return crudo ? JSON.parse(crudo) : null;
+        } catch {
+            return null;
+        }
+    },
+    guardar(datos) {
+        sessionStorage.setItem(CLAVE_SESION, JSON.stringify(datos));
+    },
+    limpiar() {
+        sessionStorage.removeItem(CLAVE_SESION);
+    },
+    token() {
+        const actual = sesion.obtener();
+        return actual && actual.token ? actual.token : null;
+    }
+};
+
+function esPaginaLogin() {
+    return window.location.pathname.endsWith('login.html');
+}
+
+export const negocio = {
+    detectarPorHost() {
+        try {
+            const host = (window.location.hostname || '').trim().toLowerCase();
+            const partes = host.split('.');
+            if (partes.length < 2) {
+                return null;
+            }
+            const primero = partes[0];
+            if (!primero || primero === 'www') {
+                return null;
+            }
+            return primero;
+        } catch {
+            return null;
+        }
+    },
+    obtener() {
+        try {
+            return localStorage.getItem(CLAVE_NEGOCIO) || negocio.detectarPorHost();
+        } catch {
+            return negocio.detectarPorHost();
+        }
+    },
+    fijar(subdominio) {
+        const valor = (subdominio || '').trim().toLowerCase();
+        if (!valor) {
+            negocio.limpiar();
+            return;
+        }
+        try {
+            localStorage.setItem(CLAVE_NEGOCIO, valor);
+        } catch {
+            // almacenamiento no disponible: se sigue sin override
+        }
+    },
+    limpiar() {
+        try {
+            localStorage.removeItem(CLAVE_NEGOCIO);
+        } catch {
+            // ignorar
+        }
+    }
+};
+
 async function request(endpoint, options = {}, mostrarError = true) {
     try {
+        const token = sesion.token();
+        const subdominio = negocio.obtener();
         const response = await fetch(`${API_BASE_URL}${endpoint}`, {
             ...options,
             headers: {
                 'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+                ...(subdominio ? { [HEADER_NEGOCIO]: subdominio } : {}),
                 ...(options.headers || {})
             },
             body: options.body ? JSON.stringify(options.body) : undefined
@@ -22,6 +100,16 @@ async function request(endpoint, options = {}, mostrarError = true) {
             try { data = JSON.parse(text); } catch { data = text; }
         }
 
+        if (response.status === 401) {
+            sesion.limpiar();
+            if (!esPaginaLogin()) {
+                window.location.href = 'login.html';
+            }
+            throw new Error('Su sesión expiró o no es válida. Ingrese nuevamente.');
+        }
+        if (response.status === 403) {
+            throw new Error('No tiene permisos para realizar esta operación.');
+        }
         if (!response.ok) {
             const errorMsg = data?.error || text || `Error HTTP ${response.status}`;
             throw new Error(errorMsg);
@@ -38,6 +126,34 @@ async function request(endpoint, options = {}, mostrarError = true) {
 }
 
 export const api = {
+    auth: {
+        ingreso: (correoElectronico, contraseniaPlana) => request('/auth/ingreso', {
+            method: 'POST',
+            body: { correoElectronico, contraseniaPlana }
+        }, false),
+        registro: (payload) => request('/auth/registro', { method: 'POST', body: payload }),
+        sesionActual: () => request('/auth/sesion'),
+        negocios: () => request('/auth/negocios'),
+        negocioActivo: async (idNegocio) => {
+            const datos = await request('/auth/negocio-activo', {
+                method: 'POST',
+                body: { idNegocio }
+            });
+            sesion.guardar(datos);
+            return datos;
+        },
+        vincular: async (idNegocio, idCliente, contraseniaPlana) => {
+            const datos = await request('/auth/vincular', {
+                method: 'POST',
+                body: { idNegocio, idCliente, contraseniaPlana }
+            });
+            sesion.guardar(datos);
+            return datos;
+        },
+        salir: () => {
+            sesion.limpiar();
+        }
+    },
     productos: {
         listar: () => request('/productos'),
         obtener: (id) => request(`/productos/${id}`),

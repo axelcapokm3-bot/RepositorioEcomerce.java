@@ -20,14 +20,14 @@ public class ProductoRepositorio implements IProductoRepository {
     }
 
 
-    public Optional<Producto> buscarPorId(int id) {
+    public Optional<Producto> buscarPorId(long idNegocio, int id) {
         if (id <= 0) {
             throw new IllegalArgumentException("El ID debe ser mayor a cero. ID recibido: " + id);
         }
 
         for (int i = 0; i < productos.size(); i++) {
             Producto productoActual = productos.get(i);
-            if (productoActual.getId() == id) {
+            if (productoActual.getId() == id && productoActual.getIdNegocio() == idNegocio) {
                 return Optional.of(productoActual);
             }
         }
@@ -35,12 +35,18 @@ public class ProductoRepositorio implements IProductoRepository {
     }
 
 
-    public List<Producto> listarTodos() {
-        return new ArrayList<>(productos);
+    public List<Producto> listarTodos(long idNegocio) {
+        List<Producto> filtrados = new ArrayList<>();
+        for (Producto producto : productos) {
+            if (producto.getIdNegocio() == idNegocio) {
+                filtrados.add(producto);
+            }
+        }
+        return filtrados;
     }
 
    
-    public void actualizar(int id, Producto producto) {
+    public void actualizar(long idNegocio, int id, Producto producto) {
         if (producto == null) {
             throw new IllegalArgumentException("El producto no puede ser nulo.");
         }
@@ -49,20 +55,20 @@ public class ProductoRepositorio implements IProductoRepository {
         }
 
         for (int i = 0; i < productos.size(); i++) {
-            if (productos.get(i).getId() == id) {
+            if (productos.get(i).getId() == id && productos.get(i).getIdNegocio() == idNegocio) {
                 productos.set(i, producto);
                 return;
             }
         }
     }
 
-    public void eliminar(int id) {
+    public void eliminar(long idNegocio, int id) {
         if (id <= 0) {
             throw new IllegalArgumentException("El ID debe ser mayor a cero. ID recibido: " + id);
         }
 
         for (int i = 0; i < productos.size(); i++) {
-            if (productos.get(i).getId() == id) {
+            if (productos.get(i).getId() == id && productos.get(i).getIdNegocio() == idNegocio) {
                 productos.remove(i);
                 return;
             }

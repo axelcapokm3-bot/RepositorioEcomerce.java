@@ -6,7 +6,6 @@ import com.stripe.model.Event;
 import com.sun.net.httpserver.HttpExchange;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 /** Endpoint para eventos firmados de Stripe. */
@@ -25,8 +24,12 @@ public class StripeWebhookController extends BaseController {
             sendResponse(exchange, 405, Map.of("error", "Método no permitido. Use POST."));
             return;
         }
+        if (excedeLimite(exchange, 60, "webhook-stripe")) {
+            sendResponse(exchange, 429, Map.of("error", "Demasiadas solicitudes. Intente nuevamente en un minuto."));
+            return;
+        }
 
-        String payload = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+        String payload = leerCuerpoLimitado(exchange);
         try {
             if (!webhookService.haySecretoFirmaConfigurado()) {
                 sendResponse(exchange, 503, Map.of("error", "El secreto del webhook de Stripe no está configurado."));

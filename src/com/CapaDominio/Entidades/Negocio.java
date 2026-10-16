@@ -3,7 +3,7 @@ package com.CapaDominio.Entidades;
 import java.time.LocalDateTime;
 
 public class Negocio {
-    private int id;
+    private long id;
     private String nombre;
     private String subdominio;
     private String emailContacto;
@@ -11,7 +11,7 @@ public class Negocio {
     private LocalDateTime fechaAlta;
     private LocalDateTime fechaBaja;
 
-    public Negocio(int id, String nombre, String subdominio, String emailContacto, boolean activo, LocalDateTime fechaAlta, LocalDateTime fechaBaja) {
+    public Negocio(long id, String nombre, String subdominio, String emailContacto, boolean activo, LocalDateTime fechaAlta, LocalDateTime fechaBaja) {
         if (nombre == null || nombre.trim().isEmpty()) {
             throw new IllegalArgumentException("El nombre del negocio no puede estar vacío.");
         }
@@ -27,7 +27,7 @@ public class Negocio {
         this.fechaBaja = fechaBaja;
     }
 
-    public int getId() { return id; }
+    public long getId() { return id; }
     public String getNombre() { return nombre; }
     public String getSubdominio() { return subdominio; }
     public String getEmailContacto() { return emailContacto; }

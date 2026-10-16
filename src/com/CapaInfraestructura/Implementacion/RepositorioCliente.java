@@ -42,16 +42,22 @@ private static final AtomicInteger siguienteId = new AtomicInteger(maximoId());
 
 
     @Override
-    public List<Cliente> listarTodos() {
-        return new ArrayList<>(clientes);
+    public List<Cliente> listarTodos(long idNegocio) {
+        List<Cliente> filtrados = new ArrayList<>();
+        for (Cliente cliente : clientes) {
+            if (cliente.getIdNegocio() == idNegocio) {
+                filtrados.add(cliente);
+            }
+        }
+        return filtrados;
     }
 
     @Override
-    public Optional<Cliente> buscarPorId(int id ) {
+    public Optional<Cliente> buscarPorId(long idNegocio, int id ) {
                 for(int i = 0 ; i < clientes.size() ; i ++ ) { 
    Cliente clienteActual = clientes.get(i);
         
-        if (clienteActual.getId() == id) { 
+        if (clienteActual.getId() == id && clienteActual.getIdNegocio() == idNegocio) { 
             return Optional.of(clienteActual);
         }
     }
@@ -59,13 +65,13 @@ private static final AtomicInteger siguienteId = new AtomicInteger(maximoId());
 }
 
     @Override
-    public void actualizar(int id, Cliente cliente) {
+    public void actualizar(long idNegocio, int id, Cliente cliente) {
         if (cliente == null) {
             throw new IllegalArgumentException("El cliente no puede ser nulo.");
         }
 
         for (int i = 0; i < clientes.size(); i++) {
-            if (clientes.get(i).getId() == id) {
+            if (clientes.get(i).getId() == id && clientes.get(i).getIdNegocio() == idNegocio) {
                 clientes.set(i, cliente);
                 return;
             }
@@ -73,13 +79,13 @@ private static final AtomicInteger siguienteId = new AtomicInteger(maximoId());
     }
 
     @Override
-    public void eliminar(int id) {
+    public void eliminar(long idNegocio, int id) {
         if (id <= 0) {
             throw new IllegalArgumentException("El ID debe ser mayor a cero. ID recibido: " + id);
         }
 
         for (int i = 0; i < clientes.size(); i++) {
-            if (clientes.get(i).getId() == id) {
+            if (clientes.get(i).getId() == id && clientes.get(i).getIdNegocio() == idNegocio) {
                 clientes.remove(i);
                 return;
             }

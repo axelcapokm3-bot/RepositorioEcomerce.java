@@ -98,7 +98,8 @@ public class VentaService implements IVentasService {
     }
 
     @Override
-    public CompletableFuture<Void> crearVentaAsync(final Carrito carrito,
+    public CompletableFuture<Void> crearVentaAsync(final long idNegocio,
+                                                   final Carrito carrito,
                                                    final String tipoPago,
                                                    final IDescuentos descuento) {
         return executor.ejecutar(new Runnable() {
@@ -107,16 +108,17 @@ public class VentaService implements IVentasService {
             Carrito carritoOrigen = carrito;
             if (carritoRepository != null) {
                 carritoOrigen = obtenerCarrito(carrito == null ? 0 : carrito.getIdCliente());
-            persistirVentaAtomica(carritoOrigen, tipoPago, descuento);
+            persistirVentaAtomica(idNegocio, carritoOrigen, tipoPago, descuento);
                 carritoRepository.eliminarPorClienteId(carritoOrigen.getIdCliente());
                 return;
             }
-            persistirVentaAtomica(carritoOrigen, tipoPago, descuento);
+            persistirVentaAtomica(idNegocio, carritoOrigen, tipoPago, descuento);
             }
         });
     }
 
-    public CompletableFuture<Void> crearVentaAsync(final int idCliente,
+    public CompletableFuture<Void> crearVentaAsync(final long idNegocio,
+                                                   final int idCliente,
                                                    final String tipoPago,
                                                    final IDescuentos descuento) {
         return executor.ejecutar(new Runnable() {
@@ -127,7 +129,7 @@ public class VentaService implements IVentasService {
             }
 
             Carrito carrito = obtenerCarrito(idCliente);
-            persistirVentaAtomica(carrito, tipoPago, descuento);
+            persistirVentaAtomica(idNegocio, carrito, tipoPago, descuento);
             carritoRepository.eliminarPorClienteId(idCliente);
             }
         });
@@ -144,18 +146,21 @@ public class VentaService implements IVentasService {
                         "No existe un carrito con artículos para el cliente solicitado."));
     }
 
-    private void persistirVentaAtomica(Carrito carrito, String tipoPago, IDescuentos descuento) {
+    private void persistirVentaAtomica(long idNegocio, Carrito carrito, String tipoPago, IDescuentos descuento) {
         validarCarrito(carrito);
+        validarClienteDeNegocio(idNegocio, carrito.getIdCliente());
         TipoDePago tipoDePago = convertirTipoPago(tipoPago);
         Venta nuevaVenta = new Venta(carrito.getIdCliente(), tipoDePago);
+        nuevaVenta.setIdNegocio(idNegocio);
         nuevaVenta.cargarDetallesDesdeCarrito(carrito, descuento);
 
         if (transaccion == null) {
-            validarYActualizarStock(carrito);
+            validarYActualizarStock(idNegocio, carrito);
             ventaRepository.guardar(nuevaVenta);
         } else {
+            final long negocioTx = idNegocio;
             ejecutarTransaccion(connection -> {
-                validarYActualizarStock(carrito, connection);
+                validarYActualizarStock(negocioTx, carrito, connection);
                 ventaRepository.guardar(nuevaVenta, connection);
             });
         }
@@ -164,11 +169,25 @@ public class VentaService implements IVentasService {
         eventBus.publicar(new VentasEventos("CREADA", nuevaVenta));
     }
 
+    private void validarClienteDeNegocio(long idNegocio, int idCliente) {
+        if (idNegocio <= 0) {
+            throw new ReglaNegocioException("El negocio de la venta no es válido.");
+        }
+        if (clienteRepository == null) {
+            return;
+        }
+        if (clienteRepository.buscarPorId(idNegocio, idCliente).isEmpty()) {
+            throw new RecursoNoEncontradoException(
+                    "El cliente no pertenece al negocio indicado.");
+        }
+    }
+
     @Override
-    public CompletableFuture<ResultadoPago> crearVentaConPagoAsync(final Carrito carrito,
-                                                                  final String tipoPago,
-                                                                  final IDescuentos descuento,
-                                                                  final String claveIdempotenciaSolicitud) {
+    public CompletableFuture<ResultadoPago> crearVentaConPagoAsync(final long idNegocio,
+                                                                   final Carrito carrito,
+                                                                   final String tipoPago,
+                                                                   final IDescuentos descuento,
+                                                                   final String claveIdempotenciaSolicitud) {
         return executor.ejecutar(new java.util.concurrent.Callable<ResultadoPago>() {
             @Override
             public ResultadoPago call() {
@@ -184,6 +203,7 @@ public class VentaService implements IVentasService {
                 }
 
                 validarCarrito(carrito);
+                validarClienteDeNegocio(idNegocio, carrito.getIdCliente());
                 TipoDePago tipoDePago = convertirTipoPago(tipoPago);
                 if (tipoDePago != TipoDePago.MERCADO_PAGO && tipoDePago != TipoDePago.STRIPE) {
                     throw new ReglaNegocioException(
@@ -192,21 +212,22 @@ public class VentaService implements IVentasService {
 
                 Venta ventaSolicitada = new Venta(
                         carrito.getIdCliente(), tipoDePago, claveIdempotenciaSolicitud);
+                ventaSolicitada.setIdNegocio(idNegocio);
                 ventaSolicitada.cargarDetallesDesdeCarrito(carrito, descuento);
                 Optional<Venta> ventaExistente =
-                        ventaRepository.buscarPorClaveIdempotenciaSolicitud(claveIdempotenciaSolicitud);
+                        ventaRepository.buscarPorClaveIdempotenciaSolicitud(idNegocio, claveIdempotenciaSolicitud);
                 if (ventaExistente.isPresent()) {
                     validarMismaSolicitud(ventaExistente.get(), ventaSolicitada);
                     return pagoService.iniciarCheckout(ventaExistente.get());
                 }
 
-                pagoService.validarConfiguracionCheckout(tipoDePago);
+                pagoService.validarConfiguracionCheckout(idNegocio, tipoDePago);
 
                 try {
                     guardarVentaDeCheckout(ventaSolicitada, carrito);
                 } catch (RuntimeException exception) {
                     Optional<Venta> ventaConcurrente =
-                            ventaRepository.buscarPorClaveIdempotenciaSolicitud(claveIdempotenciaSolicitud);
+                            ventaRepository.buscarPorClaveIdempotenciaSolicitud(idNegocio, claveIdempotenciaSolicitud);
                     if (ventaConcurrente.isEmpty()) {
                         throw exception;
                     }
@@ -227,7 +248,7 @@ public class VentaService implements IVentasService {
         ejecutarTransaccion(new com.CapaAplicacion.Interfaces.OperacionTransaccional() {
             @Override
             public void ejecutar(Connection connection) {
-                validarYActualizarStock(carrito, connection);
+                validarYActualizarStock(venta.getIdNegocio(), carrito, connection);
                 try {
                     ventaRepository.guardar(venta, connection);
                 } catch (java.sql.SQLException exception) {
@@ -292,16 +313,20 @@ public class VentaService implements IVentasService {
         }
     }
 
-    private void validarYActualizarStock(Carrito carrito) {
-        validarYActualizarStock(carrito, null);
+    private void validarYActualizarStock(long idNegocio, Carrito carrito) {
+        validarYActualizarStock(idNegocio, carrito, null);
     }
 
-    private void validarYActualizarStock(Carrito carrito, Connection connection) {
+    private void validarYActualizarStock(long idNegocio, Carrito carrito, Connection connection) {
         for (ItemCarrito item : carrito.getItems().values()) {
             if (item == null || item.getProducto() == null) {
                 throw new ReglaNegocioException("El carrito contiene un artículo inválido.");
             }
             Producto producto = item.getProducto();
+            if (producto.getIdNegocio() != 0 && producto.getIdNegocio() != idNegocio) {
+                throw new ReglaNegocioException(
+                        "El producto no pertenece al negocio de la venta: " + producto.getNombre());
+            }
             if (producto.getStockDisponible() < item.getCantidad()) {
                 throw new StockInsuficienteException(
                         "No hay stock suficiente para el producto: " + producto.getNombre());
@@ -311,10 +336,10 @@ public class VentaService implements IVentasService {
             Producto producto = item.getProducto();
             producto.reducirStock(item.getCantidad());
             if (connection == null) {
-                productoRepository.actualizar(producto.getId(), producto);
+                productoRepository.actualizar(idNegocio, producto.getId(), producto);
             } else {
                 try {
-                    productoRepository.actualizar(producto.getId(), producto, connection);
+                    productoRepository.actualizar(idNegocio, producto.getId(), producto, connection);
                 } catch (java.sql.SQLException exception) {
                     throw new IllegalStateException("No se pudo actualizar el stock dentro de la transacción.", exception);
                 }
@@ -327,25 +352,25 @@ public class VentaService implements IVentasService {
     }
 
     @Override
-    public CompletableFuture<Optional<Venta>> buscarPorIdAsync(final int id) {
+    public CompletableFuture<Optional<Venta>> buscarPorIdAsync(final long idNegocio, final int id) {
         return executor.ejecutar(new java.util.concurrent.Callable<Optional<Venta>>() {
             @Override
             public Optional<Venta> call() {
-                return ventaRepository.buscarPorId(id);
+                return ventaRepository.buscarPorId(idNegocio, id);
             }
         });
     }
 
 
     @Override
-    public CompletableFuture<ResultadoPago> registrarPagoAsync(final int idVenta) {
+    public CompletableFuture<ResultadoPago> registrarPagoAsync(final long idNegocio, final int idVenta) {
         return executor.ejecutar(new java.util.concurrent.Callable<ResultadoPago>() {
             @Override
             public ResultadoPago call() {
                 if (pagoService == null) {
                     throw new ReglaNegocioException("El servicio de pagos no está configurado.");
                 }
-                Optional<Venta> venta = ventaRepository.buscarPorId(idVenta);
+                Optional<Venta> venta = ventaRepository.buscarPorId(idNegocio, idVenta);
                 if (venta.isEmpty()) {
                     throw new RecursoNoEncontradoException(
                             "No existe la venta solicitada para iniciar el pago.");
@@ -356,12 +381,12 @@ public class VentaService implements IVentasService {
     }
 
 @Override
-    public CompletableFuture<Void> cancelarVentaAsync(final int idVenta) {
+    public CompletableFuture<Void> cancelarVentaAsync(final long idNegocio, final int idVenta) {
         return executor.ejecutar(new Runnable() {
             @Override
             public void run() {
                 try {
-                    Optional<Venta> ventaOpt = ventaRepository.buscarPorId(idVenta);
+                    Optional<Venta> ventaOpt = ventaRepository.buscarPorId(idNegocio, idVenta);
                     if (!ventaOpt.isPresent()) {
                         throw new RuntimeException("No se puede cancelar. Venta no encontrada con ID: " + idVenta);
                     }
@@ -370,18 +395,18 @@ public class VentaService implements IVentasService {
                     venta.Cancelar();
 
                     for (DetalleVenta i : venta.getDetalles()) {
-                        Optional<Producto> productoOpt = productoRepository.buscarPorId(i.getIdProducto());
+                        Optional<Producto> productoOpt = productoRepository.buscarPorId(idNegocio, i.getIdProducto());
                         if (!productoOpt.isPresent()) {
                             throw new RuntimeException("Error crítico: El producto de la venta ya no existe.");
                         }
 
                         Producto producto = productoOpt.get();
                       producto.reintegrarStock(i.getCantidad());
-                        productoRepository.actualizar(producto.getId(), producto);
+                        productoRepository.actualizar(idNegocio, producto.getId(), producto);
                     }
 
 
-                    ventaRepository.actualizar(idVenta, venta);
+                    ventaRepository.actualizar(idNegocio, idVenta, venta);
 
                
                     eventBus.publicar(new VentasEventos("CANCELADA", venta));

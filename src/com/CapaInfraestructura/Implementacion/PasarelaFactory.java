@@ -5,28 +5,27 @@ import com.CapaAplicacion.Interfaces.IPasarelaPago;
 import com.CapaDominio.Entidades.TipoDePago;
 import com.CapaDominio.Excepciones.ReglaNegocioException;
 
-import java.util.EnumMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class PasarelaFactory {
-    private static final Map<TipoDePago, IPasarelaPago> cache =
-            new EnumMap<>(TipoDePago.class);
+    private static final Map<String, IPasarelaPago> cache = new ConcurrentHashMap<>();
     private static INegocioRepository negocioRepositoryStatic;
 
     public static synchronized void inicializar(INegocioRepository negocioRepo) {
         negocioRepositoryStatic = negocioRepo;
         cache.clear();
-        cache.put(TipoDePago.EFECTIVO, new PasarelaEfectivo());
-        cache.put(TipoDePago.TRANSFERENCIA, new PasarelaTransferencia(negocioRepo));
-        cache.put(TipoDePago.MERCADO_PAGO, new PasarelaMercadoPago(1, negocioRepo));
-        cache.put(TipoDePago.STRIPE, new PasarelaStripe(negocioRepo));
+        cache.put(clave(0L, TipoDePago.EFECTIVO), new PasarelaEfectivo());
     }
 
-    public static synchronized IPasarelaPago obtener(TipoDePago tipo) {
+    public static synchronized IPasarelaPago obtener(long idNegocio, TipoDePago tipo) {
+        if (idNegocio <= 0) {
+            throw new ReglaNegocioException("El negocio del pago no es válido.");
+        }
         if (tipo == null) {
             throw new ReglaNegocioException("El tipo de pago no puede ser nulo.");
         }
-        IPasarelaPago pasarela = cache.get(tipo);
+        IPasarelaPago pasarela = cache.get(clave(idNegocio, tipo));
         if (pasarela != null) {
             return pasarela;
         }
@@ -39,16 +38,20 @@ public class PasarelaFactory {
                 pasarela = new PasarelaTransferencia(negocioRepositoryStatic);
                 break;
             case MERCADO_PAGO:
-                pasarela = new PasarelaMercadoPago(1, negocioRepositoryStatic);
+                pasarela = new PasarelaMercadoPago(idNegocio, negocioRepositoryStatic);
                 break;
             case STRIPE:
-                pasarela = new PasarelaStripe(negocioRepositoryStatic);
+                pasarela = new PasarelaStripe(idNegocio, negocioRepositoryStatic);
                 break;
             default:
                 throw new ReglaNegocioException("Tipo de pago no soportado: " + tipo);
         }
 
-        cache.put(tipo, pasarela);
+        cache.put(clave(idNegocio, tipo), pasarela);
         return pasarela;
+    }
+
+    private static String clave(long idNegocio, TipoDePago tipo) {
+        return idNegocio + ":" + tipo.name();
     }
 }

@@ -10,6 +10,8 @@ import java.util.Map;
 
 /** Endpoint para notificaciones de pago enviadas por Mercado Pago. */
 public class WebhookController extends BaseController {
+    private static final java.util.logging.Logger LOGGER =
+            java.util.logging.Logger.getLogger(WebhookController.class.getName());
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private final WebhookService webhookService;
 
@@ -25,11 +27,15 @@ public class WebhookController extends BaseController {
             sendResponse(exchange, 405, Map.of("error", "Método no permitido. Use POST."));
             return;
         }
+        if (excedeLimite(exchange, 60, "webhook-mp")) {
+            sendResponse(exchange, 429, Map.of("error", "Demasiadas solicitudes. Intente nuevamente en un minuto."));
+            return;
+        }
 
         final String notificationId;
         final String notificationType;
         try {
-            JsonNode body = OBJECT_MAPPER.readTree(exchange.getRequestBody());
+            JsonNode body = OBJECT_MAPPER.readTree(leerCuerpoLimitado(exchange));
             JsonNode idNode = body == null ? null : body.path("data").path("id");
             JsonNode typeNode = body == null ? null : (body.has("type") ? body.path("type") : body.path("topic"));
             
@@ -52,7 +58,7 @@ public class WebhookController extends BaseController {
                 return;
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            LOGGER.log(java.util.logging.Level.WARNING, "Cuerpo de notificación de Mercado Pago inválido.", e);
             sendResponse(exchange, 400, Map.of("error", "El cuerpo JSON de la notificación no es válido."));
             return;
         }

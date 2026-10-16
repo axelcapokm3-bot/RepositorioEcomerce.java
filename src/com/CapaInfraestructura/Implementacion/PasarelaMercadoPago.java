@@ -3,6 +3,7 @@ package com.CapaInfraestructura.Implementacion;
 import com.CapaAplicacion.Interfaces.INegocioRepository;
 import com.CapaAplicacion.Interfaces.IPasarelaPago;
 import com.CapaInfraestructura.Configuracion.ConfigLoader;
+import com.CapaInfraestructura.Configuracion.ConfiguracionMercadoPago;
 import com.CapaDominio.Entidades.ConfiguracionCatalogo;
 import com.CapaDominio.Entidades.DetalleVenta;
 import com.CapaDominio.Entidades.ResultadoPago;
@@ -38,18 +39,21 @@ public class PasarelaMercadoPago implements IPasarelaPago {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final String RETORNO_AUTOMATICO_APROBADO = "approved";
 
-    private final int idNegocio;
+    private final long idNegocio;
     private final INegocioRepository negocioRepository;
     private final OrderClient orderClient;
+    private final ConfiguracionMercadoPago configuracionMercadoPago;
 
-    public PasarelaMercadoPago(int idNegocio, INegocioRepository negocioRepository) {
+    public PasarelaMercadoPago(long idNegocio, INegocioRepository negocioRepository) {
         this(idNegocio, negocioRepository, new OrderClient());
     }
 
-    PasarelaMercadoPago(int idNegocio, INegocioRepository negocioRepository, OrderClient orderClient) {
+    PasarelaMercadoPago(long idNegocio, INegocioRepository negocioRepository, OrderClient orderClient) {
         this.idNegocio = idNegocio;
         this.negocioRepository = negocioRepository;
         this.orderClient = orderClient;
+        this.configuracionMercadoPago =
+                new ConfiguracionMercadoPago(negocioRepository, idNegocio);
     }
 
     @Override
@@ -151,11 +155,7 @@ public class PasarelaMercadoPago implements IPasarelaPago {
     }
 
     private String buscarAccessToken() {
-        String accessToken = ConfigLoader.getProperty("mercadopago.access-token");
-        if (!vacio(accessToken)) {
-            return accessToken;
-        }
-        return buscarConfiguracion("mercado_pago_access_token");
+        return configuracionMercadoPago.obtenerAccessToken();
     }
 
     private ConfiguracionRetorno obtenerConfiguracionRetorno() {

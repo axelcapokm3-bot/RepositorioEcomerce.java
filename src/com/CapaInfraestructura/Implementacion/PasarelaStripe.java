@@ -24,9 +24,11 @@ import java.util.Map;
 
 /** Pasarela Stripe que crea una Checkout Session y devuelve su URL de pago. */
 public class PasarelaStripe implements IPasarelaPago {
+    private final long idNegocio;
     private final INegocioRepository negocioRepository;
 
-    public PasarelaStripe(INegocioRepository negocioRepository) {
+    public PasarelaStripe(long idNegocio, INegocioRepository negocioRepository) {
+        this.idNegocio = idNegocio;
         this.negocioRepository = negocioRepository;
     }
 
@@ -151,7 +153,7 @@ public class PasarelaStripe implements IPasarelaPago {
             return valor;
         }
         if (negocioRepository != null) {
-            Map<ConfiguracionCatalogo, String> efectivas = negocioRepository.listarConfiguracionesEfectivas(1);
+            Map<ConfiguracionCatalogo, String> efectivas = negocioRepository.listarConfiguracionesEfectivas(idNegocio);
             for (Map.Entry<ConfiguracionCatalogo, String> entrada : efectivas.entrySet()) {
                 if (claveCatalogo.equalsIgnoreCase(entrada.getKey().getClave())
                         && !vacio(entrada.getValue())) {

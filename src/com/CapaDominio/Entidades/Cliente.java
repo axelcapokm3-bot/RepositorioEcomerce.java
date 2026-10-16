@@ -13,6 +13,7 @@ public class Cliente {
     private String localidad;
     private boolean activo;
     private String motivoBaja;
+    private long idNegocio;
 
     public Cliente(int id, String dni, String nombre, String apellido, String direccion, LocalDate fechaNacimiento, String localidad) {
 
@@ -124,4 +125,7 @@ public void asignarElCuit(String cuit ) {
 
     public boolean isActivo() { return activo; }
     public void setActivo(boolean activo) { this.activo = activo; }
+
+    public long getIdNegocio() { return idNegocio; }
+    public void setIdNegocio(long idNegocio) { this.idNegocio = idNegocio; }
 }

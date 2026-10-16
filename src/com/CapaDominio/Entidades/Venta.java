@@ -13,6 +13,7 @@ public class Venta {
     private TipoDePago tipoPago;
     private List<DetalleVenta> detalles;
     private String claveIdempotenciaSolicitud;
+    private long idNegocio;
 
     public Venta(int idCliente, TipoDePago tipoPago) {
         this(idCliente, tipoPago, null);
@@ -63,6 +64,9 @@ this.detalles.add(new DetalleVenta(
     item.getCantidad()
 ));
         }
+        for (DetalleVenta detalle : this.detalles) {
+            detalle.setIdNegocio(this.idNegocio);
+        }
     }
 
 
@@ -104,6 +108,17 @@ this.detalles.add(new DetalleVenta(
 
     public String getClaveIdempotenciaSolicitud() {
         return claveIdempotenciaSolicitud;
+    }
+
+    public long getIdNegocio() {
+        return idNegocio;
+    }
+
+    public void setIdNegocio(long idNegocio) {
+        this.idNegocio = idNegocio;
+        for (DetalleVenta detalle : detalles) {
+            detalle.setIdNegocio(idNegocio);
+        }
     }
 
   private void cambiarEstado(EstadoVenta nuevoEstado) {

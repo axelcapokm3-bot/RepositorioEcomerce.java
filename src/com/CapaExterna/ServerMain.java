@@ -2,7 +2,6 @@ package com.CapaExterna;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.concurrent.Executors;
 
 import com.CapaAplicacion.Interfaces.EventBus;
 import com.CapaAplicacion.Interfaces.INotificadorEmail;
@@ -12,6 +11,8 @@ import com.CapaInfraestructura.Implementacion.NotificadorEmailMock;
 import com.CapaInfraestructura.Implementacion.NotificacionListener;
 import com.CapaAplicacion.Interfaces.IAuditoriaRepository;
 import com.CapaAplicacion.Interfaces.IClienteRepositorio;
+import com.CapaAplicacion.Interfaces.ICuentaNegocioRepositorio;
+import com.CapaAplicacion.Interfaces.ICuentaRepositorio;
 import com.CapaAplicacion.Interfaces.IMetodoPagoRepositorio;
 import com.CapaAplicacion.Interfaces.IProductoRepository;
 import com.CapaAplicacion.Interfaces.INegocioRepository;
@@ -19,8 +20,10 @@ import com.CapaAplicacion.Interfaces.IPagoRepository;
 import com.CapaAplicacion.Interfaces.IVentaRepository;
 import com.CapaAplicacion.Interfaces.ICarritoRepository;
 import com.CapaAplicacion.Service.AuditoriaService;
+import com.CapaAplicacion.Service.AutenticacionService;
 import com.CapaAplicacion.Service.ClienteService;
 import com.CapaAplicacion.Service.MetodoPagoService;
+import com.CapaAplicacion.Service.NegocioService;
 import com.CapaAplicacion.Service.ProductoService;
 import com.CapaAplicacion.Service.PagoService;
 import com.CapaAplicacion.Service.RecomendacionService;
@@ -28,27 +31,34 @@ import com.CapaAplicacion.Service.StockService;
 import com.CapaAplicacion.Service.StripeWebhookService;
 import com.CapaAplicacion.Service.VentaService;
 import com.CapaAplicacion.Service.WebhookService;
+import com.CapaInfraestructura.Implementacion.AdaptadorContrasena;
 import com.CapaInfraestructura.Implementacion.InMemoryEventBus;
 import com.CapaInfraestructura.Implementacion.RegistroExecutors;
 import com.CapaInfraestructura.Implementacion.MySqlRepositorioCliente;
+import com.CapaInfraestructura.Implementacion.MySqlRepositorioCuenta;
+import com.CapaInfraestructura.Implementacion.MySqlRepositorioCuentaNegocio;
 import com.CapaInfraestructura.Implementacion.MySqlRepositorioProducto;
 import com.CapaInfraestructura.Implementacion.MySqlRepositorioVenta;
 import com.CapaInfraestructura.Implementacion.MySqlRepositorioPago;
 import com.CapaInfraestructura.Implementacion.MySqlRepositorioAuditoria;
 import com.CapaInfraestructura.Implementacion.MySqlNegocioRepository;
 import com.CapaInfraestructura.Implementacion.PasarelaFactory;
+import com.CapaInfraestructura.Implementacion.ProveedorTokenAcceso;
 import com.CapaInfraestructura.Implementacion.RepositorioMetodoPago;
 import com.CapaInfraestructura.Implementacion.RedisCarritoRepository;
 import redis.clients.jedis.JedisPool;
 import com.CapaPresentacion.Controllers.AuditoriaController;
+import com.CapaPresentacion.Controllers.AuthController;
 import com.CapaPresentacion.Controllers.ClienteController;
 import com.CapaPresentacion.Controllers.MetodoPagoController;
+import com.CapaPresentacion.Controllers.NegocioConfigController;
 import com.CapaPresentacion.Controllers.ProductoController;
 import com.CapaPresentacion.Controllers.RecomendacionController;
 import com.CapaPresentacion.Controllers.StockController;
 import com.CapaPresentacion.Controllers.VentaController;
 import com.CapaPresentacion.Controllers.WebhookController;
 import com.CapaPresentacion.Controllers.StripeWebhookController;
+import com.CapaPresentacion.Utilidades.ResolutorNegocio;
 import com.sun.net.httpserver.HttpServer;
 
 public class ServerMain {
@@ -74,6 +84,8 @@ public class ServerMain {
             IClienteRepositorio clienteRepo = new MySqlRepositorioCliente();
             IMetodoPagoRepositorio metodoPagoRepo = new RepositorioMetodoPago();
             IAuditoriaRepository auditoriaRepo = new MySqlRepositorioAuditoria();
+            ICuentaRepositorio cuentaRepo = new MySqlRepositorioCuenta();
+            ICuentaNegocioRepositorio vinculoRepo = new MySqlRepositorioCuentaNegocio();
             ICarritoRepository carritoRepo = new RedisCarritoRepository(new JedisPool("localhost", 6379));
 
 
@@ -83,7 +95,9 @@ public class ServerMain {
             new NotificacionListener(eventBus, notificador);
 
             PasarelaFactory.inicializar(negocioRepo);
+            ResolutorNegocio.inicializar(negocioRepo);
             PagoService pagoService = new PagoService(pagoRepo, ventaRepo, eventBus);
+            NegocioService negocioService = new NegocioService(negocioRepo);
 
           
             ProductoService productoService = new ProductoService(productoRepo, eventBus);
@@ -96,6 +110,12 @@ public class ServerMain {
             StripeWebhookService stripeWebhookService =
                     new StripeWebhookService(negocioRepo, pagoRepo, ventaRepo, eventBus);
             AuditoriaService auditoriaService = new AuditoriaService(auditoriaRepo, eventBus);
+            ProveedorTokenAcceso proveedorToken = new ProveedorTokenAcceso();
+            AutenticacionService autenticacionService = new AutenticacionService(
+                    cuentaRepo, clienteRepo, vinculoRepo, negocioRepo, new AdaptadorContrasena(), proveedorToken,
+                    RegistroExecutors.obtener(
+                            com.CapaAplicacion.Interfaces.TipoServicio.AUTENTICACION),
+                    com.CapaInfraestructura.Configuracion.ConfigLoader.getProperty("auth.bootstrap-token"));
             StockService stockService = new StockService();
             RecomendacionService recomendacionService = new RecomendacionService();
 
@@ -103,20 +123,22 @@ public class ServerMain {
             HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
 
    
-            server.createContext("/api/productos", new ProductoController(productoService));
-            server.createContext("/api/clientes", new ClienteController(clienteService));
-            server.createContext("/api/metodos-pago", new MetodoPagoController(metodoPagoService));
-            server.createContext("/api/ventas", new VentaController(ventaService, productoRepo));
+            server.createContext("/api/productos", new ProductoController(productoService, proveedorToken));
+            server.createContext("/api/clientes", new ClienteController(clienteService, proveedorToken));
+            server.createContext("/api/auth", new AuthController(autenticacionService, proveedorToken));
+            server.createContext("/api/metodos-pago", new MetodoPagoController(metodoPagoService, proveedorToken));
+            server.createContext("/api/ventas", new VentaController(ventaService, productoRepo, ventaRepo, proveedorToken));
             server.createContext("/api/webhooks/mercado-pago",
                     new WebhookController(mercadoPagoWebhookService));
             server.createContext("/api/webhooks/stripe",
                     new StripeWebhookController(stripeWebhookService));
-            server.createContext("/api/auditoria", new AuditoriaController(auditoriaService));
-            server.createContext("/api/stock", new StockController(stockService, productoRepo));
-            server.createContext("/api/recomendaciones", new RecomendacionController(recomendacionService, productoRepo));
+            server.createContext("/api/negocios", new NegocioConfigController(negocioService, proveedorToken));
+            server.createContext("/api/auditoria", new AuditoriaController(auditoriaService, proveedorToken));
+            server.createContext("/api/stock", new StockController(stockService, productoRepo, proveedorToken));
+            server.createContext("/api/recomendaciones", new RecomendacionController(recomendacionService, productoRepo, proveedorToken));
 
      
-            server.setExecutor(Executors.newCachedThreadPool());
+            server.setExecutor(crearExecutorHttp());
 
 
             server.start();
@@ -131,6 +153,28 @@ public class ServerMain {
             System.err.println("❌ Error al iniciar el servidor: " + e.getMessage());
             e.printStackTrace();
         }
+    }
+
+    private static java.util.concurrent.Executor crearExecutorHttp() {
+        java.util.concurrent.ThreadFactory fabrica = new java.util.concurrent.ThreadFactory() {
+            private final java.util.concurrent.atomic.AtomicInteger contador =
+                    new java.util.concurrent.atomic.AtomicInteger(1);
+
+            @Override
+            public Thread newThread(Runnable tarea) {
+                Thread hilo = new Thread(tarea, "http-" + contador.getAndIncrement());
+                hilo.setDaemon(false);
+                return hilo;
+            }
+        };
+        return new java.util.concurrent.ThreadPoolExecutor(
+                50,
+                200,
+                60L,
+                java.util.concurrent.TimeUnit.SECONDS,
+                new java.util.concurrent.LinkedBlockingQueue<>(2000),
+                fabrica,
+                new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
     }
 
 }

@@ -19,8 +19,20 @@ public class MySqlRepositorioAuditoria implements IAuditoriaRepository {
             + "(accion, entidad, id_entidad, usuario, ip_origen, user_agent, resultado, descripcion, detalle) "
             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-    private static final String SELECT_BASE = "SELECT id, accion, entidad, id_entidad, usuario, ip_origen, "
-            + "user_agent, resultado, descripcion, detalle, fecha FROM auditoria ";
+    private static final String SELECT_BASE = "SELECT a.id, a.accion, a.entidad, a.id_entidad, a.usuario, a.ip_origen, "
+            + "a.user_agent, a.resultado, a.descripcion, a.detalle, a.fecha FROM auditoria a ";
+
+    private static final String FILTRO_NEGOCIO =
+            "((a.entidad = 'Venta' AND EXISTS (SELECT 1 FROM ventas v WHERE v.id = a.id_entidad AND v.id_negocio = ?)) "
+            + "OR (a.entidad = 'Producto' AND EXISTS (SELECT 1 FROM productos p WHERE p.id = a.id_entidad AND p.id_negocio = ?)) "
+            + "OR (a.entidad = 'Cliente' AND EXISTS (SELECT 1 FROM clientes c WHERE c.id = a.id_entidad AND c.id_negocio = ?)) "
+            + "OR (a.entidad = 'Pago' AND EXISTS (SELECT 1 FROM pagos pg WHERE pg.id = a.id_entidad AND pg.id_negocio = ?)))";
+
+    private static void bindNegocio(PreparedStatement statement, int start, long idNegocio) throws SQLException {
+        for (int i = 0; i < 4; i++) {
+            statement.setLong(start + i, idNegocio);
+        }
+    }
 
     @Override
     public void guardar(Auditoria auditoria) throws SQLException {
@@ -54,13 +66,19 @@ public class MySqlRepositorioAuditoria implements IAuditoriaRepository {
     }
 
     @Override
-    public List<Auditoria> buscarPorEntidad(String entidad, int idEntidad) {
+    public List<Auditoria> buscarPorEntidad(long idNegocio, String entidad, int idEntidad) {
         List<Auditoria> lista = new ArrayList<>();
-        String sql = SELECT_BASE + "WHERE entidad = ? AND id_entidad = ? ORDER BY fecha DESC LIMIT 500";
+        String filtro = filtroEntidad(entidad);
+        if (filtro == null) {
+            return lista;
+        }
+        String sql = SELECT_BASE + "WHERE a.entidad = ? AND a.id_entidad = ? AND " + filtro
+                + " ORDER BY a.fecha DESC LIMIT 500";
         try (Connection connection = DatabaseConnection.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, entidad);
             statement.setInt(2, idEntidad);
+            statement.setLong(3, idNegocio);
             try (ResultSet rs = statement.executeQuery()) {
                 while (rs.next()) {
                     lista.add(mapear(rs));
@@ -72,13 +90,30 @@ public class MySqlRepositorioAuditoria implements IAuditoriaRepository {
         return lista;
     }
 
+    private static String filtroEntidad(String entidad) {
+        if ("Venta".equalsIgnoreCase(entidad)) {
+            return "EXISTS (SELECT 1 FROM ventas v WHERE v.id = a.id_entidad AND v.id_negocio = ?)";
+        }
+        if ("Producto".equalsIgnoreCase(entidad)) {
+            return "EXISTS (SELECT 1 FROM productos p WHERE p.id = a.id_entidad AND p.id_negocio = ?)";
+        }
+        if ("Cliente".equalsIgnoreCase(entidad)) {
+            return "EXISTS (SELECT 1 FROM clientes c WHERE c.id = a.id_entidad AND c.id_negocio = ?)";
+        }
+        if ("Pago".equalsIgnoreCase(entidad)) {
+            return "EXISTS (SELECT 1 FROM pagos pg WHERE pg.id = a.id_entidad AND pg.id_negocio = ?)";
+        }
+        return null;
+    }
+
     @Override
-    public List<Auditoria> buscarPorUsuario(String usuario) {
+    public List<Auditoria> buscarPorUsuario(long idNegocio, String usuario) {
         List<Auditoria> lista = new ArrayList<>();
-        String sql = SELECT_BASE + "WHERE usuario = ? ORDER BY fecha DESC LIMIT 500";
+        String sql = SELECT_BASE + "WHERE a.usuario = ? AND " + FILTRO_NEGOCIO + " ORDER BY a.fecha DESC LIMIT 500";
         try (Connection connection = DatabaseConnection.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, usuario);
+            bindNegocio(statement, 2, idNegocio);
             try (ResultSet rs = statement.executeQuery()) {
                 while (rs.next()) {
                     lista.add(mapear(rs));
@@ -91,12 +126,13 @@ public class MySqlRepositorioAuditoria implements IAuditoriaRepository {
     }
 
     @Override
-    public List<Auditoria> buscarPorAccion(AccionAuditoria accion) {
+    public List<Auditoria> buscarPorAccion(long idNegocio, AccionAuditoria accion) {
         List<Auditoria> lista = new ArrayList<>();
-        String sql = SELECT_BASE + "WHERE accion = ? ORDER BY fecha DESC LIMIT 500";
+        String sql = SELECT_BASE + "WHERE a.accion = ? AND " + FILTRO_NEGOCIO + " ORDER BY a.fecha DESC LIMIT 500";
         try (Connection connection = DatabaseConnection.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, accion.name());
+            bindNegocio(statement, 2, idNegocio);
             try (ResultSet rs = statement.executeQuery()) {
                 while (rs.next()) {
                     lista.add(mapear(rs));
@@ -109,13 +145,14 @@ public class MySqlRepositorioAuditoria implements IAuditoriaRepository {
     }
 
     @Override
-    public List<Auditoria> buscarPorRangoFecha(LocalDateTime desde, LocalDateTime hasta) {
+    public List<Auditoria> buscarPorRangoFecha(long idNegocio, LocalDateTime desde, LocalDateTime hasta) {
         List<Auditoria> lista = new ArrayList<>();
-        String sql = SELECT_BASE + "WHERE fecha BETWEEN ? AND ? ORDER BY fecha DESC LIMIT 1000";
+        String sql = SELECT_BASE + "WHERE a.fecha BETWEEN ? AND ? AND " + FILTRO_NEGOCIO + " ORDER BY a.fecha DESC LIMIT 1000";
         try (Connection connection = DatabaseConnection.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setTimestamp(1, desde != null ? Timestamp.valueOf(desde) : Timestamp.valueOf(LocalDateTime.now().minusYears(1)));
             statement.setTimestamp(2, hasta != null ? Timestamp.valueOf(hasta) : Timestamp.valueOf(LocalDateTime.now()));
+            bindNegocio(statement, 3, idNegocio);
             try (ResultSet rs = statement.executeQuery()) {
                 while (rs.next()) {
                     lista.add(mapear(rs));
@@ -128,14 +165,16 @@ public class MySqlRepositorioAuditoria implements IAuditoriaRepository {
     }
 
     @Override
-    public List<Auditoria> listarTodas() {
+    public List<Auditoria> listarTodas(long idNegocio) {
         List<Auditoria> lista = new ArrayList<>();
-        String sql = SELECT_BASE + "ORDER BY fecha DESC LIMIT 1000";
+        String sql = SELECT_BASE + "WHERE " + FILTRO_NEGOCIO + " ORDER BY a.fecha DESC LIMIT 1000";
         try (Connection connection = DatabaseConnection.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql);
-             ResultSet rs = statement.executeQuery()) {
-            while (rs.next()) {
-                lista.add(mapear(rs));
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            bindNegocio(statement, 1, idNegocio);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    lista.add(mapear(rs));
+                }
             }
         } catch (SQLException exception) {
             System.err.println("❌ Error al listar todas las auditorías: " + exception.getMessage());

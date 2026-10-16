@@ -1,4 +1,135 @@
-:root {
+
+/* =========================================
+   DISEÑO SURCOMMERCE ENTERPRISE (NEGRO/NARANJA/BLANCO)
+   ========================================= */
+
+/* ---------- Sidebar: indicador de secci&#243;n activa ---------- */
+[data-active="true"] > .nav-link {
+  background: linear-gradient(90deg, rgba(255,107,0,0.12) 0%, rgba(255,107,0,0.02) 100%) !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 0 16px -2px rgba(255,107,0,0.35) !important;
+}
+[data-active="true"] > .nav-link::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 72%;
+  background: linear-gradient(180deg, #FF6B00, #FFB86B);
+  border-radius: 2px;
+  box-shadow: 0 0 10px 2px rgba(255,107,0,0.5);
+}
+[data-active="true"] > .nav-link .material-symbols-outlined {
+  color: #FF6B00 !important;
+  text-shadow: 0 0 12px rgba(255,107,0,0.4);
+}
+
+/* ---------- Toast premium (negro + borde naranja) ---------- */
+.toast-container {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.toast-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-width: 320px;
+  max-width: 420px;
+  background: rgba(10,10,10,0.95);
+  border: 1px solid rgba(255,107,0,0.5);
+  border-left: 3px solid #FF6B00;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  color: #F1F5F9;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 12px 40px -8px rgba(0,0,0,0.75), 0 0 20px rgba(255,107,0,0.15);
+  transform: translateX(110%);
+  animation: toastSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  pointer-events: auto;
+}
+@keyframes toastSlideIn { to { transform: translateX(0); } }
+.toast-item.fade-out { animation: toastFadeOut 0.3s ease forwards; }
+@keyframes toastFadeOut { to { transform: translateX(110%); opacity: 0; } }
+.toast-item .toast-icon { color: #FFFFFF; flex-shrink: 0; font-size: 1.125rem; }
+.toast-item .toast-content { flex: 1; font-size: 0.875rem; line-height: 1.45; color: #E2E8F0; }
+.toast-item .toast-close { background: transparent; border: none; color: #94A3B8; cursor: pointer; padding: 0.25rem; border-radius: 0.375rem; transition: all 0.2s; }
+.toast-item .toast-close:hover { color: #FFFFFF; background: rgba(255,255,255,0.08); }
+
+/* ---------- Skeleton loader ---------- */
+@keyframes skeletonShimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+.skeleton { background: linear-gradient(90deg, #1E1E1E 25%, #282828 50%, #1E1E1E 75%); background-size: 200% 100%; animation: skeletonShimmer 1.6s ease-in-out infinite; border-radius: 0.5rem; }
+.skeleton-text { height: 0.75rem; }
+.skeleton-avatar { width: 1.5rem; height: 1.5rem; }
+.skeleton-bar { height: 1rem; }
+
+/* ---------- Empty state ---------- */
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3rem 2rem; text-align: center; color: #94A3B8; }
+.empty-state svg { color: #3F3F46; margin-bottom: 1rem; }
+.empty-state h4 { color: #F1F5F9; font-size: 1.125rem; font-weight: 600; margin: 0 0 0.375rem; }
+.empty-state p { font-size: 0.875rem; color: #64748B; margin: 0; }
+
+/* ---------- D3 chart tooltip ---------- */
+.d3-tooltip { position: absolute; background: rgba(10,10,10,0.95); border: 1px solid rgba(255,107,0,0.4); border-radius: 0.5rem; padding: 0.5rem 0.75rem; font-size: 0.75rem; color: #FFFFFF; pointer-events: none; opacity: 0; transition: opacity 0.15s ease; backdrop-filter: blur(8px); box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 1000; }
+.d3-tooltip::before { content: ''; position: absolute; top: -6px; left: 50%; transform: translateX(-50%); border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 6px solid rgba(255,107,0,0.4); }
+.d3-tooltip .tt-label { color: #94A3B8; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.5px; }
+.d3-tooltip .tt-value { color: #FFFFFF; font-size: 0.9rem; font-weight: 700; font-family: 'Geist Mono', monospace; }
+.d3-tooltip .tt-sub { color: #FFB86B; font-size: 0.75rem; }
+
+/* ---------- Product card (catalog + POS) ---------- */
+.product-card { background: #1E1E1E; border: 1px solid #2F2F33; border-radius: 0.75rem; padding: 1rem; transition: all 0.25s ease; position: relative; overflow: hidden; }
+.product-card:hover { border-color: #FF6B0055; box-shadow: 0 8px 30px -12px rgba(255,107,0,0.25); transform: translateY(-2px); }
+.product-card .status-badge { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border-radius: 0.375rem; padding: 0.15rem 0.5rem; border: 1px solid currentColor; }
+.status-badge.ok { color: #10B981; background: rgba(16,185,129,0.1); border-color: rgba(16,185,129,0.3); }
+.status-badge.low { color: #FF6B00; background: rgba(255,107,0,0.12); border-color: rgba(255,107,0,0.35); }
+.status-badge.out { color: #EF4444; background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.35); }
+
+/* ---------- POS product item ---------- */
+.pos-product-item { background: #1E1E1E; border: 1px solid #2F2F33; border-radius: 0.625rem; padding: 0.75rem 0.875rem; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: space-between; }
+.pos-product-item:hover { border-color: #FF6B00; background: #242424; box-shadow: 0 0 16px -4px rgba(255,107,0,0.2); }
+.pos-product-item:active { transform: scale(0.98); }
+
+/* ---------- Customer row ---------- */
+.cliente-row { background: #1E1E1E; border: 1px solid #2F2F33; transition: all 0.2s ease; }
+.cliente-row:nth-child(even) { background: #1A1A1A; }
+.cliente-row:hover { border-color: #FF6B0044; background: #242424; }
+.cliente-row td { padding: 0.75rem 1rem; border-bottom: 1px solid #2F2F33; }
+.cliente-row:last-child td { border-bottom: none; }
+.cliente-row td:first-child { border-left: 3px solid transparent; }
+.cliente-row:hover td:first-child { border-left-color: #FF6B00; }
+
+/* ---------- Audit log row ---------- */
+.audit-row { background: #1E1E1E; border: 1px solid #2F2F33; }
+.audit-row:nth-child(even) { background: #1A1A1A; }
+.audit-row td { padding: 0.625rem 1rem; border-bottom: 1px solid #2F2F33; font-size: 0.85rem; }
+.audit-row:last-child td { border-bottom: none; }
+.severity-info { color: #3B82F6; }
+.severity-warn { color: #FF6B00; }
+.severity-error { color: #EF4444; }
+.severity-success { color: #10B981; }
+
+/* ---------- Badge styles for audit actions ---------- */
+.action-badge { display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; border-radius: 0.375rem; padding: 0.2rem 0.5rem; }
+.action-badge.COMPRA { color: #10B981; background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); }
+.action-badge.CREACION { color: #3B82F6; background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.3); }
+.action-badge.ELIMINACION { color: #EF4444; background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); }
+.action-badge.TRANSFERENCIA { color: #FFB86B; background: rgba(255,184,107,0.1); border: 1px solid rgba(255,184,107,0.3); }
+.action-badge.OTRO { color: #94A3B8; background: rgba(148,163,184,0.1); border: 1px solid rgba(148,163,184,0.3); }
+
+/* ---------- Filter chips ---------- */
+.filter-chip { background: #1E1E1E; border: 1px solid #2F2F33; color: #94A3B8; font-size: 0.75rem; font-weight: 600; padding: 0.4rem 0.75rem; border-radius: 9999px; cursor: pointer; transition: all 0.2s ease; }
+.filter-chip:hover { border-color: #FF6B0055; color: #FFFFFF; }
+.filter-chip.active { background: #FF6B00; border-color: #FF6B00; color: #FFFFFF; box-shadow: 0 0 12px rgba(255,107,0,0.4); }
+
+/* ---------- D3 donut legend ---------- */
+.d3-legend-item { display: flex; align-items: center; gap: 0.4rem; font-size: 0.75rem; color: #94A3B8; }
+.d3-legend-color { width: 0.55rem; height: 0.55rem; border-radius: 50%; }:root {
     --primary-color: #007bff;
     --secondary-color: #6c757d;
     --text-color: #343a40;
@@ -116,3 +247,4 @@ main {
 .toast.success {
     background-color: #28a745;
 }
+

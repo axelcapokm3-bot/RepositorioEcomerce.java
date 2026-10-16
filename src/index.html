@@ -5,8 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SurCommerce - Enterprise Operations Suite</title>
     <!-- Google Fonts & Material Symbols -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/main.css">
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
     <script>
@@ -15,111 +18,348 @@
             theme: {
                 extend: {
                     colors: {
-                        brand: { DEFAULT: "#EA580C", hover: "#C2410C", accent: "#F97316" },
-                        carbon: { 950: "#05080E", 900: "#070A12", 850: "#0B0F19", 800: "#0F172A", 750: "#141D34", 700: "#1E293B" }
+                        bgDark: {
+                            DEFAULT: "#0A0A0A",
+                            dark: "#121212",
+                        },
+                        card: "#1E1E1E",
+                        accent: "#FF6B00",
+                        white: "#FFFFFF",
+                        grayLight: "#E0E0E0",
+                        grayDark: "#6B7280",
+                        sidebarBG: "#111111",
+                        brand: {
+                            DEFAULT: "#FF6B00",
+                            hover: "#E55A00",
+                            subtle: "rgba(255, 107, 0, 0.15)",
+                            glow: "rgba(255, 107, 0, 0.4)"
+                        },
+                        carbon: {
+                            950: "#0A0A0A",
+                            900: "#121212",
+                            850: "#1E1E1E",
+                            800: "#252525",
+                            700: "#3F3F46",
+                            600: "#52525B"
+                        },
+                        orange: {
+                            500: "#FF6B00",
+                            400: "#FF851B",
+                            300: "#FFB86B"
+                        }
                     },
-                    fontFamily: { sans: ['Geist', 'sans-serif'] }
+                    fontFamily: {
+                        sans: ['Geist', 'sans-serif'],
+                        mono: ['Geist Mono', 'monospace']
+                    },
+                    boxShadow: {
+                        'glow-orange': '0 0 32px -4px rgba(255, 107, 0, 0.5)',
+                        'card': '0 8px 40px -10px rgba(0, 0, 0, 0.6)',
+                        'subtle': '0 1px 3px 0 rgba(0, 0, 0, 0.3)',
+                        'glass': '0 4px 20px rgba(0, 0, 0, 0.3)'
+                    },
+                    borderRadius: {
+                        lg: '12px',
+                        md: '8px',
+                        sm: '4px'
+                    }
                 }
             }
         }
     </script>
     <style>
         body { font-family: 'Geist', sans-serif; }
+        .font-mono-numbers { font-variant-numeric: tabular-nums lining-nums; font-family: 'Geist Mono', monospace; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #070A12; }
-        ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 9999px; }
+        ::-webkit-scrollbar-track { background: #0A0A0A; }
+        ::-webkit-scrollbar-thumb { background: #1E1E1E; border-radius: 9999px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3F3F46; }
+        .active-module {
+            background: linear-gradient(90deg, rgba(255, 107, 0, 0.16) 0%, rgba(255, 107, 0, 0.02) 100%) !important;
+            color: #FFFFFF !important;
+            box-shadow: 0 0 20px -2px rgba(255, 107, 0, 0.35) !important;
+            position: relative;
+        }
+        .active-module::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 15%;
+            bottom: 15%;
+            width: 3.5px;
+            background: linear-gradient(180deg, #FF6B00 0%, #FFA040 100%);
+            border-radius: 0 4px 4px 0;
+            box-shadow: 0 0 12px 2px rgba(255, 107, 0, 0.8);
+        }
+        .active-module .material-symbols-outlined {
+            color: #FF6B00 !important;
+            filter: drop-shadow(0 0 8px rgba(255, 107, 0, 0.5));
+        }
+        .active-tab-indicator {
+            box-shadow: 0 0 16px -2px rgba(255, 107, 0, 0.4);
+        }
+        @keyframes pulseGlow {
+            0%, 100% { opacity: 0.8; }
+            50% { opacity: 0.3; }
+        }
+        .pulse-glow { animation: pulseGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
+        .float { animation: float 6s ease-in-out infinite; }
+        @keyframes shimmer {
+            0% { background-position: -200% center; }
+            100% { background-position: 200% center; }
+        }
+        .shimmer { background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent); animation: shimmer 2s infinite; }
     </style>
 </head>
-<body class="bg-carbon-850 text-slate-200 antialiased selection:bg-brand selection:text-white min-h-screen flex flex-col">
+<body class="bg-carbon-950 text-slate-200 antialiased selection:bg-brand selection:text-white min-h-screen flex flex-col font-sans">
 
-    <!-- Sidebar Fija -->
-    <aside class="fixed left-0 top-0 bottom-0 w-64 bg-carbon-800 border-r border-carbon-700 z-50 flex flex-col justify-between select-none">
+    <!-- Backdrop oscuro para móvil cuando el sidebar está abierto -->
+    <div id="sidebar-backdrop" class="fixed inset-0 bg-black/70 backdrop-blur-xs z-40 hidden lg:hidden transition-opacity"></div>
+
+    <!-- Sidebar de Navegación (Responsive: Drawer en móvil, fija en desktop) -->
+    <aside id="main-sidebar" class="fixed left-0 top-0 bottom-0 w-72 lg:w-64 bg-sidebarBG border-r border-carbon-700/50 z-50 flex flex-col justify-between select-none transform -translate-x-full lg:translate-x-0 transition-transform duration-250 ease-in-out shadow-2xl lg:shadow-none">
         <div class="flex flex-col">
-            <div class="h-16 px-6 border-b border-carbon-700 flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-lg bg-brand flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-orange-600/30">S</div>
-                    <div class="flex flex-col">
-                        <span class="font-bold text-[17px] text-white tracking-tight leading-none">SurCommerce</span>
-                        <span class="text-[10px] text-orange-400 font-semibold uppercase tracking-wider mt-1">Enterprise AR</span>
+            <!-- Brand Header -->
+            <div class="h-16 px-5 border-b border-carbon-700/50 flex items-center justify-between">
+                <a href="#dashboard" class="flex items-center gap-3 group">
+                    <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-brand to-orange-600 flex items-center justify-center text-white font-black text-lg shadow-glow-orange group-hover:scale-105 transition-transform">
+                        S
                     </div>
-                </div>
+                    <div class="flex flex-col">
+                        <span class="font-bold text-[16px] text-white tracking-tight leading-none group-hover:text-orange-400 transition-colors">SurCommerce</span>
+                        <span class="text-[10px] text-orange-400/90 font-semibold tracking-wider uppercase mt-1">Enterprise Suite</span>
+                    </div>
+                </a>
+                <button id="close-sidebar-btn" class="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-carbon-800 transition-colors" aria-label="Cerrar navegación">
+                    <span class="material-symbols-outlined text-[20px]">close</span>
+                </button>
             </div>
-            <div class="px-5 pt-6 pb-2">
+
+            <!-- Navegación de Módulos -->
+            <div class="px-5 pt-6 pb-2 flex items-center justify-between">
                 <span class="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Módulos del Sistema</span>
+                <span class="text-[10px] text-slate-600 font-mono">v1.0-PRO</span>
             </div>
-            <nav class="flex flex-col gap-1.5 px-3">
-                <a href="#dashboard" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium text-slate-400 hover:text-white hover:bg-carbon-750 transition-all active-tab" data-view="dashboard">
-                    <span class="material-symbols-outlined text-[20px]">grid_view</span>
+            <nav class="flex flex-col gap-1 px-3" id="sidebar-nav">
+                <a href="#dashboard" class="nav-link flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[13px] font-medium text-slate-400 hover:text-white hover:bg-carbon-800/20 transition-all group relative" data-view="dashboard">
+                    <span class="material-symbols-outlined text-[20px] text-slate-400 group-hover:text-orange-400 transition-colors">grid_view</span>
                     <span>Dashboard General</span>
                 </a>
-                <a href="#clientes" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium text-slate-400 hover:text-white hover:bg-carbon-750 transition-all" data-view="clientes">
-                    <span class="material-symbols-outlined text-[20px]">group</span>
-                    <span>Gestión de Clientes</span>
+                <a href="#terminal" class="nav-link flex items-center justify-between px-3.5 py-2.5 rounded-xl text-[13px] font-medium text-slate-400 hover:text-white hover:bg-carbon-800/20 transition-all group relative" data-view="terminal">
+                    <div class="flex items-center gap-3">
+                        <span class="material-symbols-outlined text-[20px] text-slate-400 group-hover:text-brand transition-colors">point_of_sale</span>
+                        <span>Terminal POS & Caja</span>
+                    </div>
+                    <span id="nav-cart-badge" class="hidden px-2 py-0.5 text-[10px] font-bold rounded-full bg-brand text-white font-mono">0</span>
                 </a>
-                <a href="#catalogo" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium text-slate-400 hover:text-white hover:bg-carbon-750 transition-all" data-view="catalogo">
-                    <span class="material-symbols-outlined text-[20px]">inventory_2</span>
+                <a href="#catalogo" class="nav-link flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[13px] font-medium text-slate-400 hover:text-white hover:bg-carbon-800/20 transition-all group relative" data-view="catalogo">
+                    <span class="material-symbols-outlined text-[20px] text-slate-400 group-hover:text-brand transition-colors">inventory_2</span>
                     <span>Catálogo & Stock</span>
                 </a>
-                <a href="#terminal" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium text-slate-400 hover:text-white hover:bg-carbon-750 transition-all" data-view="terminal">
-                    <span class="material-symbols-outlined text-[20px]">point_of_sale</span>
-                    <span>Terminal de Ventas (POS)</span>
+                <a href="#clientes" class="nav-link flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[13px] font-medium text-slate-400 hover:text-white hover:bg-carbon-800/20 transition-all group relative" data-view="clientes">
+                    <span class="material-symbols-outlined text-[20px] text-slate-400 group-hover:text-brand transition-colors">group</span>
+                    <span>Gestión de Clientes</span>
                 </a>
-                <a href="#auditoria" class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium text-slate-400 hover:text-white hover:bg-carbon-750 transition-all" data-view="auditoria">
-                    <span class="material-symbols-outlined text-[20px]">verified_user</span>
+                <a href="#auditoria" class="nav-link flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[13px] font-medium text-slate-400 hover:text-white hover:bg-carbon-800/20 transition-all group relative" data-view="auditoria">
+                    <span class="material-symbols-outlined text-[20px] text-slate-400 group-hover:text-brand transition-colors">verified_user</span>
                     <span>Auditoría & Logs</span>
                 </a>
             </nav>
         </div>
-        <div class="p-4 border-t border-carbon-700 bg-carbon-900/60">
-            <div class="p-3.5 rounded-xl bg-carbon-750/70 border border-carbon-700 flex flex-col gap-2.5">
-                <div class="flex items-center justify-between">
-                    <span class="text-[11px] font-medium text-slate-400">SLA Operativo AFIP</span>
-                    <span class="text-[12px] font-bold text-emerald-400 font-mono">99.98%</span>
+
+        <!-- Footer del Sidebar: Estado de Infraestructura & Salida -->
+        <div class="p-4 border-t border-carbon-700/50 bg-sidebarBG/90 flex flex-col gap-3">
+            <div class="p-3.5 rounded-xl bg-carbon-900/90 border border-carbon-700/40 flex flex-col gap-2.5 shadow-subtle">
+                <div class="flex items-center justify-between text-xs">
+                    <span class="text-[11px] font-semibold text-slate-300 flex items-center gap-2">
+                        <span class="relative flex h-2 w-2">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                        </span>
+                        Backend Java SE
+                    </span>
+                    <span class="text-[11px] font-bold text-emerald-400 font-mono tracking-tight bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">:8080</span>
                 </div>
-                <div class="w-full bg-carbon-700 h-1.5 rounded-full overflow-hidden">
-                    <div class="bg-emerald-400 h-full w-[99.98%] rounded-full"></div>
+                <div class="flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-carbon-700/40">
+                    <span class="font-medium text-slate-400">SLA Operativo AFIP</span>
+                    <span class="font-mono font-bold text-white flex items-center gap-1.5">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> 99.98%
+                    </span>
                 </div>
-                <span class="text-[10px] text-orange-400 font-semibold uppercase">API Backend Conectada</span>
             </div>
+            <a href="login.html" class="flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-xs font-semibold text-slate-400 hover:text-white hover:bg-carbon-800/40 border border-transparent hover:border-carbon-700/40 transition-all group">
+                <span class="material-symbols-outlined text-[16px] text-slate-400 group-hover:text-orange-400 transition-colors">logout</span>
+                <span>Cerrar Sesión</span>
+            </a>
         </div>
     </aside>
 
-    <!-- Header Superior -->
-    <div class="pl-64 flex flex-col flex-1">
-        <header class="h-16 bg-carbon-900/90 backdrop-blur-md border-b border-carbon-700 sticky top-0 z-40 px-8 flex items-center justify-between">
-            <div class="flex items-center w-96">
-                <div class="flex items-center w-full px-3 py-1.5 bg-carbon-800 border border-carbon-700 rounded-lg gap-2.5 text-slate-400">
-                    <span class="material-symbols-outlined text-[18px] text-brand">search</span>
-                    <input type="text" id="global-search" placeholder="Buscar productos, clientes o transacciones..." class="bg-transparent w-full text-xs text-white placeholder-slate-500 focus:outline-none border-0 p-0">
-                    <kbd class="text-[10px] bg-carbon-700 px-1.5 py-0.5 rounded text-slate-400 font-mono">Ctrl+K</kbd>
+    <!-- Contenido Principal con Offset en Desktop -->
+    <div class="lg:pl-64 flex flex-col flex-1 min-w-0">
+
+        <!-- Top Header Sticky (Con mayor espacio y diseño pulido) -->
+        <header class="h-20 bg-carbon-900/85 backdrop-blur-xl border-b border-carbon-700/40 sticky top-0 z-30 px-6 sm:px-8 lg:px-10 flex items-center justify-between gap-6 transition-all">
+            
+            <!-- Left: Toggle móvil + Búsqueda Global en formato Píldora -->
+            <div class="flex items-center gap-4 flex-1 max-w-lg">
+                <button id="mobile-menu-btn" class="lg:hidden p-2 rounded-xl text-slate-400 hover:text-white hover:bg-carbon-800/30 border border-carbon-700/40 transition-colors" aria-label="Abrir menú de navegación">
+                    <span class="material-symbols-outlined text-[22px]">menu</span>
+                </button>
+
+                <!-- Buscador de diseño Píldora Premium -->
+                <div class="relative flex items-center flex-1 px-4 py-2 bg-carbon-950/80 border border-white/10 rounded-full gap-3 text-slate-400 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20 shadow-inner transition-all">
+                    <span class="material-symbols-outlined text-[18px] text-brand shrink-0">search</span>
+                    <input type="text" id="global-search" placeholder="Buscar productos, clientes o filtros..." class="bg-transparent w-full text-xs text-white placeholder-slate-500 focus:outline-none border-0 p-0 font-medium">
+                    <kbd class="hidden sm:inline-flex items-center text-[10px] bg-carbon-800 px-2 py-0.5 rounded-full text-slate-300 font-mono border border-white/10 shadow-sm shrink-0">Ctrl+K</kbd>
                 </div>
             </div>
-            <div class="flex items-center gap-4">
-                <div id="toast-container" class="fixed top-20 right-8 z-50 flex flex-col gap-2"></div>
-                <div class="flex items-center gap-3 cursor-pointer">
-                    <div class="w-9 h-9 rounded-full bg-carbon-700 text-orange-400 flex items-center justify-center font-bold text-xs border-2 border-brand shadow-md">MS</div>
-                    <div class="flex flex-col text-left">
-                        <span class="text-xs font-bold text-white leading-tight">Martín Silva</span>
-                        <span class="text-[11px] text-slate-400 leading-tight">Gerente de Operaciones</span>
+
+            <!-- Right: Notificaciones, Estado y Usuario -->
+            <div class="flex items-center gap-5 sm:gap-7 shrink-0">
+                <!-- Botón rápido POS en móvil -->
+                <a href="#terminal" class="sm:hidden p-2 rounded-xl bg-brand/20 text-brand border border-brand/30 flex items-center justify-center hover:bg-brand/30 transition-colors" title="Ir a Terminal POS">
+                    <span class="material-symbols-outlined text-[20px]">shopping_cart</span>
+                </a>
+
+                <!-- Indicador Premium de "Red Activa ARS" -->
+                <div class="hidden md:flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-carbon-950/80 border border-white/10 text-white text-[11px] font-semibold tracking-wide shadow-sm backdrop-blur">
+                    <span class="relative flex h-2 w-2">
+                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+                    </span>
+                    <span class="font-mono text-slate-200">RED ACTIVA <span class="text-orange-400 font-bold">•</span> ARS</span>
+                </div>
+
+                <!-- Selector de Negocio Activo -->
+                <div class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-carbon-950/80 border border-white/10 text-white text-[11px] font-semibold tracking-wide shadow-sm backdrop-blur">
+                    <span class="material-symbols-outlined text-[16px] text-orange-400">store</span>
+                    <span id="negocio-actual" class="font-mono text-slate-200">Negocio …</span>
+                    <select id="negocio-switcher" aria-label="Cambiar de negocio"
+                        class="bg-carbon-800 border border-carbon-700 text-slate-200 text-[11px] font-semibold rounded-lg px-1.5 py-0.5 focus:border-brand focus:outline-none cursor-pointer max-w-[140px]">
+                        <option value="">Cambiar…</option>
+                    </select>
+                </div>
+
+                <!-- Perfil Premium del Operador "Martín Silva" -->
+                <div class="flex items-center gap-3 pl-3 sm:pl-4 border-l border-carbon-700/40">
+                    <div class="relative group cursor-pointer">
+                        <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-carbon-800 to-carbon-900 text-white flex items-center justify-center font-extrabold text-xs border border-orange-500/40 shadow-[0_0_15px_rgba(255,107,0,0.2)] group-hover:border-brand transition-colors">
+                            MS
+                        </div>
+                        <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-500 border-2 border-carbon-900 rounded-full" title="Operador en línea"></span>
+                    </div>
+                    <div class="hidden sm:flex flex-col text-left">
+                        <span class="text-xs font-bold text-white tracking-tight leading-tight">Martín Silva</span>
+                        <span class="text-[10px] text-orange-400 font-semibold tracking-wide leading-tight mt-0.5">Operaciones Central</span>
                     </div>
                 </div>
             </div>
         </header>
 
+        <!-- Toast Notifier Container Flotante -->
+        <div id="toast-container" class="fixed top-6 right-6 z-50 flex flex-col gap-3 pointer-events-none max-w-sm sm:max-w-md w-full"></div>
+
+        <!-- Barra de Navegación Inferior Móvil (Mobile Quick Dock) -->
+        <div class="lg:hidden fixed bottom-0 left-0 right-0 h-14 bg-carbon-900/80 backdrop-blur-lg border-t border-carbon-700/30 z-30 flex items-center justify-around px-2">
+            <a href="#dashboard" class="mobile-nav-link flex flex-col items-center justify-center text-slate-400 hover:text-white px-2 py-1 text-[10px] font-medium transition-colors" data-view="dashboard">
+                <span class="material-symbols-outlined text-[20px]">grid_view</span>
+                <span>Dashboard</span>
+            </a>
+            <a href="#catalogo" class="mobile-nav-link flex flex-col items-center justify-center text-slate-400 hover:text-white px-2 py-1 text-[10px] font-medium transition-colors" data-view="catalogo">
+                <span class="material-symbols-outlined text-[20px]">inventory_2</span>
+                <span>Catálogo</span>
+            </a>
+            <a href="#terminal" class="mobile-nav-link flex flex-col items-center justify-center text-brand font-bold px-2 py-1 text-[10px] relative transition-colors" data-view="terminal">
+                <div class="w-10 h-10 rounded-full bg-brand text-white flex items-center justify-center -mt-5 shadow-glow-orange border-2 border-carbon-900">
+                    <span class="material-symbols-outlined text-[22px]">point_of_sale</span>
+                </div>
+                <span class="mt-0.5">Venta POS</span>
+            </a>
+            <a href="#clientes" class="mobile-nav-link flex flex-col items-center justify-center text-slate-400 hover:text-white px-2 py-1 text-[10px] font-medium transition-colors" data-view="clientes">
+                <span class="material-symbols-outlined text-[20px]">group</span>
+                <span>Clientes</span>
+            </a>
+            <a href="#auditoria" class="mobile-nav-link flex flex-col items-center justify-center text-slate-400 hover:text-white px-2 py-1 text-[10px] font-medium transition-colors" data-view="auditoria">
+                <span class="material-symbols-outlined text-[20px]">verified_user</span>
+                <span>Logs</span>
+            </a>
+        </div>
+
         <!-- Contenedor Dinámico de Vistas -->
-        <main id="app-view" class="flex-1 p-8 max-w-[1520px] w-full mx-auto space-y-6">
-            <!-- Las vistas se cargarán dinámicamente aquí según el backend -->
-            <div class="flex items-center justify-center h-64 text-slate-400">
-                <span class="material-symbols-outlined animate-spin text-[32px] text-brand mr-2">refresh</span>
-                Cargando datos desde el servidor Java...
+        <main id="app-view" class="flex-1 p-6 sm:p-8 lg:p-8 max-w-[1600px] w-full mx-auto pb-20 lg:pb-8">
+
+            <!-- Dashboard Content Area - will be rendered by app.js -->
+            <!-- KPI Section will be injected here -->
+            <div id="kpi-section" class="mb-8 animate-fadeIn">
+
             </div>
+
+            <!-- Main View Content -->
+            <div id="view-container" class="space-y-6">
+
+            </div>
+
         </main>
     </div>
 
-    <!-- Scripts como Módulos ES6 -->
+    <!-- D3.js Visualizations Container (injected by app.js) -->
+    <div id="d3-visualizations" class="hidden pb-8">
+
+    </div>
+
+    <!-- Scripts de Módulos ES6 -->
     <script type="module" src="js/utils/spinner.js"></script>
     <script type="module" src="js/utils/toast-notifier.js"></script>
     <script type="module" src="js/api.js"></script>
+    <script type="module" src="js/negocio-switcher.js"></script>
     <script type="module" src="js/app.js"></script>
+
+    <!-- D3.js Library -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+
+    <!-- Script de control para menú responsive -->
+    <script>
+        (function() {
+            const sidebar = document.getElementById('main-sidebar');
+            const backdrop = document.getElementById('sidebar-backdrop');
+            const openBtn = document.getElementById('mobile-menu-btn');
+            const closeBtn = document.getElementById('close-sidebar-btn');
+
+            function openDrawer() {
+                if (sidebar) sidebar.classList.remove('-translate-x-full');
+                if (backdrop) backdrop.classList.remove('hidden');
+                document.body.classList.add('overflow-hidden', 'lg:overflow-auto');
+            }
+
+            function closeDrawer() {
+                if (sidebar) sidebar.classList.add('-translate-x-full');
+                if (backdrop) backdrop.classList.add('hidden');
+                document.body.classList.remove('overflow-hidden', 'lg:overflow-auto');
+            }
+
+            if (openBtn) openBtn.addEventListener('click', openDrawer);
+            if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
+            if (backdrop) backdrop.addEventListener('click', closeDrawer);
+
+            // Cerrar al navegar en móvil
+            document.querySelectorAll('#sidebar-nav a').forEach(link => {
+                link.addEventListener('click', () => {
+                    if (window.innerWidth < 1024) closeDrawer();
+                });
+            });
+
+            // Atajo de teclado Ctrl+K para enfocar búsqueda
+            window.addEventListener('keydown', (e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+                    e.preventDefault();
+                    document.getElementById('global-search')?.focus();
+                }
+            });
+        })();
+    </script>
 </body>
 </html>

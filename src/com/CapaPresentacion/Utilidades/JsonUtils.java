@@ -116,6 +116,9 @@ public class JsonUtils {
         if (json == null) return null;
         json = json.trim();
         if (json.isEmpty()) return null;
+        if (json.length() > 1024 * 1024) {
+            throw new IllegalArgumentException("El JSON supera el tamaño máximo permitido de 1 MB.");
+        }
         return new Parser(json).parse();
     }
 
@@ -258,8 +261,10 @@ public class JsonUtils {
     // --- RECURSIVE DESCENT JSON PARSER ---
 
     private static class Parser {
+        private static final int MAX_PROFUNDIDAD = 64;
         private final String src;
         private int pos = 0;
+        private int profundidad = 0;
 
         public Parser(String src) {
             this.src = src;
@@ -302,6 +307,8 @@ public class JsonUtils {
         }
 
         private Map<String, Object> parseObject() {
+            entrarNivel();
+            try {
             pos++; // consume '{'
             Map<String, Object> map = new LinkedHashMap<>();
             skipWhitespace();
@@ -338,9 +345,14 @@ public class JsonUtils {
                 }
             }
             return map;
+            } finally {
+                salirNivel();
+            }
         }
 
         private List<Object> parseArray() {
+            entrarNivel();
+            try {
             pos++; // consume '['
             List<Object> list = new ArrayList<>();
             skipWhitespace();
@@ -367,6 +379,9 @@ public class JsonUtils {
                 }
             }
             return list;
+            } finally {
+                salirNivel();
+            }
         }
 
         private String parseString() {
@@ -435,6 +450,17 @@ public class JsonUtils {
             } else {
                 return Long.parseLong(numStr);
             }
+        }
+
+        private void entrarNivel() {
+            profundidad++;
+            if (profundidad > MAX_PROFUNDIDAD) {
+                throw new IllegalArgumentException("El JSON supera la profundidad máxima permitida.");
+            }
+        }
+
+        private void salirNivel() {
+            profundidad--;
         }
 
         private void skipWhitespace() {

@@ -7,6 +7,7 @@ import com.CapaAplicacion.Interfaces.IVentaRepository;
 import com.CapaAplicacion.Interfaces.TipoServicio;
 import com.CapaDominio.Entidades.ConfiguracionCatalogo;
 import com.CapaDominio.Entidades.EstadoPago;
+import com.CapaDominio.Entidades.Negocio;
 import com.CapaDominio.Entidades.Pago;
 import com.CapaInfraestructura.Configuracion.ConfigLoader;
 import com.CapaInfraestructura.Implementacion.RegistroExecutors;
@@ -53,15 +54,32 @@ public class StripeWebhookService {
     }
 
     public boolean haySecretoFirmaConfigurado() {
-        String secret = buscarSecreto();
-        return secret != null && !secret.isBlank();
+        for (String secreto : buscarSecretos()) {
+            if (secreto != null && !secreto.isBlank()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public Event validarEvento(String payload, String signatureHeader) throws SignatureVerificationException {
-        String secret = buscarSecreto();
-        if (secret == null || secret.isBlank()) throw new IllegalStateException("El secreto de webhook de Stripe no está configurado.");
         if (signatureHeader == null || signatureHeader.isBlank()) throw new SignatureVerificationException("Falta Stripe-Signature.", "");
-        return Webhook.constructEvent(payload, signatureHeader, secret);
+        SignatureVerificationException ultimoError = null;
+        boolean haySecreto = false;
+        for (String secreto : buscarSecretos()) {
+            if (secreto == null || secreto.isBlank()) {
+                continue;
+            }
+            haySecreto = true;
+            try {
+                return Webhook.constructEvent(payload, signatureHeader, secreto);
+            } catch (SignatureVerificationException e) {
+                ultimoError = e;
+            }
+        }
+        if (!haySecreto) throw new IllegalStateException("El secreto de webhook de Stripe no está configurado.");
+        throw ultimoError != null ? ultimoError
+                : new SignatureVerificationException("La firma de Stripe no es válida.", signatureHeader);
     }
 
     public void procesarAsync(Event event) {
@@ -149,23 +167,26 @@ public class StripeWebhookService {
         return EstadoPago.PENDIENTE;
     }
 
-    private String buscarSecreto() {
+    private java.util.List<String> buscarSecretos() {
+        java.util.List<String> secretos = new java.util.ArrayList<>();
         String secreto = ConfigLoader.getProperty("stripe.webhook-secret");
         if (secreto != null && !secreto.isBlank()) {
-            return secreto;
+            secretos.add(secreto);
         }
         if (negocioRepository == null) {
-            return null;
+            return secretos;
         }
 
-        Map<ConfiguracionCatalogo, String> configuraciones =
-                negocioRepository.listarConfiguracionesEfectivas(1);
-        for (Map.Entry<ConfiguracionCatalogo, String> entry : configuraciones.entrySet()) {
-            if ("stripe_webhook_secret".equalsIgnoreCase(entry.getKey().getClave())
-                    && entry.getValue() != null && !entry.getValue().isBlank()) {
-                return entry.getValue();
+        for (Negocio negocio : negocioRepository.listarActivos()) {
+            Map<ConfiguracionCatalogo, String> configuraciones =
+                    negocioRepository.listarConfiguracionesEfectivas(negocio.getId());
+            for (Map.Entry<ConfiguracionCatalogo, String> entry : configuraciones.entrySet()) {
+                if ("stripe_webhook_secret".equalsIgnoreCase(entry.getKey().getClave())
+                        && entry.getValue() != null && !entry.getValue().isBlank()) {
+                    secretos.add(entry.getValue());
+                }
             }
         }
-        return null;
+        return secretos;
     }
 }

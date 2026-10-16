@@ -23,7 +23,7 @@ public class MySqlRepositorioPago implements IPagoRepository {
     }
 
     private static final String COLUMNAS = "id, id_venta, pasarela, mp_payment_id, order_id, preferencia_id, " +
-            "estado, monto, moneda, url_pago, raw_response, idempotency_key, fecha_creacion, fecha_actualizacion";
+            "estado, monto, moneda, url_pago, raw_response, idempotency_key, fecha_creacion, fecha_actualizacion, id_negocio";
     private final ConnectionProvider connectionProvider;
 
     public MySqlRepositorioPago() {
@@ -36,9 +36,11 @@ public class MySqlRepositorioPago implements IPagoRepository {
 
     @Override
     public void insertar(Pago pago) {
+        if (pago == null) throw new IllegalArgumentException("El pago no puede ser nulo.");
+        if (pago.getIdNegocio() <= 0) throw new IllegalArgumentException("El pago debe pertenecer a un negocio válido.");
         String sql = "INSERT INTO pagos (id_venta, pasarela, mp_payment_id, order_id, preferencia_id, estado, monto, " +
-                "moneda, url_pago, raw_response, idempotency_key, fecha_creacion, fecha_actualizacion) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                "moneda, url_pago, raw_response, idempotency_key, fecha_creacion, fecha_actualizacion, id_negocio) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (Connection connection = connectionProvider.get();
              PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             statement.setInt(1, pago.getIdVenta());
@@ -54,6 +56,7 @@ public class MySqlRepositorioPago implements IPagoRepository {
             statement.setString(11, pago.getClaveIdempotenciaPasarela());
             setDateTime(statement, 12, pago.getFechaCreacion() == null ? LocalDateTime.now() : pago.getFechaCreacion());
             setDateTime(statement, 13, pago.getFechaActualizacion());
+            statement.setLong(14, pago.getIdNegocio());
             statement.executeUpdate();
             try (ResultSet keys = statement.getGeneratedKeys()) {
                 if (keys.next()) pago.setId(keys.getInt(1));
@@ -70,7 +73,7 @@ public class MySqlRepositorioPago implements IPagoRepository {
     private boolean recuperarPagoExistente(Pago pago) {
         if (pago.getClaveIdempotenciaPasarela() != null) {
             Optional<Pago> pagoExistente = buscarPorClaveIdempotenciaPasarela(
-                    pago.getClaveIdempotenciaPasarela());
+                    pago.getIdNegocio(), pago.getClaveIdempotenciaPasarela());
             if (pagoExistente.isPresent()) {
                 pago.setId(pagoExistente.get().getId());
                 return true;
@@ -87,12 +90,14 @@ public class MySqlRepositorioPago implements IPagoRepository {
     }
 
     @Override
-    public List<Pago> buscarPorVenta(int idVenta) {
-        String sql = "SELECT " + COLUMNAS + " FROM pagos WHERE id_venta = ? ORDER BY fecha_creacion, id";
+    public List<Pago> buscarPorVenta(long idNegocio, int idVenta) {
+        if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
+        String sql = "SELECT " + COLUMNAS + " FROM pagos WHERE id_venta = ? AND id_negocio = ? ORDER BY fecha_creacion, id";
         List<Pago> pagos = new ArrayList<>();
         try (Connection connection = connectionProvider.get();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setInt(1, idVenta);
+            statement.setLong(2, idNegocio);
             try (ResultSet rs = statement.executeQuery()) {
                 while (rs.next()) pagos.add(mapPago(rs));
             }
@@ -135,11 +140,13 @@ public class MySqlRepositorioPago implements IPagoRepository {
     }
 
     @Override
-    public Optional<Pago> buscarPorClaveIdempotenciaPasarela(String claveIdempotenciaPasarela) {
-        String sql = "SELECT " + COLUMNAS + " FROM pagos WHERE idempotency_key = ?";
+    public Optional<Pago> buscarPorClaveIdempotenciaPasarela(long idNegocio, String claveIdempotenciaPasarela) {
+        if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
+        String sql = "SELECT " + COLUMNAS + " FROM pagos WHERE idempotency_key = ? AND id_negocio = ?";
         try (Connection connection = connectionProvider.get();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, claveIdempotenciaPasarela);
+            statement.setLong(2, idNegocio);
             try (ResultSet rs = statement.executeQuery()) {
                 if (rs.next()) return Optional.of(mapPago(rs));
             }
@@ -213,7 +220,7 @@ public class MySqlRepositorioPago implements IPagoRepository {
     private Pago mapPago(ResultSet rs) throws SQLException {
         Timestamp creado = rs.getTimestamp("fecha_creacion");
         Timestamp actualizado = rs.getTimestamp("fecha_actualizacion");
-        return new Pago(
+        Pago pago = new Pago(
                 rs.getInt("id"), rs.getInt("id_venta"), rs.getString("pasarela"),
                 rs.getString("mp_payment_id"), rs.getString("preferencia_id"),
                 rs.getString("order_id"), EstadoPago.valueOf(rs.getString("estado")),
@@ -221,6 +228,8 @@ public class MySqlRepositorioPago implements IPagoRepository {
                 rs.getString("raw_response"), rs.getString("idempotency_key"),
                 creado == null ? null : creado.toLocalDateTime(),
                 actualizado == null ? null : actualizado.toLocalDateTime());
+        pago.setIdNegocio(rs.getLong("id_negocio"));
+        return pago;
     }
 
     private void setDateTime(PreparedStatement statement, int index, LocalDateTime value) throws SQLException {

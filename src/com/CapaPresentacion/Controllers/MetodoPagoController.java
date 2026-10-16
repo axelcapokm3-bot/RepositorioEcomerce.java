@@ -4,15 +4,22 @@ import java.io.IOException;
 
 import com.CapaAplicacion.DTOentrada.MetodoPagoRequestDTO;
 import com.CapaAplicacion.DTOsalida.MetodoPagoResponseDTO;
+import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
+import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaAplicacion.Service.MetodoPagoService;
 import com.sun.net.httpserver.HttpExchange;
 
 public class MetodoPagoController extends BaseController {
 
     private final MetodoPagoService metodoPagoService;
+    private final IProveedorTokenAcceso proveedor;
 
-    public MetodoPagoController(MetodoPagoService metodoPagoService) {
+    public MetodoPagoController(MetodoPagoService metodoPagoService, IProveedorTokenAcceso proveedor) {
+        if (metodoPagoService == null || proveedor == null) {
+            throw new IllegalArgumentException("El servicio y el proveedor de tokens son obligatorios.");
+        }
         this.metodoPagoService = metodoPagoService;
+        this.proveedor = proveedor;
     }
 
     @Override
@@ -54,6 +61,7 @@ public class MetodoPagoController extends BaseController {
     }
 
     private void handleCrear(HttpExchange exchange) throws IOException {
+        Principal principal = exigirAutenticacion(exchange, proveedor);
         MetodoPagoRequestDTO request = parseRequestBody(exchange, MetodoPagoRequestDTO.class);
         if (request == null || request.idCliente() <= 0 || request.claveTarjeta() <= 0) {
             throw new ControllerException.Validacion(
@@ -61,6 +69,7 @@ public class MetodoPagoController extends BaseController {
                 "Debe indicar un cliente y una clave de tarjeta positivos."
             );
         }
+        exigirPermisoSobreCliente(principal, request.idCliente());
         
         var future = metodoPagoService.asociarMetodoPagoAsync(request.idCliente(), request.claveTarjeta())
                 .thenApply(v -> "{\"mensaje\": \"Método de pago asociado con éxito\"}");
@@ -83,6 +92,7 @@ public class MetodoPagoController extends BaseController {
         if (idCliente <= 0) {
             throw new ControllerException.Validacion("El ID de cliente no es válido.", "Debe ser un número entero positivo.");
         }
+        exigirPermisoSobreCliente(exigirAutenticacion(exchange, proveedor), idCliente);
 
         var future = metodoPagoService.obtenerPorClienteAsync(idCliente)
                 .thenApply(optMetodo -> optMetodo.map(mp -> new MetodoPagoResponseDTO(mp.getIdCliente(), mp.getSaldoDisponible())));

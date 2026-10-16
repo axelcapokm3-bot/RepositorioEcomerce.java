@@ -19,6 +19,7 @@ public class Pago {
     private String claveIdempotenciaPasarela;
     private LocalDateTime fechaCreacion;
     private LocalDateTime fechaActualizacion;
+    private long idNegocio;
 
     public Pago() {}
 
@@ -153,5 +154,13 @@ public class Pago {
 
     public void setFechaActualizacion(LocalDateTime fechaActualizacion) {
         this.fechaActualizacion = fechaActualizacion;
+    }
+
+    public long getIdNegocio() {
+        return idNegocio;
+    }
+
+    public void setIdNegocio(long idNegocio) {
+        this.idNegocio = idNegocio;
     }
 }

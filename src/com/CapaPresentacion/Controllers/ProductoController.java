@@ -3,15 +3,22 @@ package com.CapaPresentacion.Controllers;
 import java.io.IOException;
 
 import com.CapaAplicacion.DTOentrada.ProductoRequestDTO;
+import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
 import com.CapaAplicacion.Interfaces.RepositorioProductoService;
+import com.CapaAplicacion.Seguridad.Principal;
 import com.sun.net.httpserver.HttpExchange;
 
 public class ProductoController extends BaseController {
 
     private final RepositorioProductoService servicio;
+    private final IProveedorTokenAcceso proveedor;
 
-    public ProductoController(RepositorioProductoService servicio) {
+    public ProductoController(RepositorioProductoService servicio, IProveedorTokenAcceso proveedor) {
+        if (servicio == null || proveedor == null) {
+            throw new IllegalArgumentException("El servicio y el proveedor de tokens son obligatorios.");
+        }
         this.servicio = servicio;
+        this.proveedor = proveedor;
     }
 
    @Override
@@ -27,10 +34,14 @@ public class ProductoController extends BaseController {
         try {
             if (path.equals("/api/productos") || path.equals("/api/productos/")) {
                 if ("GET".equalsIgnoreCase(method)) {
-                    handleAsync(exchange, servicio.listarTodosAsync(), 200);
+                    long idNegocio = exigirNegocio(exchange);
+                    handleAsync(exchange, servicio.listarTodosAsync(idNegocio), 200);
                 } else if ("POST".equalsIgnoreCase(method)) {
+                    Principal principal = exigirAutenticacion(exchange, proveedor);
+                    exigirAdmin(principal);
+                    long idNegocio = negocioAutorizado(exchange, principal);
                     ProductoRequestDTO dto = parseRequestBody(exchange, ProductoRequestDTO.class);
-                    handleAsync(exchange, servicio.guardarAsync(dto), 201);
+                    handleAsync(exchange, servicio.guardarAsync(idNegocio, dto), 201);
                 } else {
                     throw new ControllerException.Validacion("Método no permitido.", "La ruta no admite este método HTTP.");
                 }
@@ -41,12 +52,19 @@ public class ProductoController extends BaseController {
                 }
 
                 if ("GET".equalsIgnoreCase(method)) {
-                    handleAsync(exchange, servicio.buscarPorIdAsync(id), 200);
+                    long idNegocio = exigirNegocio(exchange);
+                    handleAsync(exchange, servicio.buscarPorIdAsync(idNegocio, id), 200);
                 } else if ("PUT".equalsIgnoreCase(method)) {
+                    Principal principal = exigirAutenticacion(exchange, proveedor);
+                    exigirAdmin(principal);
+                    long idNegocio = negocioAutorizado(exchange, principal);
                     ProductoRequestDTO dto = parseRequestBody(exchange, ProductoRequestDTO.class);
-                    handleAsync(exchange, servicio.actualizarAsync(id, dto), 200);
+                    handleAsync(exchange, servicio.actualizarAsync(idNegocio, id, dto), 200);
                 } else if ("DELETE".equalsIgnoreCase(method)) {
-                    handleAsync(exchange, servicio.eliminarAsync(id), 200);
+                    Principal principal = exigirAutenticacion(exchange, proveedor);
+                    exigirAdmin(principal);
+                    long idNegocio = negocioAutorizado(exchange, principal);
+                    handleAsync(exchange, servicio.eliminarAsync(idNegocio, id), 200);
                 } else {
                     throw new ControllerException.Validacion("Método no permitido.", "La ruta no admite este método HTTP.");
                 }

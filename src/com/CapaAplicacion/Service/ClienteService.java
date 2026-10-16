@@ -27,22 +27,23 @@ public class ClienteService implements IServiceCliente {
     }
 
 @Override
-public CompletableFuture<Void> guardarAsync(final ClienteRequestDTO dto) {
+public CompletableFuture<Void> guardarAsync(final long idNegocio, final ClienteRequestDTO dto) {
     return executor.ejecutar(new Runnable() {
         @Override
         public void run() {
             Cliente cliente = ClienteMapper.toEntidad(0, dto);
+            cliente.setIdNegocio(idNegocio);
             repository.guardar(cliente);
         }
     });
 }
 
     @Override
-    public CompletableFuture<Optional<ClienteResponseDTO>> buscarPorIdAsync(final int id) {
+    public CompletableFuture<Optional<ClienteResponseDTO>> buscarPorIdAsync(final long idNegocio, final int id) {
         return executor.ejecutar(new java.util.concurrent.Callable<Optional<ClienteResponseDTO>>() {
             @Override
             public Optional<ClienteResponseDTO> call() {
-                Optional<Cliente> opt = repository.buscarPorId(id);
+                Optional<Cliente> opt = repository.buscarPorId(idNegocio, id);
                 if (opt.isPresent()) {
                     return Optional.of(ClienteMapper.toResponseDTO(opt.get()));
                 }
@@ -52,11 +53,11 @@ public CompletableFuture<Void> guardarAsync(final ClienteRequestDTO dto) {
     }
 
     @Override
-    public CompletableFuture<List<ClienteResponseDTO>> listarTodosAsync() {
+    public CompletableFuture<List<ClienteResponseDTO>> listarTodosAsync(final long idNegocio) {
         return executor.ejecutar(new java.util.concurrent.Callable<List<ClienteResponseDTO>>() {
             @Override
             public List<ClienteResponseDTO> call() {
-                List<Cliente> listaEntidades = repository.listarTodos();
+                List<Cliente> listaEntidades = repository.listarTodos(idNegocio);
                 List<ClienteResponseDTO> listaDTOs = new ArrayList<>();
                 for (Cliente c : listaEntidades) {
                     listaDTOs.add(ClienteMapper.toResponseDTO(c));
@@ -67,25 +68,26 @@ public CompletableFuture<Void> guardarAsync(final ClienteRequestDTO dto) {
     }
 
     @Override
-    public CompletableFuture<Void> actualizarAsync(final int id, final ClienteRequestDTO dto) {
+    public CompletableFuture<Void> actualizarAsync(final long idNegocio, final int id, final ClienteRequestDTO dto) {
         return executor.ejecutar(new Runnable() {
             @Override
             public void run() {
-                repository.buscarPorId(id)
+                repository.buscarPorId(idNegocio, id)
                         .orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
                 
                 Cliente clienteActualizado = ClienteMapper.toEntidad(id, dto);
-                repository.actualizar(id, clienteActualizado);
+                clienteActualizado.setIdNegocio(idNegocio);
+                repository.actualizar(idNegocio, id, clienteActualizado);
             }
         });
     }
 
     @Override
-    public CompletableFuture<Void> eliminarAsync(final int id) {
+    public CompletableFuture<Void> eliminarAsync(final long idNegocio, final int id) {
         return executor.ejecutar(new Runnable() {
             @Override
             public void run() {
-                repository.eliminar(id);
+                repository.eliminar(idNegocio, id);
             }
         });
     }

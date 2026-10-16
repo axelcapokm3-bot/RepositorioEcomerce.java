@@ -1,17 +1,37 @@
-import { fetchData } from '../../js/api.js';
+import { api } from '../../js/api.js';
 import { showToast } from '../../js/utils/toast-notifier.js';
 
 export async function renderSalesList(element) {
-    element.innerHTML = '<h3>Lista de Ventas</h3><div id="sales-table"></div>';
-    const salesTableDiv = document.getElementById('sales-table');
+    element.innerHTML = `
+        <h3>Gestión de Ventas</h3>
+        <div class="sales-lookup">
+            <input id="sales-lookup-id" type="number" min="1" placeholder="ID de venta" />
+            <button id="sales-lookup-btn" class="action-btn">Buscar</button>
+        </div>
+        <div id="sales-table"><p>La API no expone listado de ventas; busque por ID para operar.</p></div>`;
+    const salesTableDiv = element.querySelector('#sales-table');
 
-    try {
-        const sales = await fetchData('/ventas'); // Assuming an endpoint /ventas exists for listing all sales
-
-        if (sales.length === 0) {
-            salesTableDiv.innerHTML = '<p>No hay ventas registradas.</p>';
+    element.querySelector('#sales-lookup-btn')?.addEventListener('click', async () => {
+        const id = parseInt(element.querySelector('#sales-lookup-id').value, 10);
+        if (!id || id <= 0) {
+            showToast('Indique un ID de venta válido.', 'error');
             return;
         }
+        try {
+            const venta = await api.ventas.obtener(id);
+            renderTabla(salesTableDiv, [venta], element);
+        } catch (error) {
+            console.error('Error buscando la venta:', error);
+            salesTableDiv.innerHTML = '<p>No se encontró la venta solicitada.</p>';
+        }
+    });
+}
+
+function renderTabla(salesTableDiv, sales, parentElement) {
+    if (!sales || sales.length === 0) {
+        salesTableDiv.innerHTML = '<p>No hay ventas registradas.</p>';
+        return;
+    }
 
         salesTableDiv.innerHTML = `
             <table>
@@ -49,28 +69,25 @@ export async function renderSalesList(element) {
         salesTableDiv.querySelectorAll('.pay-btn').forEach(button => {
             button.addEventListener('click', (e) => {
                 const saleId = parseInt(e.target.dataset.saleId);
-                handleSaleAction(saleId, 'pago', element);
+                handleSaleAction(saleId, 'pago', parentElement);
             });
         });
 
         salesTableDiv.querySelectorAll('.cancel-btn').forEach(button => {
             button.addEventListener('click', (e) => {
                 const saleId = parseInt(e.target.dataset.saleId);
-                handleSaleAction(saleId, 'cancelar', element);
+                handleSaleAction(saleId, 'cancelar', parentElement);
             });
         });
-
-    } catch (error) {
-        console.error('Error loading sales list:', error);
-        salesTableDiv.innerHTML = '<p>No se pudieron cargar las ventas.</p>';
-    }
 }
 
 async function handleSaleAction(saleId, actionType, parentElement) {
     try {
-        await fetchData(`/ventas/${saleId}/${actionType}`, {
-            method: 'POST',
-        });
+        if (actionType === 'pago') {
+            await api.ventas.pagar(saleId);
+        } else {
+            await api.ventas.cancelar(saleId);
+        }
         showToast(`Venta ${saleId} ${actionType === 'pago' ? 'registrada como pagada' : 'cancelada'} con éxito!`, 'success');
         renderSalesList(parentElement); // Re-render the list to update status
     } catch (error) {

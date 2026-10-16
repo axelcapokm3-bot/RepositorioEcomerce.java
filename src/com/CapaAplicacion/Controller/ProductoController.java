@@ -14,19 +14,19 @@ public class ProductoController {
         this.servicio = servicio;
     }
 
-    public CompletableFuture<List<ProductoResponseDTO>> listarTodos() {
-        return servicio.listarTodosAsync();
+    public CompletableFuture<List<ProductoResponseDTO>> listarTodos(long idNegocio) {
+        return servicio.listarTodosAsync(idNegocio);
     }
 
-    public CompletableFuture<Void> crear(ProductoRequestDTO producto) {
-        return servicio.guardarAsync(producto);
+    public CompletableFuture<Void> crear(long idNegocio, ProductoRequestDTO producto) {
+        return servicio.guardarAsync(idNegocio, producto);
     }
 
-    public CompletableFuture<Void> actualizar(int id, ProductoRequestDTO producto) {
-        return servicio.actualizarAsync(id, producto);
+    public CompletableFuture<Void> actualizar(long idNegocio, int id, ProductoRequestDTO producto) {
+        return servicio.actualizarAsync(idNegocio, id, producto);
     }
 
-    public CompletableFuture<Void> eliminar(int id) {
-        return servicio.eliminarAsync(id);
+    public CompletableFuture<Void> eliminar(long idNegocio, int id) {
+        return servicio.eliminarAsync(idNegocio, id);
     }
 }

@@ -10,9 +10,9 @@ public interface IAuditoriaService {
     CompletableFuture<Void> registrarAuditoriaAsync(Auditoria auditoria);
 
 
-    CompletableFuture<List<Auditoria>> obtenerTodosAsync();
+    CompletableFuture<List<Auditoria>> obtenerTodosAsync(long idNegocio);
 
-    CompletableFuture<List<Auditoria>> obtenerPorProductoAsync(int idProducto);
+    CompletableFuture<List<Auditoria>> obtenerPorProductoAsync(long idNegocio, int idProducto);
 
-    CompletableFuture<List<Auditoria>> obtenerPorAccionAsync(AccionAuditoria accion);
+    CompletableFuture<List<Auditoria>> obtenerPorAccionAsync(long idNegocio, AccionAuditoria accion);
 }

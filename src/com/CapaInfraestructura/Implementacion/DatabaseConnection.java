@@ -26,10 +26,10 @@ private static HikariDataSource createDataSource() {
         Properties properties = loadProperties();
         HikariConfig config = new HikariConfig();
         
-        config.setJdbcUrl(value(properties, "db.url", "ECOMMERCE_DB_URL", "jdbc:mysql://localhost:3306/ecommerce_db"));
+        config.setJdbcUrl(exigirValor(properties, "db.url", "ECOMMERCE_DB_URL"));
         config.setDriverClassName("com.mysql.cj.jdbc.Driver");
-        config.setUsername(value(properties, "db.username", "ECOMMERCE_DB_USERNAME", "root"));
-        config.setPassword(value(properties, "db.password", "ECOMMERCE_DB_PASSWORD", "1234"));
+        config.setUsername(exigirValor(properties, "db.username", "ECOMMERCE_DB_USERNAME"));
+        config.setPassword(exigirValor(properties, "db.password", "ECOMMERCE_DB_PASSWORD"));
         config.setMaximumPoolSize(Integer.parseInt(value(properties, "db.maximumPoolSize", "ECOMMERCE_DB_POOL_SIZE", "10")));
         config.setMinimumIdle(2);
         config.setConnectionTimeout(10_000);
@@ -62,6 +62,16 @@ private static HikariDataSource createDataSource() {
             throw new IllegalStateException("No se pudo leer config.properties.", exception);
         }
         return properties;
+    }
+
+    private static String exigirValor(Properties properties, String property, String environment) {
+        String valor = value(properties, property, environment, null);
+        if (valor == null || valor.isBlank()) {
+            throw new IllegalStateException(
+                    "Falta la configuración '" + property + "'. Defínala en config.properties o en la variable "
+                            + environment + ". No se permiten credenciales predeterminadas.");
+        }
+        return valor;
     }
 
     private static String value(Properties properties, String property, String environment, String defaultValue) {

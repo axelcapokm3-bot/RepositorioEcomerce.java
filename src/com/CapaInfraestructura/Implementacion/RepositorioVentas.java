@@ -40,14 +40,14 @@ private static final AtomicInteger siguienteId = new AtomicInteger(maximoId());
     }
 
 
-    public Optional<Venta> buscarPorId(int id) {
+    public Optional<Venta> buscarPorId(long idNegocio, int id) {
         if (id <= 0) {
             throw new IllegalArgumentException("El ID debe ser mayor a cero. ID recibido: " + id);
         }
 
         for (int i = 0; i < ventas.size(); i++) {
             Venta ventaActual = ventas.get(i);
-            if (ventaActual.getId() == id) {
+            if (ventaActual.getId() == id && ventaActual.getIdNegocio() == idNegocio) {
                 return Optional.of(ventaActual);
             }
         }
@@ -55,12 +55,18 @@ private static final AtomicInteger siguienteId = new AtomicInteger(maximoId());
     }
 
     
-    public List<Venta> listarTodas() {
-        return new ArrayList<>(ventas);
+    public List<Venta> listarTodas(long idNegocio) {
+        List<Venta> filtradas = new ArrayList<>();
+        for (Venta venta : ventas) {
+            if (venta.getIdNegocio() == idNegocio) {
+                filtradas.add(venta);
+            }
+        }
+        return filtradas;
     }
 
 
-    public void actualizar(int id, Venta venta) {
+    public void actualizar(long idNegocio, int id, Venta venta) {
         if (venta == null) {
             throw new IllegalArgumentException("La venta no puede ser nula.");
         }
@@ -69,7 +75,7 @@ private static final AtomicInteger siguienteId = new AtomicInteger(maximoId());
         }
 
         for (int i = 0; i < ventas.size(); i++) {
-            if (ventas.get(i).getId() == id) {
+            if (ventas.get(i).getId() == id && ventas.get(i).getIdNegocio() == idNegocio) {
                 ventas.set(i, venta);
                 return;
             }

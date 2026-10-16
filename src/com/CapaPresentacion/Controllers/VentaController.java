@@ -6,18 +6,24 @@ import java.util.List;
 import java.util.Optional;
 
 import com.CapaAplicacion.Interfaces.IProductoRepository;
+import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
+import com.CapaAplicacion.Interfaces.IVentaRepository;
+import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaAplicacion.Service.VentaService;
 import com.CapaDominio.Entidades.Carrito;
 import com.CapaDominio.Entidades.IDescuentos;
 import com.CapaDominio.Entidades.ItemCarrito;
 import com.CapaDominio.Entidades.PoliticaDescuento;
 import com.CapaDominio.Entidades.Producto;
+import com.CapaDominio.Entidades.Venta;
 import com.sun.net.httpserver.HttpExchange;
 
 public class VentaController extends BaseController {
 
     private final VentaService servicio;
     private final IProductoRepository productoRepository;
+    private final IVentaRepository ventaRepository;
+    private final IProveedorTokenAcceso proveedor;
 
     public record CreateVentaRequest(
         int idCliente,
@@ -41,9 +47,16 @@ public class VentaController extends BaseController {
         int cantidad
     ) {}
 
-    public VentaController(VentaService servicio, IProductoRepository productoRepository) {
+    public VentaController(VentaService servicio, IProductoRepository productoRepository,
+                           IVentaRepository ventaRepository, IProveedorTokenAcceso proveedor) {
+        if (servicio == null || productoRepository == null
+                || ventaRepository == null || proveedor == null) {
+            throw new IllegalArgumentException("Las dependencias del controlador de ventas son obligatorias.");
+        }
         this.servicio = servicio;
         this.productoRepository = productoRepository;
+        this.ventaRepository = ventaRepository;
+        this.proveedor = proveedor;
     }
 
     @Override
@@ -57,8 +70,16 @@ public class VentaController extends BaseController {
         try {
             if (path.equals("/api/ventas/previsualizar")) {
                 if ("POST".equalsIgnoreCase(method)) {
+                    Principal principal = exigirAutenticacion(exchange, proveedor);
+                    long idNegocio = negocioAutorizado(exchange, principal);
                     CreateVentaRequest req = parseRequestBody(exchange, CreateVentaRequest.class);
-                    Carrito carrito = construirCarrito(req);
+                    if (req == null) {
+                        throw new ControllerException.Validacion(
+                                "La venta no es válida.",
+                                "Debe enviar el cliente, el tipo de pago y los artículos.");
+                    }
+                    exigirPermisoSobreCliente(principal, req.idCliente());
+                    Carrito carrito = construirCarrito(idNegocio, req);
                     IDescuentos descuento = resolverDescuento(req.descuento());
                     BigDecimal subtotal = carrito.calcularTotalCarrito(null);
                     BigDecimal total = carrito.calcularTotalCarrito(descuento);
@@ -68,7 +89,15 @@ public class VentaController extends BaseController {
                 }
             } else if (path.equals("/api/ventas/crear")) {
                 if ("POST".equalsIgnoreCase(method)) {
+                    Principal principal = exigirAutenticacion(exchange, proveedor);
+                    long idNegocio = negocioAutorizado(exchange, principal);
                     CreateVentaRequest req = parseRequestBody(exchange, CreateVentaRequest.class);
+                    if (req == null) {
+                        throw new ControllerException.Validacion(
+                                "La venta no es válida.",
+                                "Debe enviar el cliente, el tipo de pago y los artículos.");
+                    }
+                    exigirPermisoSobreCliente(principal, req.idCliente());
                     String claveIdempotenciaSolicitud =
                             exchange.getRequestHeaders().getFirst("Idempotency-Key");
                     if (claveIdempotenciaSolicitud == null || claveIdempotenciaSolicitud.isBlank()) {
@@ -81,13 +110,13 @@ public class VentaController extends BaseController {
                                 "El encabezado Idempotency-Key no es válido.",
                                 "La clave no puede superar 255 caracteres.");
                     }
-                    Carrito carrito = construirCarrito(req);
+                    Carrito carrito = construirCarrito(idNegocio, req);
                     IDescuentos descuento = resolverDescuento(req.descuento());
 
                     handleAsync(
                             exchange,
                             servicio.crearVentaConPagoAsync(
-                                    carrito, req.tipoPago(), descuento, claveIdempotenciaSolicitud),
+                                    idNegocio, carrito, req.tipoPago(), descuento, claveIdempotenciaSolicitud),
                             201);
                 } else {
                     throw new ControllerException.Validacion("Método no permitido.", "La ruta no admite este método HTTP.");
@@ -97,23 +126,26 @@ public class VentaController extends BaseController {
                 if (id == null || id <= 0) {
                     throw new ControllerException.Validacion("El ID de venta no es válido.", "Debe ser un entero positivo.");
                 }
+                Principal principal = exigirAutenticacion(exchange, proveedor);
+                long idNegocio = negocioAutorizado(exchange, principal);
+                exigirPermisoSobreVenta(idNegocio, principal, id);
 
                 if (path.endsWith("/pago")) {
                     if ("POST".equalsIgnoreCase(method)) {
-                        handleAsync(exchange, servicio.registrarPagoAsync(id), 200);
+                        handleAsync(exchange, servicio.registrarPagoAsync(idNegocio, id), 200);
                     } else {
                         throw new ControllerException.Validacion("Método no permitido.", "La ruta no admite este método HTTP.");
                     }
                 } else if (path.endsWith("/cancelar")) {
                     if ("POST".equalsIgnoreCase(method)) {
-                        handleAsync(exchange, servicio.cancelarVentaAsync(id), 200);
+                        handleAsync(exchange, servicio.cancelarVentaAsync(idNegocio, id), 200);
                     } else {
                         throw new ControllerException.Validacion("Método no permitido.", "La ruta no admite este método HTTP.");
                     }
                 } else {
-     
+      
                     if ("GET".equalsIgnoreCase(method)) {
-                        handleAsync(exchange, servicio.buscarPorIdAsync(id), 200);
+                        handleAsync(exchange, servicio.buscarPorIdAsync(idNegocio, id), 200);
                     } else {
                         throw new ControllerException.Validacion("Método no permitido.", "La ruta no admite este método HTTP.");
                     }
@@ -132,7 +164,7 @@ public class VentaController extends BaseController {
         }
     }
 
-    private Carrito construirCarrito(CreateVentaRequest req) {
+    private Carrito construirCarrito(long idNegocio, CreateVentaRequest req) {
         if (req == null || req.idCliente() <= 0) {
             throw new ControllerException.Validacion(
                     "El cliente de la venta no es válido.",
@@ -160,7 +192,7 @@ public class VentaController extends BaseController {
                         "El producto y la cantidad deben ser valores positivos."
                 );
             }
-            Optional<Producto> prodOpt = productoRepository.buscarPorId(itemReq.idProducto());
+            Optional<Producto> prodOpt = productoRepository.buscarPorId(idNegocio, itemReq.idProducto());
             if (prodOpt.isEmpty()) {
                 throw new ControllerException.NoEncontrado(
                         "Producto no encontrado.",
@@ -170,6 +202,23 @@ public class VentaController extends BaseController {
             carrito.agregarItem(new ItemCarrito(prodOpt.get(), itemReq.cantidad()));
         }
         return carrito;
+    }
+
+    private void exigirPermisoSobreVenta(long idNegocio, Principal principal, int idVenta) {
+        Optional<Venta> venta;
+        try {
+            venta = ventaRepository.buscarPorId(idNegocio, idVenta);
+        } catch (IllegalStateException e) {
+            throw new ControllerException.ServicioNoDisponible(
+                    "No se pudo verificar el acceso a la venta.",
+                    "Fallo al consultar el repositorio de ventas.");
+        }
+        if (venta.isEmpty()) {
+            throw new ControllerException.NoEncontrado(
+                    "Venta no encontrada.",
+                    "No existe una venta con el ID solicitado.");
+        }
+        exigirPermisoSobreCliente(principal, venta.get().getIdCliente());
     }
 
     private IDescuentos resolverDescuento(DiscountInfo descuento) {

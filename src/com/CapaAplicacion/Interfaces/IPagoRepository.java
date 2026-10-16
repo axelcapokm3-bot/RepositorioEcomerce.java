@@ -10,13 +10,13 @@ public interface IPagoRepository {
     /** Inserta un intento de pago y completa su id generado. */
     void insertar(Pago pago);
 
-    List<Pago> buscarPorVenta(int idVenta);
+    List<Pago> buscarPorVenta(long idNegocio, int idVenta);
 
     Optional<Pago> buscarPorMpPaymentId(String mpPaymentId);
 
     Optional<Pago> buscarPorOrderId(String orderId);
 
-    Optional<Pago> buscarPorClaveIdempotenciaPasarela(String claveIdempotenciaPasarela);
+    Optional<Pago> buscarPorClaveIdempotenciaPasarela(long idNegocio, String claveIdempotenciaPasarela);
 
     void actualizarCheckout(int id, String externalId, String orderId, String urlPago,
                             EstadoPago estado, String rawResponse);

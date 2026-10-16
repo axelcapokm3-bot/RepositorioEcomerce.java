@@ -12,16 +12,17 @@
 3. [Enums del Dominio](#3-enums-del-dominio)
 4. [Módulo Productos](#4-módulo-productos)
 5. [Módulo Clientes](#5-módulo-clientes)
-6. [Módulo Cuentas](#6-módulo-cuentas)
-7. [Módulo Ventas](#7-módulo-ventas)
-8. [Módulo Carrito](#8-módulo-carrito)
-9. [Módulo Auditoría](#9-módulo-auditoría)
-10. [Módulo Stock](#10-módulo-stock)
-11. [Módulo Recomendaciones](#11-módulo-recomendaciones)
-12. [Guía de Implementación Frontend — `js/api.js`](#12-guía-de-implementación-frontend--jsapijs)
-13. [Guía de Implementación Frontend — `js/app.js`](#13-guía-de-implementación-frontend--jsappjs)
-14. [Anexo: Mapa de Respuestas / Códigos HTTP](#14-anexo-mapa-de-respuestas--códigos-http)
-15. [Advertencias y Caveats (Importante)](#15-advertencias-y-caveats-importante)
+6. [Módulo Auth](#6-módulo-auth)
+7. [Módulo Cuentas](#7-módulo-cuentas)
+8. [Módulo Ventas](#8-módulo-ventas)
+9. [Módulo Carrito](#9-módulo-carrito)
+10. [Módulo Auditoría](#10-módulo-auditoría)
+11. [Módulo Stock](#11-módulo-stock)
+12. [Módulo Recomendaciones](#12-módulo-recomendaciones)
+13. [Guía de Implementación Frontend — `js/api.js`](#13-guía-de-implementación-frontend--jsapijs)
+14. [Guía de Implementación Frontend — `js/app.js`](#14-guía-de-implementación-frontend--jsappjs)
+15. [Anexo: Mapa de Respuestas / Códigos HTTP](#15-anexo-mapa-de-respuestas--códigos-http)
+16. [Advertencias y Caveats (Importante)](#16-advertencias-y-caveats-importante)
 
 ---
 
@@ -34,9 +35,11 @@
 | **Base URL del Frontend** | `http://localhost:8080/api` |
 | **Content-Type (Request)** | `application/json` |
 | **Content-Type (Response)** | `application/json; charset=UTF-8` |
-| **CORS** | `Access-Control-Allow-Origin: *`, métodos `GET, POST, PUT, DELETE, OPTIONS`, headers `Content-Type, Authorization` |
+| **CORS** | Origen reflejado solo si está en la allowlist (`app.cors.allowed-origins`, por defecto `http://localhost:5500,http://localhost:8080`); métodos `GET, POST, PUT, DELETE, OPTIONS`, headers `Content-Type, Authorization, Idempotency-Key` |
 | **Preflight OPTIONS** | `204 No Content` (todos los controllers lo responden automáticamente) |
-| **Autenticación** | No implementada. El header `Authorization` es permitido por CORS pero **no se valida** en el backend. |
+| **Autenticación** | Bearer token HMAC-SHA256 en header `Authorization: Bearer <token>`. Obtenerlo en `POST /api/auth/registro` o `POST /api/auth/ingreso` (ver [Módulo Auth](#6-módulo-auth)). Sin token → `401`; sin rol suficiente → `403`. |
+| **Roles** | `ADMIN` (gestión total) y `CLIENTE` (solo sus propios datos). Catálogo de productos en lectura y webhooks de pago son públicos; todo lo demás exige autenticación. |
+| **Perfil prod** | Con `APP_PERFIL=prod` el servidor no inicia sin `AUTH_TOKEN_SECRET` (≥ 32 caracteres). Ver `docs/seguridad-operativa.md` para rotación, migración y bootstrap del primer ADMIN. |
 
 **Cabeceras por defecto para toda llamada que envíe body:**
 
@@ -80,8 +83,11 @@ Todas las respuestas de error usan un **objeto único**:
 | `201 Created` | POST de creación exitoso (producto, cliente, cuenta, venta, auditoría) |
 | `204 No Content` | Solo respuesta a preflight `OPTIONS` |
 | `400 Bad Request` | `IllegalArgumentException` / `IllegalStateException` del servicio, ID inválido en ruta, parámetro requerido ausente, JSON inválido, enum inválido |
+| `401 Unauthorized` | Falta el header `Authorization` o el token es inválido/expirado |
+| `403 Forbidden` | Token válido pero sin rol o propiedad suficiente sobre el recurso |
 | `404 Not Found` | Recurso no encontrado (`Optional` vacío) o ruta inexistente |
 | `405 Method Not Allowed` | Verbo HTTP no soportado en la ruta |
+| `429 Too Many Requests` | Se superó el límite por minuto (auth: 20/IP, webhooks: 60/IP) |
 | `500 Internal Server Error` | `RuntimeException` genérica no mapeada (ver [Caveats](#15-advertencias-y-caveats-importante)) |
 
 ---
@@ -291,7 +297,105 @@ Posibles valores: `DISPONIBLE`, `CRITICO`, `AGOTADO`, `EN_REPOSICION` (`EN_REPOS
 
 ---
 
-## 6. Módulo Cuentas
+## 6. Módulo Auth
+
+**Ruta base:** `/api/auth` · **Controller:** `AuthController` · **Service:** `AutenticacionService`
+
+### 6.1 `POST /api/auth/registro`
+
+- **Caso de uso:** Crear identidad global y vincularla al negocio del request con un perfil de cliente existente. La contraseña se hashea con PBKDF2-SHA256 (nunca se devuelve).
+- **Negocio:** se resuelve del header `X-Negocio-Subdominio` o del subdominio del host (negocio activo); el vínculo se crea solo en ese negocio.
+- **Autenticación:** no requerida. El campo `rol` solo acepta `ADMIN` si el solicitante es `ADMIN` del mismo negocio (enviar su token) o si se envía el header `X-Setup-Token` con el token de bootstrap del operador (`AUTH_BOOTSTRAP_TOKEN`); en cualquier otro caso la cuenta se crea como `CLIENTE`. Sin token de bootstrap configurado no existe registro público de administradores.
+- **Correo existente:** no se duplica la cuenta. Solo un `ADMIN` del negocio puede vincular ese correo como `ADMIN` en su negocio; en cualquier otro caso se responde `409` y el usuario debe ingresar y vincular el negocio desde su sesión.
+- **Request:**
+
+```json
+{
+  "nombreCuenta": "jperez",
+  "correoElectronico": "jperez@gmail.com",
+  "contraseniaPlana": "Password123",
+  "idCliente": 1,
+  "rol": "CLIENTE"
+}
+```
+
+| Campo | Regla |
+|---|---|
+| `nombreCuenta` | obligatorio, sin espacios, ≤ 100 chars |
+| `correoElectronico` | obligatorio, formato válido, único |
+| `contraseniaPlana` | ≥ 8 chars, 1 mayúscula + 1 minúscula + 1 número |
+| `idCliente` | obligatorio, debe existir en clientes |
+| `rol` | opcional (`CLIENTE` por defecto) |
+
+- **Response `201 Created`:**
+
+```json
+{
+  "token": "<base64url>.<base64url>",
+  "rol": "CLIENTE",
+  "idCuenta": 3,
+  "idCliente": 1,
+  "idNegocio": 1,
+  "expiraEn": 1728576000
+}
+```
+
+- **Errores:** `400` validación (incluye negocio no identificado); `409` correo duplicado, vínculo ya existente u operación no permitida; `429` si se supera 20 intentos/min por IP.
+
+### 6.2 `POST /api/auth/ingreso`
+
+- **Caso de uso:** Ingresar con la identidad global en el negocio del request. El servidor verifica la contraseña, que la cuenta esté activa y que exista un vínculo activo con ese negocio; el token emitido lleva el `idNegocio`, `idCliente` y `rol` de ese vínculo.
+- **Request:** `{ "correoElectronico": "...", "contraseniaPlana": "..." }`.
+- **Response `200 OK`:** `SesionResponseDTO` (igual que 6.1).
+- **Errores:** `400` credenciales inválidas (mensaje genérico, sin revelar si el correo existe) o negocio no identificado; `409` cuenta sin acceso a este negocio, cuenta o vínculo bloqueado/dado de baja; `429` por abuso.
+
+### 6.2bis `POST /api/auth/negocio-activo`
+
+- **Caso de uso:** Cambiar el negocio activo de la sesión (una misma identidad global accede a varios negocios). Requiere `Authorization: Bearer <token>`.
+- **Request:** `{ "idNegocio": 2 }`. El servidor comprueba que la cuenta tenga un vínculo activo con ese negocio, re-resuelve su rol y emite un token nuevo. Nunca confía en el `idNegocio` sin validar el vínculo.
+- **Response `200 OK`:** `SesionResponseDTO` del negocio solicitado.
+- **Errores:** `401` token inválido; `400` ID inválido; `409` sin acceso al negocio solicitado o vínculo bloqueado/dado de baja; `429` por abuso.
+
+### 6.2ter `GET /api/auth/negocios`
+
+- **Caso de uso:** Listar los negocios vinculados a la cuenta autenticada (para el selector de negocio activo). Requiere `Authorization: Bearer <token>`.
+- **Response `200 OK`:** `[{ "idNegocio": 1, "nombreNegocio": "Tienda Uno", "subdominio": "uno", "idCliente": 5, "rol": "CLIENTE", "estado": "ACTIVA" }, …]`.
+- **Errores:** `401` token inválido.
+
+### 6.2quater `POST /api/auth/vincular`
+
+- **Caso de uso:** Vincular la cuenta autenticada a otro negocio con un perfil de cliente de ese negocio. Requiere `Authorization: Bearer <token>`.
+- **Request:** `{ "idNegocio": 2, "idCliente": 9, "contraseniaPlana": "…" }` (reconfirma la contraseña; el rol otorgado es siempre `CLIENTE`, nunca `ADMIN`).
+- **Response `200 OK`:** `SesionResponseDTO` del negocio recién vinculado.
+- **Errores:** `401` token inválido; `400` datos inválidos o credenciales incorrectas; `409` vínculo ya existente, negocio inactivo o perfil inexistente; `429` por abuso.
+
+### 6.3 `GET /api/auth/sesion`
+
+- **Caso de uso:** Verificar el token actual. Requiere `Authorization: Bearer <token>`.
+- **Response `200 OK`:** `{ "idCuenta": 3, "idCliente": 1, "idNegocio": 1, "rol": "CLIENTE" }` (vínculo activo de la sesión).
+- **Errores:** `401` token ausente/inválido/expirado.
+
+### 6.4 Matriz de autorización por endpoint
+
+| Endpoint | Sin auth | CLIENTE | ADMIN |
+|---|---|---|---|
+| `POST /api/auth/*` | ✅ | ✅ | ✅ |
+| `GET /api/productos*` | ✅ (lectura) | ✅ | ✅ |
+| `POST/PUT/DELETE /api/productos*` | ❌ | ❌ | ✅ |
+| `GET /api/clientes` | ❌ | ❌ | ✅ |
+| `POST /api/clientes` | ❌ | ❌ | ✅ |
+| `GET/PUT /api/clientes/{id}` | ❌ | propio `id` | ✅ |
+| `DELETE /api/clientes/{id}` | ❌ | ❌ | ✅ |
+| `POST /api/ventas/*`, `GET /api/ventas/{id}` | ❌ | propias | ✅ |
+| `GET/POST /api/metodos-pago*` | ❌ | propios | ✅ |
+| `GET/POST /api/auditoria*` | ❌ | ❌ | ✅ |
+| `GET/PUT/POST /api/negocios/*/configuraciones` | ❌ | ❌ | ✅ (secretos redactados como `***`) |
+| `GET/POST /api/stock/*`, `POST /api/recomendaciones` | ❌ | ✅ | ✅ |
+| `POST /api/webhooks/*` | ✅ (firma HMAC del proveedor) | n/a | n/a |
+
+---
+
+## 7. Módulo Cuentas
 
 **Ruta base:** `/api/cuentas` · **Controller:** `CuentaController` · **Service:** `CuentaService`
 
@@ -381,7 +485,7 @@ Posibles valores: `DISPONIBLE`, `CRITICO`, `AGOTADO`, `EN_REPOSICION` (`EN_REPOS
 
 ---
 
-## 7. Módulo Ventas
+## 8. Módulo Ventas
 
 **Ruta base:** `/api/ventas` · **Controller:** `VentaController` · **Service:** `VentaService`
 
@@ -477,7 +581,7 @@ Posibles valores: `DISPONIBLE`, `CRITICO`, `AGOTADO`, `EN_REPOSICION` (`EN_REPOS
 
 ---
 
-## 8. Módulo Carrito
+## 9. Módulo Carrito
 
 **No existe un controller REST de carrito.** El `Carrito` es un concepto **transitorio del dominio** (`Carrito`, `ItemCarrito`) que se construye del lado del servidor en el momento de `POST /api/ventas/crear` y se descarta tras persistir la venta.
 
@@ -501,7 +605,7 @@ Reglas de dominio relevantes para el UI del carrito:
 
 ---
 
-## 9. Módulo Auditoría
+## 10. Módulo Auditoría
 
 **Ruta base:** `/api/auditoria` · **Controller:** `AuditoriaController` · **Service:** `AuditoriaService`
 
@@ -559,7 +663,7 @@ Reglas de dominio relevantes para el UI del carrito:
 
 ---
 
-## 10. Módulo Stock
+## 11. Módulo Stock
 
 **Ruta base:** `/api/stock` · **Controller:** `StockController` · **Service:** `StockService`
 
@@ -592,7 +696,7 @@ Posibles respuestas: `"DISPONIBLE"`, `"CRITICO"`, `"AGOTADO"`.
 
 ---
 
-## 11. Módulo Recomendaciones
+## 12. Módulo Recomendaciones
 
 **Ruta base:** `/api/recomendaciones` · **Controller:** `RecomendacionController` · **Service:** `RecomendacionService`
 
@@ -630,7 +734,7 @@ Posibles respuestas: `"DISPONIBLE"`, `"CRITICO"`, `"AGOTADO"`.
 
 ---
 
-## 12. Guía de Implementación Frontend — `js/api.js`
+## 13. Guía de Implementación Frontend — `js/api.js`
 
 **Arquitectura recomendada:** un helper central (`requestJson` para respuestas con body, `requestVoid` para respuestas vacías) + un objeto `api` con un sub-módulo por recurso. El helper debe lanzar/exponer el mensaje de `{"error": ...}` del backend.
 
@@ -747,7 +851,7 @@ try {
 
 ---
 
-## 13. Guía de Implementación Frontend — `js/app.js`
+## 14. Guía de Implementación Frontend — `js/app.js`
 
 ### 13.1 Estado global sugerido
 
@@ -822,7 +926,7 @@ function stockHabilitado(producto) {
 
 ---
 
-## 14. Anexo: Mapa de Respuestas / Códigos HTTP
+## 15. Anexo: Mapa de Respuestas / Códigos HTTP
 
 | Endpoint | Éxito | Body Éxito | 400 | 404 | 500 |
 |---|---|---|---|---|---|
@@ -859,7 +963,7 @@ function stockHabilitado(producto) {
 
 ---
 
-## 15. Advertencias y Caveats (Importante)
+## 16. Advertencias y Caveats (Importante)
 
 1. **PUT/DELETE de recursos inexistentes → `500` (no `404`).** `ProductoService.actualizarAsync`, `ClienteService.actualizarAsync` y `CuentaService.actualizarAsync` lanzan `RuntimeException` que el `BaseController` mapea a `500`. **El frontend debe comprobar existencia (GET previo) o tratar `500` como recurso ausente.**
 2. **DELETE silencioso:** eliminar un ID inexistente en productos/clientes/cuentas no produce error (no-op). La UI debe asumir éxito y refrescar.

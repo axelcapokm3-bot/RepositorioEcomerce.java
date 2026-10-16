@@ -37,7 +37,7 @@ public class PagoService {
 
         String claveIdempotenciaPasarela = crearClaveIdempotenciaPasarela(venta);
         Optional<Pago> pagoExistente =
-                pagoRepository.buscarPorClaveIdempotenciaPasarela(claveIdempotenciaPasarela);
+                pagoRepository.buscarPorClaveIdempotenciaPasarela(venta.getIdNegocio(), claveIdempotenciaPasarela);
         Pago pago;
         if (pagoExistente.isPresent()) {
             pago = pagoExistente.get();
@@ -50,7 +50,7 @@ public class PagoService {
             validarVentaPendiente(venta);
             pago = crearPagoPendiente(venta, claveIdempotenciaPasarela);
             pagoRepository.insertar(pago);
-            pago = pagoRepository.buscarPorClaveIdempotenciaPasarela(claveIdempotenciaPasarela)
+            pago = pagoRepository.buscarPorClaveIdempotenciaPasarela(venta.getIdNegocio(), claveIdempotenciaPasarela)
                     .orElse(pago);
             validarMismoPago(pago, venta);
             if (tieneOperacionExterna(pago)) {
@@ -62,7 +62,7 @@ public class PagoService {
             throw new IllegalStateException("No se pudo persistir el intento de pago antes del checkout.");
         }
 
-        ResultadoPago resultado = PasarelaFactory.obtener(venta.getTipoPago())
+        ResultadoPago resultado = PasarelaFactory.obtener(venta.getIdNegocio(), venta.getTipoPago())
                 .procesar(venta, claveIdempotenciaPasarela);
         String orderId = esMercadoPago(venta) ? resultado.paymentId() : null;
         String externalId = esStripe(venta) ? resultado.paymentId() : null;
@@ -76,12 +76,15 @@ public class PagoService {
         return resultado;
     }
 
-    public void validarConfiguracionCheckout(TipoDePago tipoDePago) {
+    public void validarConfiguracionCheckout(long idNegocio, TipoDePago tipoDePago) {
+        if (idNegocio <= 0) {
+            throw new IllegalArgumentException("El negocio del checkout no es válido.");
+        }
         if (tipoDePago != TipoDePago.MERCADO_PAGO && tipoDePago != TipoDePago.STRIPE) {
             throw new IllegalArgumentException(
                     "El checkout público solo está disponible para Mercado Pago y Stripe.");
         }
-        PasarelaFactory.obtener(tipoDePago).validarConfiguracion();
+        PasarelaFactory.obtener(idNegocio, tipoDePago).validarConfiguracion();
     }
 
     public void aplicarEstadoDePasarela(Pago pago, EstadoPago nuevoEstado,
@@ -98,11 +101,11 @@ public class PagoService {
             return;
         }
 
-        marcarVentaComoPagada(pago.getIdVenta());
+        marcarVentaComoPagada(pago.getIdNegocio(), pago.getIdVenta());
     }
 
-    public void confirmarPagoManual(int idVenta) {
-        Venta venta = buscarVenta(idVenta);
+    public void confirmarPagoManual(long idNegocio, int idVenta) {
+        Venta venta = buscarVenta(idNegocio, idVenta);
         if (venta.getTipoPago() != TipoDePago.EFECTIVO
                 && venta.getTipoPago() != TipoDePago.TRANSFERENCIA) {
             throw new IllegalArgumentException(
@@ -112,17 +115,20 @@ public class PagoService {
             throw new IllegalStateException("La venta no está pendiente de pago.");
         }
 
-        Pago pagoPendiente = buscarPagoPendiente(idVenta);
+        Pago pagoPendiente = buscarPagoPendiente(idNegocio, idVenta);
         pagoRepository.actualizarEstado(
                 pagoPendiente.getId(),
                 EstadoPago.APROBADO,
                 pagoPendiente.getRawResponse());
-        marcarVentaComoPagada(idVenta);
+        marcarVentaComoPagada(idNegocio, idVenta);
     }
 
     private void validarVentaOnline(Venta venta) {
         if (venta == null || venta.getId() <= 0) {
             throw new IllegalArgumentException("La venta debe estar guardada antes de iniciar el checkout.");
+        }
+        if (venta.getIdNegocio() <= 0) {
+            throw new IllegalArgumentException("La venta debe pertenecer a un negocio válido.");
         }
         if (!esMercadoPago(venta) && !esStripe(venta)) {
             throw new IllegalArgumentException(
@@ -152,6 +158,7 @@ public class PagoService {
                 claveIdempotenciaPasarela,
                 LocalDateTime.now(),
                 null);
+        pago.setIdNegocio(venta.getIdNegocio());
         return pago;
     }
 
@@ -162,6 +169,7 @@ public class PagoService {
 
     private void validarMismoPago(Pago pago, Venta venta) {
         if (pago.getIdVenta() != venta.getId()
+                || pago.getIdNegocio() != venta.getIdNegocio()
                 || !pago.getPasarela().equals(venta.getTipoPago().name())
                 || pago.getMonto().compareTo(venta.calculoTotal()) != 0) {
             throw new IllegalStateException(
@@ -219,19 +227,22 @@ public class PagoService {
         return "El pago está pendiente de confirmación.";
     }
 
-    private Venta buscarVenta(int idVenta) {
+    private Venta buscarVenta(long idNegocio, int idVenta) {
+        if (idNegocio <= 0) {
+            throw new IllegalArgumentException("El ID de negocio debe ser positivo.");
+        }
         if (idVenta <= 0) {
             throw new IllegalArgumentException("El ID de venta debe ser positivo.");
         }
-        Optional<Venta> venta = ventaRepository.buscarPorId(idVenta);
+        Optional<Venta> venta = ventaRepository.buscarPorId(idNegocio, idVenta);
         if (venta.isEmpty()) {
             throw new IllegalArgumentException("No existe la venta solicitada.");
         }
         return venta.get();
     }
 
-    private Pago buscarPagoPendiente(int idVenta) {
-        List<Pago> pagos = pagoRepository.buscarPorVenta(idVenta);
+    private Pago buscarPagoPendiente(long idNegocio, int idVenta) {
+        List<Pago> pagos = pagoRepository.buscarPorVenta(idNegocio, idVenta);
         for (Pago pago : pagos) {
             if (pago.getEstado() == EstadoPago.PENDIENTE) {
                 return pago;
@@ -240,13 +251,13 @@ public class PagoService {
         throw new IllegalStateException("La venta no tiene un pago pendiente para confirmar.");
     }
 
-    private void marcarVentaComoPagada(int idVenta) {
-        Venta venta = buscarVenta(idVenta);
+    private void marcarVentaComoPagada(long idNegocio, int idVenta) {
+        Venta venta = buscarVenta(idNegocio, idVenta);
         if (venta.getEstadoCompra() != EstadoVenta.PENDIENTE) {
             return;
         }
         venta.Pagar();
-        if (ventaRepository.marcarComoPagada(idVenta)) {
+        if (ventaRepository.marcarComoPagada(idNegocio, idVenta)) {
             eventBus.publicar(new VentasEventos("PAGADA", venta));
         }
     }

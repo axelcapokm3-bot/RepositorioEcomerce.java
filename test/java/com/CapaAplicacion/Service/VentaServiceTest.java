@@ -32,6 +32,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class VentaServiceTest {
+    private static final long NEGOCIO = 1L;
 
     @Mock
     private IVentaRepository ventaRepository;
@@ -65,7 +66,9 @@ class VentaServiceTest {
     }
 
     private Producto producto(int id, int stock, BigDecimal precio) {
-        return new Producto("Producto " + id, precio, stock, 0, id, CategoriaProducto.ELECTRONICA);
+        Producto producto = new Producto("Producto " + id, precio, stock, 0, id, CategoriaProducto.ELECTRONICA);
+        producto.setIdNegocio(NEGOCIO);
+        return producto;
     }
 
     private Carrito carritoValido() {
@@ -79,6 +82,7 @@ class VentaServiceTest {
         Carrito carrito = new Carrito(1);
         carrito.agregarItem(new ItemCarrito(producto(1, 10, new BigDecimal("100")), 2));
         Venta venta = new Venta(1, TipoDePago.EFECTIVO);
+        venta.setIdNegocio(NEGOCIO);
         venta.cargarDetallesDesdeCarrito(carrito, null);
         venta.setId(7);
         return venta;
@@ -93,12 +97,12 @@ class VentaServiceTest {
     void crearVentaExitosa() throws Exception {
         Carrito carrito = carritoValido();
 
-        service.crearVentaAsync(carrito, "EFECTIVO", null).get();
+        service.crearVentaAsync(NEGOCIO, carrito, "EFECTIVO", null).get();
 
         assertEquals(0, carrito.getItems().size(), "El carrito debe vaciarse tras crear la venta");
 
-        verify(productoRepository).actualizar(eq(1), any(Producto.class));
-        verify(productoRepository).actualizar(eq(2), any(Producto.class));
+        verify(productoRepository).actualizar(eq(NEGOCIO), eq(1), any(Producto.class));
+        verify(productoRepository).actualizar(eq(NEGOCIO), eq(2), any(Producto.class));
 
         ArgumentCaptor<Venta> ventaCaptor = ArgumentCaptor.forClass(Venta.class);
         verify(ventaRepository).guardar(ventaCaptor.capture());
@@ -116,7 +120,7 @@ class VentaServiceTest {
     @DisplayName("crearVentaAsync: rechaza carrito vacío")
     void crearVentaCarritoVacio() {
         assertThrows(ExecutionException.class,
-                () -> service.crearVentaAsync(new Carrito(1), "EFECTIVO", null).get());
+                () -> service.crearVentaAsync(NEGOCIO, new Carrito(1), "EFECTIVO", null).get());
         verify(ventaRepository, never()).guardar(any());
     }
 
@@ -127,7 +131,7 @@ class VentaServiceTest {
         carrito.agregarItem(new ItemCarrito(producto(1, 1, new BigDecimal("100")), 5));
 
         assertThrows(ExecutionException.class,
-                () -> service.crearVentaAsync(carrito, "EFECTIVO", null).get());
+                () -> service.crearVentaAsync(NEGOCIO, carrito, "EFECTIVO", null).get());
         verify(ventaRepository, never()).guardar(any());
     }
 
@@ -135,7 +139,7 @@ class VentaServiceTest {
     @DisplayName("crearVentaAsync: rechaza tipo de pago inválido")
     void crearVentaTipoPagoInvalido() {
         assertThrows(ExecutionException.class,
-                () -> service.crearVentaAsync(carritoValido(), "DESCONOCIDO", null).get());
+                () -> service.crearVentaAsync(NEGOCIO, carritoValido(), "DESCONOCIDO", null).get());
         verify(ventaRepository, never()).guardar(any());
     }
 
@@ -146,6 +150,7 @@ class VentaServiceTest {
         Carrito carrito = new Carrito(1);
         carrito.agregarItem(new ItemCarrito(producto(1, 10, new BigDecimal("100")), 2));
         Venta ventaExistente = new Venta(1, TipoDePago.MERCADO_PAGO, claveSolicitud);
+        ventaExistente.setIdNegocio(NEGOCIO);
         ventaExistente.cargarDetallesDesdeCarrito(carrito, null);
         ventaExistente.setId(7);
         ResultadoPago resultadoEsperado = ResultadoPago.pendiente(
@@ -156,17 +161,17 @@ class VentaServiceTest {
                 "order-7",
                 "{}");
 
-        when(ventaRepository.buscarPorClaveIdempotenciaSolicitud(claveSolicitud))
+        when(ventaRepository.buscarPorClaveIdempotenciaSolicitud(NEGOCIO, claveSolicitud))
                 .thenReturn(Optional.of(ventaExistente));
         when(pagoService.iniciarCheckout(ventaExistente)).thenReturn(resultadoEsperado);
 
         ResultadoPago resultado = service.crearVentaConPagoAsync(
-                carrito, "MERCADO_PAGO", null, claveSolicitud).get();
+                NEGOCIO, carrito, "MERCADO_PAGO", null, claveSolicitud).get();
 
         assertSame(resultadoEsperado, resultado);
         verify(pagoService).iniciarCheckout(ventaExistente);
         verify(ventaRepository, never()).guardar(any(), any());
-        verify(productoRepository, never()).actualizar(anyInt(), any(Producto.class), any());
+        verify(productoRepository, never()).actualizar(anyLong(), anyInt(), any(Producto.class), any());
     }
 
     @Test
@@ -176,17 +181,18 @@ class VentaServiceTest {
         Carrito carrito = new Carrito(1);
         carrito.agregarItem(new ItemCarrito(producto(1, 10, new BigDecimal("100")), 2));
         Venta ventaExistente = new Venta(1, TipoDePago.MERCADO_PAGO, claveSolicitud);
+        ventaExistente.setIdNegocio(NEGOCIO);
         Carrito carritoExistente = new Carrito(1);
         carritoExistente.agregarItem(new ItemCarrito(
                 producto(1, 10, new BigDecimal("100")), 1));
         ventaExistente.cargarDetallesDesdeCarrito(carritoExistente, null);
         ventaExistente.setId(7);
-        when(ventaRepository.buscarPorClaveIdempotenciaSolicitud(claveSolicitud))
+        when(ventaRepository.buscarPorClaveIdempotenciaSolicitud(NEGOCIO, claveSolicitud))
                 .thenReturn(Optional.of(ventaExistente));
 
         assertThrows(ExecutionException.class,
                 () -> service.crearVentaConPagoAsync(
-                        carrito, "MERCADO_PAGO", null, claveSolicitud).get());
+                        NEGOCIO, carrito, "MERCADO_PAGO", null, claveSolicitud).get());
 
         verify(pagoService, never()).iniciarCheckout(any());
         verify(ventaRepository, never()).guardar(any(), any());
@@ -195,14 +201,14 @@ class VentaServiceTest {
     @Test
     @DisplayName("crearVentaConPagoAsync: exige transacción para guardar una venta nueva")
     void crearVentaConPagoExigeTransaccion() {
-        when(ventaRepository.buscarPorClaveIdempotenciaSolicitud("solicitud-nueva"))
+        when(ventaRepository.buscarPorClaveIdempotenciaSolicitud(NEGOCIO, "solicitud-nueva"))
                 .thenReturn(Optional.empty());
 
         assertThrows(ExecutionException.class,
                 () -> service.crearVentaConPagoAsync(
-                        carritoValido(), "MERCADO_PAGO", null, "solicitud-nueva").get());
+                        NEGOCIO, carritoValido(), "MERCADO_PAGO", null, "solicitud-nueva").get());
 
-        verify(productoRepository, never()).actualizar(anyInt(), any(Producto.class));
+        verify(productoRepository, never()).actualizar(anyLong(), anyInt(), any(Producto.class));
         verify(ventaRepository, never()).guardar(any());
         verify(pagoService, never()).iniciarCheckout(any());
     }
@@ -212,17 +218,17 @@ class VentaServiceTest {
     void crearVentaConPagoSinConfiguracionNoGuardaNiDescuentaStock() throws Exception {
         Carrito carrito = carritoValido();
         doThrow(new PasarelaNoDisponibleException("Falta configurar la pasarela."))
-                .when(pagoService).validarConfiguracionCheckout(TipoDePago.MERCADO_PAGO);
-        when(ventaRepository.buscarPorClaveIdempotenciaSolicitud("solicitud-nueva"))
+                .when(pagoService).validarConfiguracionCheckout(NEGOCIO, TipoDePago.MERCADO_PAGO);
+        when(ventaRepository.buscarPorClaveIdempotenciaSolicitud(NEGOCIO, "solicitud-nueva"))
                 .thenReturn(Optional.empty());
 
         assertThrows(ExecutionException.class,
                 () -> service.crearVentaConPagoAsync(
-                        carrito, "MERCADO_PAGO", null, "solicitud-nueva").get());
+                        NEGOCIO, carrito, "MERCADO_PAGO", null, "solicitud-nueva").get());
 
         assertEquals(2, carrito.getItems().size());
         verify(ventaRepository, never()).guardar(any(), any());
-        verify(productoRepository, never()).actualizar(anyInt(), any(Producto.class), any());
+        verify(productoRepository, never()).actualizar(anyLong(), anyInt(), any(Producto.class), any());
         verify(pagoService, never()).iniciarCheckout(any());
     }
 
@@ -231,12 +237,12 @@ class VentaServiceTest {
     void crearVentaConPagoValidaClaveSolicitud() {
         assertThrows(ExecutionException.class,
                 () -> service.crearVentaConPagoAsync(
-                        carritoValido(), "MERCADO_PAGO", null, " ").get());
+                        NEGOCIO, carritoValido(), "MERCADO_PAGO", null, " ").get());
         assertThrows(ExecutionException.class,
                 () -> service.crearVentaConPagoAsync(
-                        carritoValido(), "MERCADO_PAGO", null, "k".repeat(256)).get());
+                        NEGOCIO, carritoValido(), "MERCADO_PAGO", null, "k".repeat(256)).get());
 
-        verify(ventaRepository, never()).buscarPorClaveIdempotenciaSolicitud(anyString());
+        verify(ventaRepository, never()).buscarPorClaveIdempotenciaSolicitud(anyLong(), anyString());
     }
 
     // ------------------------------------------------------------------
@@ -255,23 +261,23 @@ class VentaServiceTest {
                 "order-7",
                 "{}");
 
-        when(ventaRepository.buscarPorId(7)).thenReturn(Optional.of(venta));
+        when(ventaRepository.buscarPorId(NEGOCIO, 7)).thenReturn(Optional.of(venta));
         when(pagoService.iniciarCheckout(venta)).thenReturn(resultadoEsperado);
 
-        ResultadoPago resultado = service.registrarPagoAsync(7).get();
+        ResultadoPago resultado = service.registrarPagoAsync(NEGOCIO, 7).get();
 
         assertSame(resultadoEsperado, resultado);
         assertEquals(EstadoVenta.PENDIENTE, venta.getEstadoCompra());
         verify(pagoService).iniciarCheckout(venta);
         verify(metodoPagoRepository, never()).actualizar(anyInt(), any());
-        verify(ventaRepository, never()).actualizar(anyInt(), any());
+        verify(ventaRepository, never()).actualizar(anyLong(), anyInt(), any());
     }
 
     @Test
     @DisplayName("registrarPagoAsync: rechaza venta inexistente")
     void registrarPagoVentaInexistente() {
-        when(ventaRepository.buscarPorId(99)).thenReturn(Optional.empty());
-        assertThrows(ExecutionException.class, () -> service.registrarPagoAsync(99).get());
+        when(ventaRepository.buscarPorId(NEGOCIO, 99)).thenReturn(Optional.empty());
+        assertThrows(ExecutionException.class, () -> service.registrarPagoAsync(NEGOCIO, 99).get());
         verify(eventBus, never()).publicar(any());
     }
 
@@ -288,7 +294,7 @@ class VentaServiceTest {
                 null,
                 null);
 
-        assertThrows(ExecutionException.class, () -> service.registrarPagoAsync(7).get());
+        assertThrows(ExecutionException.class, () -> service.registrarPagoAsync(NEGOCIO, 7).get());
     }
 
     // ------------------------------------------------------------------
@@ -303,19 +309,20 @@ class VentaServiceTest {
         carrito.agregarItem(new ItemCarrito(p, 2));
 
         Venta venta = new Venta(1, TipoDePago.EFECTIVO);
+        venta.setIdNegocio(NEGOCIO);
         venta.cargarDetallesDesdeCarrito(carrito, null);
         venta.setId(7);
         venta.Pagar();
 
-        when(ventaRepository.buscarPorId(7)).thenReturn(Optional.of(venta));
-        when(productoRepository.buscarPorId(1)).thenReturn(Optional.of(p));
+        when(ventaRepository.buscarPorId(NEGOCIO, 7)).thenReturn(Optional.of(venta));
+        when(productoRepository.buscarPorId(NEGOCIO, 1)).thenReturn(Optional.of(p));
 
-        service.cancelarVentaAsync(7).get();
+        service.cancelarVentaAsync(NEGOCIO, 7).get();
 
         assertEquals(EstadoVenta.CANCELADO, venta.getEstadoCompra());
         assertEquals(7, p.getStockDisponible());
-        verify(productoRepository).actualizar(eq(1), any(Producto.class));
-        verify(ventaRepository).actualizar(7, venta);
+        verify(productoRepository).actualizar(eq(NEGOCIO), eq(1), any(Producto.class));
+        verify(ventaRepository).actualizar(NEGOCIO, 7, venta);
 
         ArgumentCaptor<VentasEventos> eventoCaptor = ArgumentCaptor.forClass(VentasEventos.class);
         verify(eventBus).publicar(eventoCaptor.capture());

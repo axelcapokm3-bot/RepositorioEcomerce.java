@@ -1,4 +1,4 @@
-import { fetchData } from './api.js';
+import { api } from './api.js';
 import { addToCart, toggleCart, renderCart } from './components/cart-sidebar.js';
 
 // Basic client-side routing
@@ -28,7 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
 async function renderProductCatalog(element) {
     element.innerHTML = '<h2>Catálogo de Productos</h2><div id="product-list"></div>';
     try {
-        const products = await fetchData('/productos');
+        const products = await api.productos.listar();
         const productListDiv = document.getElementById('product-list');
         productListDiv.innerHTML = products.map(product => `
             <div class="product-card">

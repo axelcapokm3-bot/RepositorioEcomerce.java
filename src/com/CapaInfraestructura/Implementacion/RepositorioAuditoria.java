@@ -34,12 +34,12 @@ public class RepositorioAuditoria implements IAuditoriaRepository {
     }
 
     @Override
-    public List<Auditoria> listarTodas() {
+    public List<Auditoria> listarTodas(long idNegocio) {
         return new ArrayList<>(logs);
     }
 
     @Override
-    public List<Auditoria> buscarPorEntidad(String entidad, int idEntidad) {
+    public List<Auditoria> buscarPorEntidad(long idNegocio, String entidad, int idEntidad) {
         List<Auditoria> resultado = new ArrayList<>();
         for (Auditoria log : logs) {
             boolean coincideEntidad = entidad == null || entidad.equalsIgnoreCase(log.getEntidad());
@@ -52,11 +52,11 @@ public class RepositorioAuditoria implements IAuditoriaRepository {
 
     // Método auxiliar mantenido para compatibilidad si algún test antiguo llama a obtenerPorEntidad(int)
     public List<Auditoria> obtenerPorEntidad(int idEntidad) {
-        return buscarPorEntidad(null, idEntidad);
+        return buscarPorEntidad(0, null, idEntidad);
     }
 
     @Override
-    public List<Auditoria> buscarPorUsuario(String usuario) {
+    public List<Auditoria> buscarPorUsuario(long idNegocio, String usuario) {
         List<Auditoria> resultado = new ArrayList<>();
         for (Auditoria log : logs) {
             if (usuario != null && usuario.equalsIgnoreCase(log.getUsuario())) {
@@ -67,7 +67,7 @@ public class RepositorioAuditoria implements IAuditoriaRepository {
     }
 
     @Override
-    public List<Auditoria> buscarPorAccion(AccionAuditoria accion) {
+    public List<Auditoria> buscarPorAccion(long idNegocio, AccionAuditoria accion) {
         List<Auditoria> resultado = new ArrayList<>();
         for (Auditoria log : logs) {
             if (log.getAccion() == accion) {
@@ -78,7 +78,7 @@ public class RepositorioAuditoria implements IAuditoriaRepository {
     }
 
     @Override
-    public List<Auditoria> buscarPorRangoFecha(LocalDateTime desde, LocalDateTime hasta) {
+    public List<Auditoria> buscarPorRangoFecha(long idNegocio, LocalDateTime desde, LocalDateTime hasta) {
         List<Auditoria> resultado = new ArrayList<>();
         for (Auditoria log : logs) {
             LocalDateTime fecha = log.getFecha();
@@ -95,6 +95,6 @@ public class RepositorioAuditoria implements IAuditoriaRepository {
 
     // Compatibilidad para test antiguos
     public List<Auditoria> obtenerTodos() {
-        return listarTodas();
+        return listarTodas(0);
     }
 }

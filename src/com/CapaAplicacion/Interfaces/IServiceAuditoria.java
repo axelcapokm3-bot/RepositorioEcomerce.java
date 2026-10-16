@@ -7,10 +7,10 @@ public interface  IServiceAuditoria {
 
     CompletableFuture<Void> registrarAuditoria(Auditoria a);
 
-    CompletableFuture<Auditoria> buscarPorId(int id);
+    CompletableFuture<Auditoria> buscarPorId(long idNegocio, int id);
 
 
-    CompletableFuture<List<Auditoria>> obtenerTodos();
+    CompletableFuture<List<Auditoria>> obtenerTodos(long idNegocio);
 
     CompletableFuture<Void> actualizar(Auditoria a);
 

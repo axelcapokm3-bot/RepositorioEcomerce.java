@@ -86,32 +86,32 @@ return CompletableFuture.completedFuture(null);
 
  
     @Override
-    public CompletableFuture<List<Auditoria>> obtenerTodosAsync() {
+    public CompletableFuture<List<Auditoria>> obtenerTodosAsync(final long idNegocio) {
         return executor.ejecutar(new java.util.concurrent.Callable<List<Auditoria>>() {
             @Override
             public List<Auditoria> call() {
-                return auditoriaRepository.listarTodas();
+                return auditoriaRepository.listarTodas(idNegocio);
             }
         });
     }
 
  
     @Override
-    public CompletableFuture<List<Auditoria>> obtenerPorProductoAsync(final int idProducto) {
+    public CompletableFuture<List<Auditoria>> obtenerPorProductoAsync(final long idNegocio, final int idProducto) {
         return executor.ejecutar(new java.util.concurrent.Callable<List<Auditoria>>() {
             @Override
             public List<Auditoria> call() {
-                return auditoriaRepository.buscarPorEntidad("Venta", idProducto);
+                return auditoriaRepository.buscarPorEntidad(idNegocio, "Venta", idProducto);
             }
         });
     }
 
     @Override
-    public CompletableFuture<List<Auditoria>> obtenerPorAccionAsync(final AccionAuditoria accion) {
+    public CompletableFuture<List<Auditoria>> obtenerPorAccionAsync(final long idNegocio, final AccionAuditoria accion) {
         return executor.ejecutar(new java.util.concurrent.Callable<List<Auditoria>>() {
             @Override
             public List<Auditoria> call() {
-                return auditoriaRepository.buscarPorAccion(accion);
+                return auditoriaRepository.buscarPorAccion(idNegocio, accion);
             }
         });
     }

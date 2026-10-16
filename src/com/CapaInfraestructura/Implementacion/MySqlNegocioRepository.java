@@ -6,7 +6,9 @@ import com.CapaDominio.Entidades.Negocio;
 
 import java.sql.*;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -30,11 +32,11 @@ public class MySqlNegocioRepository implements INegocioRepository {
     }
 
     @Override
-    public Optional<Negocio> buscarPorId(int id) {
+    public Optional<Negocio> buscarPorId(long id) {
         String sql = "SELECT id, nombre, subdominio, email_contacto, activo, fecha_alta, fecha_baja FROM negocio WHERE id = ?";
         try (Connection connection = DatabaseConnection.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setInt(1, id);
+            statement.setLong(1, id);
             try (ResultSet result = statement.executeQuery()) {
                 if (result.next()) {
                     return Optional.of(mapNegocio(result));
@@ -47,7 +49,23 @@ public class MySqlNegocioRepository implements INegocioRepository {
     }
 
     @Override
-    public Map<ConfiguracionCatalogo, String> listarConfiguracionesEfectivas(int idNegocio) {
+    public List<Negocio> listarActivos() {
+        String sql = "SELECT id, nombre, subdominio, email_contacto, activo, fecha_alta, fecha_baja FROM negocio WHERE activo = 1 ORDER BY id";
+        List<Negocio> negocios = new ArrayList<>();
+        try (Connection connection = DatabaseConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet result = statement.executeQuery()) {
+            while (result.next()) {
+                negocios.add(mapNegocio(result));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Error al listar negocios activos: " + e.getMessage(), e);
+        }
+        return negocios;
+    }
+
+    @Override
+    public Map<ConfiguracionCatalogo, String> listarConfiguracionesEfectivas(long idNegocio) {
         String sql = "SELECT cc.id, cc.clave, cc.tipo, cc.descripcion, cc.valor_default, cc.categoria, " +
                      "COALESCE(cv.valor, cc.valor_default) AS valor_efectivo " +
                      "FROM configuracion_catalogo cc " +
@@ -56,11 +74,11 @@ public class MySqlNegocioRepository implements INegocioRepository {
         Map<ConfiguracionCatalogo, String> resultado = new LinkedHashMap<>();
         try (Connection connection = DatabaseConnection.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setInt(1, idNegocio);
+            statement.setLong(1, idNegocio);
             try (ResultSet rs = statement.executeQuery()) {
                 while (rs.next()) {
                     ConfiguracionCatalogo config = new ConfiguracionCatalogo(
-                        rs.getInt("id"),
+                        rs.getLong("id"),
                         rs.getString("clave"),
                         rs.getString("tipo"),
                         rs.getString("descripcion"),
@@ -86,7 +104,7 @@ public class MySqlNegocioRepository implements INegocioRepository {
             try (ResultSet result = statement.executeQuery()) {
                 if (result.next()) {
                     ConfiguracionCatalogo config = new ConfiguracionCatalogo(
-                        result.getInt("id"),
+                        result.getLong("id"),
                         result.getString("clave"),
                         result.getString("tipo"),
                         result.getString("descripcion"),
@@ -103,14 +121,14 @@ public class MySqlNegocioRepository implements INegocioRepository {
     }
 
     @Override
-    public void guardarOActualizarValorConfiguracion(int idNegocio, int idConfiguracion, String valor) {
+    public void guardarOActualizarValorConfiguracion(long idNegocio, long idConfiguracion, String valor) {
         String sql = "INSERT INTO configuracion_valor (id_negocio, id_configuracion, valor, fecha_actualizacion) " +
                      "VALUES (?, ?, ?, NOW()) " +
                      "ON DUPLICATE KEY UPDATE valor = VALUES(valor), fecha_actualizacion = NOW()";
         try (Connection connection = DatabaseConnection.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setInt(1, idNegocio);
-            statement.setInt(2, idConfiguracion);
+            statement.setLong(1, idNegocio);
+            statement.setLong(2, idConfiguracion);
             statement.setString(3, valor);
             statement.executeUpdate();
         } catch (SQLException e) {
@@ -125,7 +143,7 @@ public class MySqlNegocioRepository implements INegocioRepository {
         LocalDateTime fechaBaja = fechaBajaTs != null ? fechaBajaTs.toLocalDateTime() : null;
 
         return new Negocio(
-            rs.getInt("id"),
+            rs.getLong("id"),
             rs.getString("nombre"),
             rs.getString("subdominio"),
             rs.getString("email_contacto"),

@@ -32,6 +32,12 @@ public enum TipoServicio {
         1,
         1,
         50
+    ),
+    AUTENTICACION(
+        "autenticacion",
+        1,
+        2,
+        50
     );
 
     private final String prefijoHilo;

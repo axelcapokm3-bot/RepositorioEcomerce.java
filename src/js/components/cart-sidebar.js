@@ -1,4 +1,4 @@
-import { fetchData } from '../../js/api.js';
+import { api, sesion } from '../../js/api.js';
 import { showToast } from '../../js/utils/toast-notifier.js';
 
 const cart = [];
@@ -75,21 +75,25 @@ export async function checkout() {
         cantidad: item.quantity
     }));
 
+    const clienteActual = sesion.obtener();
+    if (!clienteActual || !clienteActual.idCliente) {
+        showToast('Inicie sesión para finalizar la compra.', 'error');
+        window.location.href = 'login.html';
+        return;
+    }
+
     const createVentaRequest = {
-        idCliente: 1, // Hardcoded for now, will be dynamic with auth
+        idCliente: clienteActual.idCliente,
         tipoPago: tipoPago,
         descuento: null,
         items: itemsForSale
     };
+    const claveIdempotencia = (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : 'idemp-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
 
     try {
-        await fetchData('/ventas/crear', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(createVentaRequest),
-        });
+        await api.ventas.crear(createVentaRequest, claveIdempotencia);
         showToast('Compra finalizada con éxito!', 'success');
         cart.length = 0; // Clear cart
         renderCart();
@@ -102,44 +106,48 @@ export async function checkout() {
 
 // Initial setup for the cart sidebar
 document.addEventListener('DOMContentLoaded', () => {
-    const mainApp = document.getElementById('app');
-    const cartSidebarHTML = `
-        <div id="cart-sidebar" class="cart-sidebar">
-            <div class="cart-header">
-                <h2>Carrito de Compras</h2>
-                <button class="close-cart-btn">&times;</button>
+    const mainApp = document.getElementById('app') || document.body;
+    if (mainApp && !document.getElementById('cart-sidebar')) {
+        const cartSidebarHTML = `
+            <div id="cart-sidebar" class="cart-sidebar">
+                <div class="cart-header">
+                    <h2>Carrito de Compras</h2>
+                    <button class="close-cart-btn">&times;</button>
+                </div>
+                <div class="cart-items"></div>
+                <div class="cart-total">Total: $<span>0.00</span></div>
+                <div class="payment-options">
+                    <h3>Tipo de Pago</h3>
+                    <label><input type="radio" name="tipoPago" value="MERCADO_PAGO"> Mercado Pago</label>
+                    <label><input type="radio" name="tipoPago" value="STRIPE"> Stripe</label>
+                </div>
+                <button class="checkout-btn">Finalizar Compra</button>
             </div>
-            <div class="cart-items"></div>
-            <div class="cart-total">Total: $<span>0.00</span></div>
-            <div class="payment-options">
-                <h3>Tipo de Pago</h3>
-                <label><input type="radio" name="tipoPago" value="EFECTIVO"> Efectivo</label>
-                <label><input type="radio" name="tipoPago" value="TARJETA"> Tarjeta</label>
-                <label><input type="radio" name="tipoPago" value="TRANSFERENCIA"> Transferencia</label>
-            </div>
-            <button class="checkout-btn">Finalizar Compra</button>
-        </div>
-    `;
-    mainApp.insertAdjacentHTML('beforeend', cartSidebarHTML);
+        `;
+        mainApp.insertAdjacentHTML('beforeend', cartSidebarHTML);
 
-    document.querySelector('.close-cart-btn').addEventListener('click', toggleCart);
-    document.querySelector('.checkout-btn').addEventListener('click', checkout);
+        document.querySelector('.close-cart-btn')?.addEventListener('click', toggleCart);
+        document.querySelector('.checkout-btn')?.addEventListener('click', checkout);
+    }
 
-    const openCartButton = document.createElement('button');
-    openCartButton.textContent = '🛒 Ver Carrito';
-    openCartButton.style.position = 'fixed';
-    openCartButton.style.bottom = '20px';
-    openCartButton.style.right = '20px';
-    openCartButton.style.padding = '15px';
-    openCartButton.style.backgroundColor = 'var(--primary-color)';
-    openCartButton.style.color = 'white';
-    openCartButton.style.border = 'none';
-    openCartButton.style.borderRadius = '50px';
-    openCartButton.style.cursor = 'pointer';
-    openCartButton.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
-    openCartButton.style.zIndex = '998';
-    openCartButton.addEventListener('click', toggleCart);
-    document.body.appendChild(openCartButton);
+    if (document.getElementById('app') && !document.getElementById('open-cart-floating-btn')) {
+        const openCartButton = document.createElement('button');
+        openCartButton.id = 'open-cart-floating-btn';
+        openCartButton.textContent = '🛒 Ver Carrito';
+        openCartButton.style.position = 'fixed';
+        openCartButton.style.bottom = '20px';
+        openCartButton.style.right = '20px';
+        openCartButton.style.padding = '15px';
+        openCartButton.style.backgroundColor = 'var(--primary-color)';
+        openCartButton.style.color = 'white';
+        openCartButton.style.border = 'none';
+        openCartButton.style.borderRadius = '50px';
+        openCartButton.style.cursor = 'pointer';
+        openCartButton.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+        openCartButton.style.zIndex = '998';
+        openCartButton.addEventListener('click', toggleCart);
+        document.body.appendChild(openCartButton);
+    }
 
     renderCart(); // Render cart on load
 });

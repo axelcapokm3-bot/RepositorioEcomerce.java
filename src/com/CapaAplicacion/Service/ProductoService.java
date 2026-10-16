@@ -26,11 +26,12 @@ public class ProductoService implements RepositorioProductoService {
     }
 
     @Override
-    public CompletableFuture<Void> guardarAsync(final ProductoRequestDTO dto) {
+    public CompletableFuture<Void> guardarAsync(final long idNegocio, final ProductoRequestDTO dto) {
         return executor.ejecutar(new Runnable() {
             @Override
             public void run() {
                 Producto producto = new Producto(dto.nombre(), dto.precio(), dto.stock(), 0, 0, dto.categoria());
+                producto.setIdNegocio(idNegocio);
                 repository.guardar(producto);
                 eventBus.publicar(new ProductosEventos(producto.getId(), dto));
             }
@@ -38,11 +39,11 @@ public class ProductoService implements RepositorioProductoService {
     }
 
     @Override
-    public CompletableFuture<Optional<ProductoResponseDTO>> buscarPorIdAsync(final int id) {
+    public CompletableFuture<Optional<ProductoResponseDTO>> buscarPorIdAsync(final long idNegocio, final int id) {
         return executor.ejecutar(new java.util.concurrent.Callable<Optional<ProductoResponseDTO>>() {
             @Override
             public Optional<ProductoResponseDTO> call() {
-                Optional<Producto> opt = repository.buscarPorId(id);
+                Optional<Producto> opt = repository.buscarPorId(idNegocio, id);
                 if (opt.isPresent()) {
                     return Optional.of(ProductoMapper.toResponseDTO(opt.get()));
                 }
@@ -52,11 +53,11 @@ public class ProductoService implements RepositorioProductoService {
     }
 
     @Override
-    public CompletableFuture<List<ProductoResponseDTO>> listarTodosAsync() {
+    public CompletableFuture<List<ProductoResponseDTO>> listarTodosAsync(final long idNegocio) {
         return executor.ejecutar(new java.util.concurrent.Callable<List<ProductoResponseDTO>>() {
             @Override
             public List<ProductoResponseDTO> call() {
-                List<Producto> listaEntidades = repository.listarTodos();
+                List<Producto> listaEntidades = repository.listarTodos(idNegocio);
                 List<ProductoResponseDTO> listaDTOs = new ArrayList<>();
                 for (Producto p : listaEntidades) {
                     listaDTOs.add(ProductoMapper.toResponseDTO(p));
@@ -67,28 +68,28 @@ public class ProductoService implements RepositorioProductoService {
     }
 
     @Override
-    public CompletableFuture<Void> actualizarAsync(final int id, final ProductoRequestDTO dto) {
+    public CompletableFuture<Void> actualizarAsync(final long idNegocio, final int id, final ProductoRequestDTO dto) {
         return executor.ejecutar(new Runnable() {
             @Override
             public void run() {
-                Producto producto = repository.buscarPorId(id)
+                Producto producto = repository.buscarPorId(idNegocio, id)
                         .orElseThrow(() -> new RuntimeException("Producto no encontrado"));
                 
                 producto.setNombre(dto.nombre());
                 producto.actualizarPrecio(dto.precio());
                 producto.setStock(dto.stock());
                 
-                repository.actualizar(id, producto);
+                repository.actualizar(idNegocio, id, producto);
             }
         });
     }
 
     @Override
-    public CompletableFuture<Void> eliminarAsync(final int id) {
+    public CompletableFuture<Void> eliminarAsync(final long idNegocio, final int id) {
         return executor.ejecutar(new Runnable() {
             @Override
             public void run() {
-                repository.eliminar(id);
+                repository.eliminar(idNegocio, id);
             }
         });
     }

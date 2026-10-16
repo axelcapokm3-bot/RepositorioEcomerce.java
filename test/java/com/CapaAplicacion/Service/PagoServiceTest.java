@@ -51,6 +51,7 @@ class PagoServiceTest {
                 1,
                 CategoriaProducto.ELECTRONICA);
         carrito.agregarItem(new ItemCarrito(producto, 2));
+        venta.setIdNegocio(1L);
         venta.cargarDetallesDesdeCarrito(carrito, null);
         venta.setId(7);
         Pago pago = new Pago(
@@ -68,7 +69,8 @@ class PagoServiceTest {
                 claveIdempotenciaPasarela,
                 LocalDateTime.now(),
                 null);
-        when(pagoRepository.buscarPorClaveIdempotenciaPasarela(claveIdempotenciaPasarela))
+        pago.setIdNegocio(1L);
+        when(pagoRepository.buscarPorClaveIdempotenciaPasarela(1L, claveIdempotenciaPasarela))
                 .thenReturn(Optional.of(pago));
 
         PagoService service = new PagoService(pagoRepository, ventaRepository, eventBus);
@@ -77,6 +79,6 @@ class PagoServiceTest {
         assertEquals("order-7", resultado.paymentId());
         assertEquals("https://checkout.example/order-7", resultado.urlPago());
         assertNotEquals(venta.getClaveIdempotenciaSolicitud(), pago.getClaveIdempotenciaPasarela());
-        verify(pagoRepository).buscarPorClaveIdempotenciaPasarela(claveIdempotenciaPasarela);
+        verify(pagoRepository).buscarPorClaveIdempotenciaPasarela(1L, claveIdempotenciaPasarela);
     }
 }

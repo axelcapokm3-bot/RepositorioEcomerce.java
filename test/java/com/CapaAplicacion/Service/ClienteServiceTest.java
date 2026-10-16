@@ -22,6 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class ClienteServiceTest {
+    private static final long NEGOCIO = 1L;
 
     @Mock
     private IClienteRepositorio repository;
@@ -43,19 +44,20 @@ class ClienteServiceTest {
     @Test
     @DisplayName("guardarAsync: convierte DTO a entidad y la persiste")
     void guardar() throws Exception {
-        service.guardarAsync(dtoValido()).get();
+        service.guardarAsync(NEGOCIO, dtoValido()).get();
 
         ArgumentCaptor<Cliente> captor = ArgumentCaptor.forClass(Cliente.class);
         verify(repository).guardar(captor.capture());
         assertEquals("Juan", captor.getValue().getNombre());
         assertEquals("34567890", captor.getValue().getDni());
+        assertEquals(NEGOCIO, captor.getValue().getIdNegocio());
     }
 
     @Test
     @DisplayName("buscarPorIdAsync: devuelve DTO si existe")
     void buscarPorId() throws Exception {
-        when(repository.buscarPorId(1)).thenReturn(Optional.of(clienteEnRepo(1)));
-        Optional<ClienteResponseDTO> resultado = service.buscarPorIdAsync(1).get();
+        when(repository.buscarPorId(NEGOCIO, 1)).thenReturn(Optional.of(clienteEnRepo(1)));
+        Optional<ClienteResponseDTO> resultado = service.buscarPorIdAsync(NEGOCIO, 1).get();
         assertTrue(resultado.isPresent());
         assertEquals("Juan Perez", resultado.get().nombreCompleto());
     }
@@ -63,38 +65,38 @@ class ClienteServiceTest {
     @Test
     @DisplayName("buscarPorIdAsync: vacío si no existe")
     void buscarPorIdInexistente() throws Exception {
-        when(repository.buscarPorId(99)).thenReturn(Optional.empty());
-        assertTrue(service.buscarPorIdAsync(99).get().isEmpty());
+        when(repository.buscarPorId(NEGOCIO, 99)).thenReturn(Optional.empty());
+        assertTrue(service.buscarPorIdAsync(NEGOCIO, 99).get().isEmpty());
     }
 
     @Test
     @DisplayName("listarTodosAsync: mapea todos los clientes")
     void listarTodos() throws Exception {
-        when(repository.listarTodos()).thenReturn(List.of(clienteEnRepo(1), clienteEnRepo(2)));
-        List<ClienteResponseDTO> resultado = service.listarTodosAsync().get();
+        when(repository.listarTodos(NEGOCIO)).thenReturn(List.of(clienteEnRepo(1), clienteEnRepo(2)));
+        List<ClienteResponseDTO> resultado = service.listarTodosAsync(NEGOCIO).get();
         assertEquals(2, resultado.size());
     }
 
     @Test
     @DisplayName("actualizarAsync: persiste el cliente actualizado")
     void actualizar() throws Exception {
-        when(repository.buscarPorId(1)).thenReturn(Optional.of(clienteEnRepo(1)));
-        service.actualizarAsync(1, dtoValido()).get();
-        verify(repository).actualizar(eq(1), any(Cliente.class));
+        when(repository.buscarPorId(NEGOCIO, 1)).thenReturn(Optional.of(clienteEnRepo(1)));
+        service.actualizarAsync(NEGOCIO, 1, dtoValido()).get();
+        verify(repository).actualizar(eq(NEGOCIO), eq(1), any(Cliente.class));
     }
 
     @Test
     @DisplayName("actualizarAsync: lanza error si el cliente no existe")
     void actualizarInexistente() {
-        when(repository.buscarPorId(99)).thenReturn(Optional.empty());
+        when(repository.buscarPorId(NEGOCIO, 99)).thenReturn(Optional.empty());
         assertThrows(ExecutionException.class,
-                () -> service.actualizarAsync(99, dtoValido()).get());
+                () -> service.actualizarAsync(NEGOCIO, 99, dtoValido()).get());
     }
 
     @Test
     @DisplayName("eliminarAsync: delega en el repositorio")
     void eliminar() throws Exception {
-        service.eliminarAsync(2).get();
-        verify(repository).eliminar(2);
+        service.eliminarAsync(NEGOCIO, 2).get();
+        verify(repository).eliminar(NEGOCIO, 2);
     }
 }

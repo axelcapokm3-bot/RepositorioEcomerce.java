@@ -43,6 +43,18 @@ public abstract class ControllerException extends RuntimeException {
         }
     }
 
+    public static final class NoAutenticado extends ControllerException {
+        public NoAutenticado(String mensaje, String causa) {
+            super(401, "NO_AUTENTICADO", mensaje, causa);
+        }
+    }
+
+    public static final class Prohibido extends ControllerException {
+        public Prohibido(String mensaje, String causa) {
+            super(403, "PROHIBIDO", mensaje, causa);
+        }
+    }
+
     public static final class Conflicto extends ControllerException {
         public Conflicto(String mensaje, String causa) {
             super(409, "CONFLICTO_NEGOCIO", mensaje, causa);

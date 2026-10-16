@@ -24,3 +24,18 @@ stripe.cancel-url=http://localhost:5500/index.html?view=checkout-return&resultad
 # URLs del sistema
 app.frontend.url=http://localhost:5500
 app.backend.url=http://localhost:8080
+
+# CORS: orígenes permitidos separados por coma. No usar '*'.
+app.cors.allowed-origins=http://localhost:5500,http://localhost:8080
+
+# Autenticación: preferir las variables de entorno AUTH_TOKEN_SECRET y AUTH_EXPIRACION_HORAS.
+# El secreto debe tener al menos 32 caracteres. Si no se configura, el servidor genera
+# uno efímero SOLO en perfil desarrollo y los tokens se invalidan al reiniciar.
+# En producción (APP_PERFIL=prod) el arranque falla sin AUTH_TOKEN_SECRET.
+# auth.token-secret=REEMPLAZAR_POR_UN_SECRETO_DE_AL_MENOS_32_CARACTERES
+# auth.expiracion-horas=12
+# Perfil: dev (local) o prod. En prod, el secreto de tokens es obligatorio.
+# app.perfil=dev
+# Token de uso único para crear el primer ADMIN vía POST /api/auth/registro
+# (header X-Setup-Token). Definirlo solo durante el bootstrap y eliminarlo después.
+# auth.bootstrap-token=REEMPLAZAR_POR_TOKEN_TEMPORAL

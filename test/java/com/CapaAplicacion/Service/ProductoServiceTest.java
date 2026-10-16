@@ -25,6 +25,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class ProductoServiceTest {
+    private static final long NEGOCIO = 1L;
 
     @Mock
     private IProductoRepository repository;
@@ -46,7 +47,7 @@ class ProductoServiceTest {
     @Test
     @DisplayName("guardarAsync: persiste el producto y publica evento")
     void guardar() throws Exception {
-        service.guardarAsync(dtoValido()).get();
+        service.guardarAsync(NEGOCIO, dtoValido()).get();
 
         ArgumentCaptor<Producto> productoCaptor = ArgumentCaptor.forClass(Producto.class);
         verify(repository).guardar(productoCaptor.capture());
@@ -61,7 +62,7 @@ class ProductoServiceTest {
     @DisplayName("guardarAsync: rechaza precio inválido")
     void guardarPrecioInvalido() {
         ProductoRequestDTO dto = new ProductoRequestDTO("Mouse", BigDecimal.ZERO, 15, CategoriaProducto.ELECTRONICA);
-        assertThrows(ExecutionException.class, () -> service.guardarAsync(dto).get());
+        assertThrows(ExecutionException.class, () -> service.guardarAsync(NEGOCIO, dto).get());
         verify(repository, never()).guardar(any());
         verify(eventBus, never()).publicar(any());
     }
@@ -69,8 +70,8 @@ class ProductoServiceTest {
     @Test
     @DisplayName("buscarPorIdAsync: devuelve DTO si existe")
     void buscarPorId() throws Exception {
-        when(repository.buscarPorId(1)).thenReturn(Optional.of(productoEnRepo(1)));
-        Optional<ProductoResponseDTO> resultado = service.buscarPorIdAsync(1).get();
+        when(repository.buscarPorId(NEGOCIO, 1)).thenReturn(Optional.of(productoEnRepo(1)));
+        Optional<ProductoResponseDTO> resultado = service.buscarPorIdAsync(NEGOCIO, 1).get();
         assertTrue(resultado.isPresent());
         assertEquals("Mouse", resultado.get().nombre());
     }
@@ -78,15 +79,15 @@ class ProductoServiceTest {
     @Test
     @DisplayName("buscarPorIdAsync: vacío si no existe")
     void buscarPorIdInexistente() throws Exception {
-        when(repository.buscarPorId(99)).thenReturn(Optional.empty());
-        assertTrue(service.buscarPorIdAsync(99).get().isEmpty());
+        when(repository.buscarPorId(NEGOCIO, 99)).thenReturn(Optional.empty());
+        assertTrue(service.buscarPorIdAsync(NEGOCIO, 99).get().isEmpty());
     }
 
     @Test
     @DisplayName("listarTodosAsync: mapea todos los productos")
     void listarTodos() throws Exception {
-        when(repository.listarTodos()).thenReturn(List.of(productoEnRepo(1), productoEnRepo(2)));
-        List<ProductoResponseDTO> resultado = service.listarTodosAsync().get();
+        when(repository.listarTodos(NEGOCIO)).thenReturn(List.of(productoEnRepo(1), productoEnRepo(2)));
+        List<ProductoResponseDTO> resultado = service.listarTodosAsync(NEGOCIO).get();
         assertEquals(2, resultado.size());
     }
 
@@ -94,28 +95,28 @@ class ProductoServiceTest {
     @DisplayName("actualizarAsync: actualiza nombre, precio y stock")
     void actualizar() throws Exception {
         Producto existente = productoEnRepo(1);
-        when(repository.buscarPorId(1)).thenReturn(Optional.of(existente));
+        when(repository.buscarPorId(NEGOCIO, 1)).thenReturn(Optional.of(existente));
 
-        service.actualizarAsync(1, new ProductoRequestDTO("Teclado", new BigDecimal("80"), 30, CategoriaProducto.ELECTRONICA)).get();
+        service.actualizarAsync(NEGOCIO, 1, new ProductoRequestDTO("Teclado", new BigDecimal("80"), 30, CategoriaProducto.ELECTRONICA)).get();
 
         assertEquals("Teclado", existente.getNombre());
         assertEquals(new BigDecimal("80"), existente.getPrecio());
         assertEquals(30, existente.getStockFisico());
-        verify(repository).actualizar(eq(1), eq(existente));
+        verify(repository).actualizar(eq(NEGOCIO), eq(1), eq(existente));
     }
 
     @Test
     @DisplayName("actualizarAsync: lanza error si el producto no existe")
     void actualizarInexistente() {
-        when(repository.buscarPorId(99)).thenReturn(Optional.empty());
+        when(repository.buscarPorId(NEGOCIO, 99)).thenReturn(Optional.empty());
         assertThrows(ExecutionException.class,
-                () -> service.actualizarAsync(99, dtoValido()).get());
+                () -> service.actualizarAsync(NEGOCIO, 99, dtoValido()).get());
     }
 
     @Test
     @DisplayName("eliminarAsync: delega en el repositorio")
     void eliminar() throws Exception {
-        service.eliminarAsync(2).get();
-        verify(repository).eliminar(2);
+        service.eliminarAsync(NEGOCIO, 2).get();
+        verify(repository).eliminar(NEGOCIO, 2);
     }
 }

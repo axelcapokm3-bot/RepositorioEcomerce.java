@@ -9,6 +9,8 @@ public class Producto {
     private int stockFisico ;
     private int stockReservado ; 
     private CategoriaProducto categoria  ;
+    private long idNegocio;
+    private boolean activo = true;
 
     public Producto(String nombre, BigDecimal precio, int stockFisico,int stockReservado, int id ,CategoriaProducto categoria    ) {
 
@@ -80,6 +82,22 @@ public class Producto {
 
     public CategoriaProducto getCategoria() {
         return categoria;
+    }
+
+    public long getIdNegocio() {
+        return idNegocio;
+    }
+
+    public void setIdNegocio(long idNegocio) {
+        this.idNegocio = idNegocio;
+    }
+
+    public boolean isActivo() {
+        return activo;
+    }
+
+    public void setActivo(boolean activo) {
+        this.activo = activo;
     }
     public int getStockFisico() {
         return stockFisico;

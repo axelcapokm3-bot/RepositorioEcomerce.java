@@ -6,6 +6,7 @@ public class DetalleVenta {
     private int idProducto;
     private BigDecimal precioUnitario; 
     private int cantidad;
+    private long idNegocio;
 
     public DetalleVenta(int idProducto, BigDecimal precioUnitario, int cantidad) {
         if (idProducto <= 0) {
@@ -38,5 +39,13 @@ public class DetalleVenta {
 
     public int getCantidad() {
         return cantidad;
+    }
+
+    public long getIdNegocio() {
+        return idNegocio;
+    }
+
+    public void setIdNegocio(long idNegocio) {
+        this.idNegocio = idNegocio;
     }
 }

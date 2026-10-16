@@ -3,6 +3,8 @@ package com.CapaPresentacion.Controllers;
 import java.io.IOException;
 
 import com.CapaAplicacion.Interfaces.IAuditoriaService;
+import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
+import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaDominio.Entidades.AccionAuditoria;
 import com.CapaDominio.Entidades.Auditoria;
 import com.sun.net.httpserver.HttpExchange;
@@ -10,11 +12,16 @@ import com.sun.net.httpserver.HttpExchange;
 public class AuditoriaController extends BaseController {
 
     private final IAuditoriaService servicio;
+    private final IProveedorTokenAcceso proveedor;
 
     public record CrearAuditoriaRequest(String accion, int idEntidad, String descripcion) {}
 
-    public AuditoriaController(IAuditoriaService servicio) {
+    public AuditoriaController(IAuditoriaService servicio, IProveedorTokenAcceso proveedor) {
+        if (servicio == null || proveedor == null) {
+            throw new IllegalArgumentException("El servicio y el proveedor de tokens son obligatorios.");
+        }
         this.servicio = servicio;
+        this.proveedor = proveedor;
     }
 
     @Override
@@ -25,11 +32,14 @@ public class AuditoriaController extends BaseController {
         if (handlePreflight(exchange)) {
             return;
         }
+        Principal principal = exigirAutenticacion(exchange, proveedor);
+        exigirAdmin(principal);
+        long idNegocio = negocioAutorizado(exchange, principal);
 
         try {
             if ("/api/auditoria".equals(path) || "/api/auditoria/".equals(path)) {
                 if ("GET".equalsIgnoreCase(method)) {
-                    handleAsync(exchange, servicio.obtenerTodosAsync(), 200);
+                    handleAsync(exchange, servicio.obtenerTodosAsync(idNegocio), 200);
                 } else if ("POST".equalsIgnoreCase(method)) {
                     CrearAuditoriaRequest req = parseRequestBody(exchange, CrearAuditoriaRequest.class);
                     if (req == null || req.accion() == null || req.accion().isBlank()
@@ -59,7 +69,7 @@ public class AuditoriaController extends BaseController {
                     throw new ControllerException.Validacion("El ID de entidad no es válido.", "Debe ser un entero positivo.");
                 }
                 if ("GET".equalsIgnoreCase(method)) {
-                    handleAsync(exchange, servicio.obtenerPorProductoAsync(id), 200);
+                    handleAsync(exchange, servicio.obtenerPorProductoAsync(idNegocio, id), 200);
                 } else {
                     throw new ControllerException.Validacion("Método no permitido.", "La ruta no admite este método HTTP.");
                 }
@@ -75,7 +85,7 @@ public class AuditoriaController extends BaseController {
                     } catch (IllegalArgumentException ex) {
                         throw new ControllerException.Validacion("La acción de auditoría no es válida.", "La acción recibida no existe.");
                     }
-                    handleAsync(exchange, servicio.obtenerPorAccionAsync(accion), 200);
+                    handleAsync(exchange, servicio.obtenerPorAccionAsync(idNegocio, accion), 200);
                 } else {
                     throw new ControllerException.Validacion("Método no permitido.", "La ruta no admite este método HTTP.");
                 }

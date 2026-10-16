@@ -24,12 +24,6 @@ public class PasarelaTransferencia implements IPasarelaPago {
             throw new PagoRechazadoException(
                     "No está configurada la cuenta para recibir transferencias.");
         }
-
-        String cbu = buscarConfiguracion("cbu_transferencia");
-        if (cbu == null || cbu.isBlank()) {
-            throw new PagoRechazadoException(
-                    "La transferencia requiere un CBU configurado en el sistema.");
-        }
     }
 
     @Override
@@ -38,13 +32,18 @@ public class PasarelaTransferencia implements IPasarelaPago {
             throw new PagoRechazadoException("El monto a pagar debe ser mayor a cero.");
         }
         validarConfiguracion();
+        String cbu = buscarConfiguracion(venta.getIdNegocio(), "cbu_transferencia");
+        if (cbu == null || cbu.isBlank()) {
+            throw new PagoRechazadoException(
+                    "La transferencia requiere un CBU configurado en el sistema.");
+        }
     }
 
     @Override
     public ResultadoPago procesar(Venta venta, String claveIdempotenciaPasarela)
             throws PagoRechazadoException, PasarelaNoDisponibleException {
         validar(venta);
-        String cbu = buscarConfiguracion("cbu_transferencia");
+        String cbu = buscarConfiguracion(venta.getIdNegocio(), "cbu_transferencia");
         return ResultadoPago.pendiente(
                 String.valueOf(venta.getId()),
                 venta.calculoTotal(),
@@ -55,9 +54,9 @@ public class PasarelaTransferencia implements IPasarelaPago {
                 "Transferencia pendiente de validación interna. CBU: " + cbu);
     }
 
-    private String buscarConfiguracion(String clave) {
+    private String buscarConfiguracion(long idNegocio, String clave) {
         Map<ConfiguracionCatalogo, String> configuraciones =
-                negocioRepository.listarConfiguracionesEfectivas(1);
+                negocioRepository.listarConfiguracionesEfectivas(idNegocio);
         for (Map.Entry<ConfiguracionCatalogo, String> entrada : configuraciones.entrySet()) {
             if (clave.equalsIgnoreCase(entrada.getKey().getClave())) {
                 return entrada.getValue();

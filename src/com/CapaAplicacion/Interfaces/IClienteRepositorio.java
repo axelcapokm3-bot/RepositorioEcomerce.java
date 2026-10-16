@@ -9,13 +9,13 @@ public interface IClienteRepositorio {
     void guardar(Cliente cliente);
 
     // READ
-    Optional<Cliente> buscarPorId(int id);
-    List<Cliente> listarTodos();
+    Optional<Cliente> buscarPorId(long idNegocio, int id);
+    List<Cliente> listarTodos(long idNegocio);
  
 
     // UPDATE
-    void actualizar(int id, Cliente cliente);
+    void actualizar(long idNegocio, int id, Cliente cliente);
 
     // DELETE
-    void eliminar(int id);
+    void eliminar(long idNegocio, int id);
 }

@@ -7,15 +7,15 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 public interface IServiceCliente {
-    CompletableFuture<Void> guardarAsync(ClienteRequestDTO clienteRequestDTO);
+    CompletableFuture<Void> guardarAsync(long idNegocio, ClienteRequestDTO clienteRequestDTO);
 
-    CompletableFuture<Optional<ClienteResponseDTO>> buscarPorIdAsync(int id);
+    CompletableFuture<Optional<ClienteResponseDTO>> buscarPorIdAsync(long idNegocio, int id);
 
-    CompletableFuture<List<ClienteResponseDTO>> listarTodosAsync();
+    CompletableFuture<List<ClienteResponseDTO>> listarTodosAsync(long idNegocio);
 
 
 
-    CompletableFuture<Void> actualizarAsync(int id, ClienteRequestDTO clienteRequestDTO);
+    CompletableFuture<Void> actualizarAsync(long idNegocio, int id, ClienteRequestDTO clienteRequestDTO);
 
-    CompletableFuture<Void> eliminarAsync(int id);
+    CompletableFuture<Void> eliminarAsync(long idNegocio, int id);
 }

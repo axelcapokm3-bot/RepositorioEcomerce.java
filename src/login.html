@@ -3,63 +3,108 @@
 <head>
     <meta charset="utf-8"/>
     <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-    <title>Acceso Seguro - SurCommerce (3D Vault Node)</title>
+    <title>Acceso Seguro - SurCommerce Enterprise Suite</title>
     <!-- Google Fonts & Material Symbols -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet"/>
-    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&display=swap" rel="stylesheet"/>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
     <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            DEFAULT: "#EA580C",
+                            hover: "#C2410C",
+                            accent: "#F97316",
+                            subtle: "rgba(234, 88, 12, 0.12)",
+                            glow: "rgba(249, 115, 22, 0.25)"
+                        },
+                        carbon: {
+                            950: "#05080E",
+                            900: "#070A12",
+                            850: "#0B0F19",
+                            800: "#0F172A",
+                            750: "#141D34",
+                            700: "#1E293B",
+                            600: "#334155"
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Geist', 'sans-serif'],
+                        mono: ['Geist Mono', 'monospace']
+                    },
+                    boxShadow: {
+                        'glow-orange': '0 0 24px -2px rgba(234, 88, 12, 0.35)',
+                        'card': '0 4px 20px -2px rgba(0, 0, 0, 0.5)'
+                    }
+                }
+            }
+        }
+    </script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { overscroll-behavior: none; font-family: 'Geist', sans-serif; background: #060911; color: #e2e8f0; }
-        ::-webkit-scrollbar { display: none; }
+        body { font-family: 'Geist', sans-serif; }
+        .font-mono-numbers { font-variant-numeric: tabular-nums lining-nums; font-family: 'Geist Mono', monospace; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #070A12; }
+        ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 9999px; }
     </style>
 </head>
-<body class="bg-[#060911] text-slate-200 antialiased min-h-screen flex flex-col">
-    <!-- Header Fijo -->
-    <header class="fixed top-0 w-full z-50 bg-[#060911]/80 backdrop-blur-xl border-b border-slate-800/80">
-        <div class="h-14 max-w-[1440px] mx-auto px-6 flex items-center justify-between">
+<body class="bg-carbon-950 text-slate-200 antialiased min-h-screen flex flex-col font-sans selection:bg-brand selection:text-white">
+    <!-- Header Fijo Superior -->
+    <header class="fixed top-0 w-full z-50 bg-carbon-900/90 backdrop-blur-xl border-b border-carbon-700/80">
+        <div class="h-16 max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
             <div class="flex items-center gap-6">
-                <div class="flex items-center gap-2.5">
-                    <div class="w-7 h-7 rounded-lg bg-[#ea580c] flex items-center justify-center shadow-md shadow-orange-600/30">
-                        <span class="material-symbols-outlined text-white text-[18px]">payments</span>
+                <a href="index.html#dashboard" class="flex items-center gap-3 group">
+                    <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-brand to-orange-600 flex items-center justify-center text-white font-black text-lg shadow-glow-orange group-hover:scale-105 transition-transform">
+                        S
                     </div>
-                    <span class="font-semibold tracking-tight text-white text-base">SurCommerce</span>
-                </div>
-                <div class="hidden sm:flex items-center gap-2 bg-slate-900/90 border border-slate-800 px-3 py-1 rounded-full">
-                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span class="text-[11px] text-slate-300 uppercase tracking-wider font-semibold">99.98% SLA Operativo • Red AR</span>
+                    <div class="flex flex-col">
+                        <span class="font-bold text-[16px] text-white tracking-tight leading-none group-hover:text-orange-400 transition-colors">SurCommerce</span>
+                        <span class="text-[10px] text-orange-400 font-semibold tracking-wider uppercase mt-1">Enterprise Suite</span>
+                    </div>
+                </a>
+                <div class="hidden sm:flex items-center gap-2 bg-carbon-800/80 border border-carbon-700 px-3 py-1 rounded-full">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span class="text-[11px] text-slate-300 font-medium">99.98% SLA Operativo • Red AR</span>
                 </div>
             </div>
-            <div class="flex items-center gap-2 bg-slate-900/80 border border-slate-800 px-3 py-1 rounded-lg">
-                <span class="text-[11px] text-slate-300 uppercase font-medium">ES-AR</span>
-                <span class="material-symbols-outlined text-slate-400 text-[16px]">expand_more</span>
+            
+            <div class="flex items-center gap-3">
+                <a href="index.html#dashboard" class="px-3.5 py-1.5 rounded-xl bg-carbon-800 hover:bg-carbon-750 text-slate-300 hover:text-white text-xs font-semibold border border-carbon-700 transition-colors flex items-center gap-1.5">
+                    <span>Ir a la Suite</span>
+                    <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+                </a>
             </div>
         </div>
     </header>
 
     <!-- Main View con Animación 3D y Formulario de Login -->
-    <main class="w-full pt-14 bg-[#060911] min-h-screen flex flex-col flex-1">
-        <div class="w-full min-h-[calc(100vh-3.5rem)] flex items-stretch justify-center p-4 md:p-8 lg:p-12 relative overflow-hidden" style="background: radial-gradient(circle at 35% 45%, #18141f 0%, #0b0f19 50%, #060911 100%);">
-            <!-- Glows decorativos -->
-            <div class="absolute -top-32 left-1/4 w-[500px] h-[500px] bg-[#ea580c]/15 rounded-full blur-[140px] pointer-events-none"></div>
-            <div class="absolute bottom-0 right-10 w-96 h-96 bg-[#f97316]/10 rounded-full blur-[130px] pointer-events-none"></div>
+    <main class="w-full pt-16 bg-carbon-950 min-h-screen flex flex-col flex-1">
+        <div class="w-full min-h-[calc(100vh-4rem)] flex items-stretch justify-center p-4 md:p-8 lg:p-12 relative overflow-hidden" style="background: radial-gradient(circle at 35% 45%, #141724 0%, #0b0f19 55%, #05080E 100%);">
+            <!-- Glows decorativos controlados -->
+            <div class="absolute -top-32 left-1/4 w-[500px] h-[500px] bg-brand/10 rounded-full blur-[140px] pointer-events-none"></div>
+            <div class="absolute bottom-0 right-10 w-96 h-96 bg-orange-600/10 rounded-full blur-[130px] pointer-events-none"></div>
             <div class="absolute inset-0 bg-[radial-gradient(#ffffff0a_1px,transparent_1px)] [background-size:24px_24px] pointer-events-none"></div>
 
-            <div class="w-full max-w-[1440px] grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10 my-auto">
+            <div class="w-full max-w-[1360px] grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center relative z-10 my-auto">
                 
-                <!-- Columna Izquierda: Visual 3D + Propuesta de Valor -->
-                <section class="lg:col-span-7 flex flex-col justify-between h-full py-4 lg:pr-8 text-slate-200">
-                    <div class="flex flex-col justify-center h-full max-w-xl">
-                        <div class="inline-flex items-center gap-2 bg-slate-900/70 border border-slate-800 backdrop-blur-md px-3 py-1 rounded-full w-fit mb-4">
+                <!-- Columna Izquierda: Visual 3D + Métricas de Seguridad -->
+                <section class="lg:col-span-7 flex flex-col justify-between py-4 text-slate-200">
+                    <div class="flex flex-col justify-center max-w-xl">
+                        <div class="inline-flex items-center gap-2 bg-carbon-800/80 border border-carbon-700/80 backdrop-blur-md px-3.5 py-1.5 rounded-full w-fit mb-4">
                             <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                            <span class="text-[11px] uppercase tracking-wider text-slate-300 font-semibold">SurCommerce Core Node • Red Activa</span>
+                            <span class="text-[11px] uppercase tracking-wider text-slate-300 font-semibold">Nodo Criptográfico • HSM Certificado</span>
                         </div>
-                        <h1 class="text-4xl text-white font-semibold tracking-tight leading-tight">SurCommerce</h1>
-                        <p class="text-lg text-orange-400 font-medium mt-1 tracking-tight">Infraestructura de Pagos Digitales</p>
+                        <h1 class="text-3xl sm:text-4xl text-white font-extrabold tracking-tight leading-tight">Plataforma Segura de Operaciones</h1>
+                        <p class="text-base sm:text-lg text-orange-400 font-medium mt-1.5 tracking-tight">Terminal de Ventas, Control de Stock y Cobros Digitales</p>
                         
                         <!-- Contenedor Animación 3D Three.js -->
-                        <div class="relative my-6 rounded-xl overflow-hidden bg-slate-950/40 border border-slate-800/80 h-72 sm:h-80 shadow-2xl backdrop-blur-sm">
-                            <div class="absolute inset-0 w-full h-full bg-transparent pointer-events-auto" style="display:block;">
+                        <div class="relative my-6 rounded-2xl overflow-hidden bg-carbon-900/60 border border-carbon-700 h-64 sm:h-80 shadow-2xl backdrop-blur-sm">
+                            <div class="absolute inset-0 w-full h-full bg-transparent pointer-events-auto">
                                 <script src="https://ajax.googleapis.com/ajax/libs/threejs/r125/three.min.js"></script>
                                 <div id="threejs-container-ANIMATION_28" style="width:100%;height:100%"></div>
                                 <script>
@@ -143,23 +188,23 @@
                                 </script>
                             </div>
                             <div class="absolute bottom-3 left-4 flex items-center gap-2 text-slate-400 pointer-events-none z-10">
-                                <span class="material-symbols-outlined text-[15px] text-orange-400">shield_lock</span>
-                                <span class="text-[11px] uppercase tracking-wider text-slate-300 font-semibold">Nodo Criptográfico HSM • DC-01</span>
+                                <span class="material-symbols-outlined text-[16px] text-orange-400">shield_lock</span>
+                                <span class="text-[11px] uppercase tracking-wider text-slate-300 font-semibold">Trazabilidad Criptográfica • DC-01</span>
                             </div>
                         </div>
 
                         <div class="grid grid-cols-2 gap-4">
-                            <div class="bg-slate-900/50 backdrop-blur-sm rounded-lg p-3 border border-slate-800">
-                                <span class="text-[11px] text-slate-400 block uppercase tracking-wider font-semibold">Clearing Mensual</span>
+                            <div class="bg-carbon-900/60 backdrop-blur-sm rounded-xl p-3.5 border border-carbon-700">
+                                <span class="text-[11px] text-slate-400 block uppercase tracking-wider font-semibold">Clearing en Red</span>
                                 <div class="flex items-baseline gap-2 mt-1">
-                                    <span class="text-xl text-white font-bold">$1.25B</span>
-                                    <span class="text-xs text-emerald-400 font-medium">+18.4%</span>
+                                    <span class="text-xl text-white font-bold font-mono-numbers">$ 1.25B</span>
+                                    <span class="text-xs text-emerald-400 font-semibold font-mono">+18.4%</span>
                                 </div>
                             </div>
-                            <div class="bg-slate-900/50 backdrop-blur-sm rounded-lg p-3 border border-slate-800">
-                                <span class="text-[11px] text-slate-400 block uppercase tracking-wider font-semibold">Disponibilidad</span>
+                            <div class="bg-carbon-900/60 backdrop-blur-sm rounded-xl p-3.5 border border-carbon-700">
+                                <span class="text-[11px] text-slate-400 block uppercase tracking-wider font-semibold">Disponibilidad AFIP</span>
                                 <div class="flex items-baseline gap-2 mt-1">
-                                    <span class="text-xl text-white font-bold">99.98%</span>
+                                    <span class="text-xl text-white font-bold font-mono-numbers">99.98%</span>
                                     <span class="material-symbols-outlined text-emerald-400 text-[16px]">verified</span>
                                 </div>
                             </div>
@@ -169,43 +214,99 @@
 
                 <!-- Columna Derecha: Tarjeta de Acceso Seguro (Login Form) -->
                 <section class="lg:col-span-5 w-full">
-                    <div class="w-full max-w-md mx-auto bg-[#0f172a]/80 backdrop-blur-xl border border-[#1e293b] rounded-xl p-8 shadow-2xl">
-                        <div class="pb-4">
-                            <h2 class="text-xl text-white font-semibold tracking-tight">Iniciar Sesión</h2>
-                            <p class="text-xs text-slate-400 mt-1">Ingresá tus credenciales para acceder a la terminal.</p>
+                    <div class="w-full max-w-md mx-auto bg-carbon-900/90 backdrop-blur-xl border border-carbon-700 rounded-2xl p-7 sm:p-8 shadow-2xl">
+                        <div class="pb-5 border-b border-carbon-700/80">
+                            <h2 class="text-xl text-white font-bold tracking-tight" id="authTitulo">Iniciar Sesión</h2>
+                            <p class="text-xs text-slate-400 mt-1" id="authSubtitulo">Ingresá tus credenciales de operador para acceder a la suite.</p>
+                            <div class="flex gap-2 mt-3">
+                                <button type="button" id="tabIngreso"
+                                    class="flex-1 h-9 rounded-xl text-xs font-bold bg-brand text-white transition-colors">Ingresar</button>
+                                <button type="button" id="tabRegistro"
+                                    class="flex-1 h-9 rounded-xl text-xs font-bold bg-carbon-800 text-slate-300 border border-carbon-700 transition-colors">Registrarse</button>
+                            </div>
                         </div>
 
-                        <form id="loginForm" class="flex flex-col gap-4 mt-2">
-                            <div class="flex flex-col gap-1">
-                                <label class="text-xs font-semibold text-slate-300" for="cuitInput">Usuario o CUIT</label>
+                        <form id="loginForm" class="flex flex-col gap-4 mt-5">
+                            <div class="flex flex-col gap-1.5">
+                                <label class="text-xs font-semibold text-slate-300" for="emailInput">Correo electrónico</label>
                                 <div class="relative flex items-center">
-                                    <span class="material-symbols-outlined absolute left-3 text-slate-400 text-[18px]">badge</span>
-                                    <input class="w-full h-11 pl-10 pr-3 bg-slate-900/90 border border-slate-800 text-white placeholder-slate-500 rounded-lg text-xs focus:border-[#ea580c] focus:ring-1 focus:ring-[#ea580c] focus:outline-none transition-all" id="cuitInput" placeholder="20-34112980-9" required type="text" value="20-34112980-9"/>
+                                    <span class="material-symbols-outlined absolute left-3.5 text-slate-400 text-[18px]">mail</span>
+                                    <input class="w-full h-11 pl-10 pr-3 bg-carbon-800 border border-carbon-700 text-white placeholder-slate-500 rounded-xl text-xs focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition-all font-mono-numbers" id="emailInput" placeholder="operador@empresa.com" required type="email" value=""/>
                                 </div>
                             </div>
 
-                            <div class="flex flex-col gap-1">
+                            <div class="flex flex-col gap-1.5">
                                 <div class="flex items-center justify-between">
-                                    <label class="text-xs font-semibold text-slate-300" for="passwordInput">Contraseña</label>
-                                    <a class="text-[11px] text-orange-400 hover:text-orange-300 hover:underline transition-colors" href="javascript:void(0)">¿Olvidaste tu PIN?</a>
+                                    <label class="text-xs font-semibold text-slate-300" for="passwordInput">Contraseña Operativa</label>
+                                    <a class="text-[11px] text-orange-400 hover:text-orange-300 transition-colors" href="javascript:void(0)">¿Olvidaste tu PIN?</a>
                                 </div>
                                 <div class="relative flex items-center">
-                                    <span class="material-symbols-outlined absolute left-3 text-slate-400 text-[18px]">password</span>
-                                    <input class="w-full h-11 pl-10 pr-10 bg-slate-900/90 border border-slate-800 text-white placeholder-slate-500 rounded-lg text-xs focus:border-[#ea580c] focus:ring-1 focus:ring-[#ea580c] focus:outline-none transition-all" id="passwordInput" placeholder="••••••••••••" required type="password" value="secret123"/>
+                                    <span class="material-symbols-outlined absolute left-3.5 text-slate-400 text-[18px]">password</span>
+                                    <input class="w-full h-11 pl-10 pr-10 bg-carbon-800 border border-carbon-700 text-white placeholder-slate-500 rounded-xl text-xs focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition-all" id="passwordInput" placeholder="••••••••••••" required type="password" value=""/>
                                     <button aria-label="Alternar visibilidad" class="absolute right-3 text-slate-400 hover:text-white p-1" id="togglePassword" type="button">
                                         <span class="material-symbols-outlined text-[18px]" id="toggleIcon">visibility</span>
                                     </button>
                                 </div>
                             </div>
 
-                            <button class="w-full h-12 mt-2 bg-[#ea580c] hover:bg-[#f97316] text-white font-semibold rounded-lg shadow-lg shadow-orange-600/25 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer text-sm" type="submit">
-                                <span>Iniciar Sesión en Terminal</span>
+                            <div class="flex flex-col gap-1.5">
+                                <label class="text-xs font-semibold text-slate-300" for="negocioInput">Negocio (subdominio)</label>
+                                <div class="relative flex items-center">
+                                    <span class="material-symbols-outlined absolute left-3.5 text-slate-400 text-[18px]">store</span>
+                                    <input class="w-full h-11 pl-10 pr-3 bg-carbon-800 border border-carbon-700 text-white placeholder-slate-500 rounded-xl text-xs focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition-all" id="negocioInput" placeholder="mi-negocio" type="text" value=""/>
+                                </div>
+                                <span class="text-[10px] text-slate-500">Se envía como contexto del negocio. Si accedés por subdominio, se completa solo.</span>
+                            </div>
+
+                            <button class="w-full h-12 mt-3 bg-brand hover:bg-brand-hover text-white font-bold rounded-xl shadow-glow-orange active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer text-xs" type="submit" id="loginSubmit">
+                                <span>Acceder al Panel de Control</span>
                                 <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
                             </button>
+                            <p id="loginError" class="hidden text-[11px] text-red-400 font-semibold text-center" role="alert"></p>
                         </form>
 
-                        <div class="mt-6 pt-4 text-center border-t border-slate-800">
-                            <span class="text-[11px] text-slate-400">Mesa de Ayuda: <a class="text-orange-400 hover:underline" href="tel:0800333787">0800-333-SUR</a></span>
+                        <form id="registroForm" class="hidden flex-col gap-4 mt-5" style="display:none;">
+                            <div class="flex flex-col gap-1.5">
+                                <label class="text-xs font-semibold text-slate-300" for="regNombreInput">Nombre de cuenta</label>
+                                <div class="relative flex items-center">
+                                    <span class="material-symbols-outlined absolute left-3.5 text-slate-400 text-[18px]">person</span>
+                                    <input class="w-full h-11 pl-10 pr-3 bg-carbon-800 border border-carbon-700 text-white placeholder-slate-500 rounded-xl text-xs focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition-all" id="regNombreInput" placeholder="jperez" type="text" value=""/>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-col gap-1.5">
+                                <label class="text-xs font-semibold text-slate-300" for="regEmailInput">Correo electrónico</label>
+                                <div class="relative flex items-center">
+                                    <span class="material-symbols-outlined absolute left-3.5 text-slate-400 text-[18px]">mail</span>
+                                    <input class="w-full h-11 pl-10 pr-3 bg-carbon-800 border border-carbon-700 text-white placeholder-slate-500 rounded-xl text-xs focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition-all font-mono-numbers" id="regEmailInput" placeholder="operador@empresa.com" type="email" value=""/>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-col gap-1.5">
+                                <label class="text-xs font-semibold text-slate-300" for="regPasswordInput">Contraseña (8+, mayúscula, minúscula y número)</label>
+                                <div class="relative flex items-center">
+                                    <span class="material-symbols-outlined absolute left-3.5 text-slate-400 text-[18px]">password</span>
+                                    <input class="w-full h-11 pl-10 pr-3 bg-carbon-800 border border-carbon-700 text-white placeholder-slate-500 rounded-xl text-xs focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition-all" id="regPasswordInput" placeholder="••••••••••••" type="password" value=""/>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-col gap-1.5">
+                                <label class="text-xs font-semibold text-slate-300" for="regClienteInput">ID de cliente (tu perfil en este negocio)</label>
+                                <div class="relative flex items-center">
+                                    <span class="material-symbols-outlined absolute left-3.5 text-slate-400 text-[18px]">badge</span>
+                                    <input class="w-full h-11 pl-10 pr-3 bg-carbon-800 border border-carbon-700 text-white placeholder-slate-500 rounded-xl text-xs focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition-all font-mono-numbers" id="regClienteInput" placeholder="Ej.: 5" type="number" min="1" value=""/>
+                                </div>
+                            </div>
+
+                            <button class="w-full h-12 mt-3 bg-brand hover:bg-brand-hover text-white font-bold rounded-xl shadow-glow-orange active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer text-xs" type="submit" id="registroSubmit">
+                                <span>Crear cuenta y acceder</span>
+                                <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+                            </button>
+                            <p id="registroError" class="hidden text-[11px] text-red-400 font-semibold text-center" role="alert"></p>
+                        </form>
+
+                        <div class="mt-6 pt-4 text-center border-t border-carbon-700/80">
+                            <span class="text-[11px] text-slate-400">Mesa de Soporte: <a class="text-orange-400 hover:underline font-semibold" href="tel:0800333787">0800-333-SUR</a></span>
                         </div>
                     </div>
                 </section>
@@ -214,19 +315,128 @@
         </div>
     </main>
 
-    <script>
-        document.getElementById('togglePassword')?.addEventListener('click', () => {
-            const pwd = document.getElementById('passwordInput');
+    <script type="module">
+        import { api, sesion, negocio } from './js/api.js';
+
+        document.getElementById('togglePassword')?.addEventListener('click', () => {            const pwd = document.getElementById('passwordInput');
             const icon = document.getElementById('toggleIcon');
             const isPwd = pwd.type === 'password';
             pwd.type = isPwd ? 'text' : 'password';
             icon.textContent = isPwd ? 'visibility_off' : 'visibility';
         });
 
-        document.getElementById('loginForm')?.addEventListener('submit', (e) => {
+        function mostrarError(mensaje) {
+            const el = document.getElementById('loginError');
+            el.textContent = mensaje;
+            el.classList.remove('hidden');
+        }
+
+        const negocioInput = document.getElementById('negocioInput');
+        if (negocioInput && !negocioInput.value) {
+            const detectado = negocio.obtener();
+            if (detectado) {
+                negocioInput.value = detectado;
+            }
+        }
+
+        const tabIngreso = document.getElementById('tabIngreso');
+        const tabRegistro = document.getElementById('tabRegistro');
+        const loginForm = document.getElementById('loginForm');
+        const registroForm = document.getElementById('registroForm');
+        const authTitulo = document.getElementById('authTitulo');
+        const authSubtitulo = document.getElementById('authSubtitulo');
+
+        function activarTab(ingreso) {
+            const activas = ['bg-brand', 'text-white'];
+            const inactivas = ['bg-carbon-800', 'text-slate-300', 'border', 'border-carbon-700'];
+            const mostrar = ingreso ? tabIngreso : tabRegistro;
+            const ocultar = ingreso ? tabRegistro : tabIngreso;
+            mostrar?.classList.add(...activas);
+            mostrar?.classList.remove(...inactivas);
+            ocultar?.classList.add(...inactivas);
+            ocultar?.classList.remove(...activas);
+            if (loginForm) {
+                loginForm.classList.toggle('hidden', !ingreso);
+            }
+            if (registroForm) {
+                registroForm.classList.toggle('hidden', ingreso);
+                registroForm.style.display = ingreso ? 'none' : 'flex';
+            }
+            if (authTitulo) {
+                authTitulo.textContent = ingreso ? 'Iniciar Sesión' : 'Crear Cuenta';
+            }
+            if (authSubtitulo) {
+                authSubtitulo.textContent = ingreso
+                    ? 'Ingresá tus credenciales de operador para acceder a la suite.'
+                    : 'Se crea tu identidad global y se vincula a este negocio como CLIENTE.';
+            }
+        }
+
+        tabIngreso?.addEventListener('click', () => activarTab(true));
+        tabRegistro?.addEventListener('click', () => activarTab(false));
+
+        function mostrarRegistroError(mensaje) {
+            const el = document.getElementById('registroError');
+            el.textContent = mensaje;
+            el.classList.remove('hidden');
+        }
+
+        document.getElementById('registroForm')?.addEventListener('submit', async (e) => {
             e.preventDefault();
-            // Redirige al panel general con el backend conectado
-            window.location.href = 'index.html#dashboard';
+            const errorEl = document.getElementById('registroError');
+            errorEl.classList.add('hidden');
+            const boton = document.getElementById('registroSubmit');
+            boton.disabled = true;
+            try {
+                const subdominio = document.getElementById('negocioInput')?.value || '';
+                if (!subdominio.trim()) {
+                    mostrarRegistroError('Indicá el subdominio del negocio para registrarte.');
+                    return;
+                }
+                negocio.fijar(subdominio);
+                const payload = {
+                    nombreCuenta: document.getElementById('regNombreInput').value.trim(),
+                    correoElectronico: document.getElementById('regEmailInput').value.trim(),
+                    contraseniaPlana: document.getElementById('regPasswordInput').value,
+                    idCliente: Number(document.getElementById('regClienteInput').value),
+                    rol: 'CLIENTE'
+                };
+                if (!payload.idCliente || payload.idCliente <= 0) {
+                    mostrarRegistroError('Indicá un ID de cliente válido de este negocio.');
+                    return;
+                }
+                const datos = await api.auth.registro(payload);
+                sesion.guardar(datos);
+                window.location.href = 'index.html#dashboard';
+            } catch (error) {
+                mostrarRegistroError(error?.message || 'No se pudo crear la cuenta. Verifique los datos.');
+            } finally {
+                boton.disabled = false;
+            }
+        });
+
+        document.getElementById('loginForm')?.addEventListener('submit', async (e) => {            e.preventDefault();
+            const errorEl = document.getElementById('loginError');
+            errorEl.classList.add('hidden');
+            const boton = document.getElementById('loginSubmit');
+            boton.disabled = true;
+            try {
+                const correo = document.getElementById('emailInput').value.trim();
+                const contrasenia = document.getElementById('passwordInput').value;
+                const subdominio = document.getElementById('negocioInput')?.value || '';
+                if (!subdominio.trim()) {
+                    mostrarError('Indicá el subdominio del negocio para ingresar.');
+                    return;
+                }
+                negocio.fijar(subdominio);
+                const datos = await api.auth.ingreso(correo, contrasenia);
+                sesion.guardar(datos);
+                window.location.href = 'index.html#dashboard';
+            } catch (error) {
+                mostrarError(error?.message || 'No se pudo iniciar sesión. Verifique su conexión.');
+            } finally {
+                boton.disabled = false;
+            }
         });
     </script>
 </body>

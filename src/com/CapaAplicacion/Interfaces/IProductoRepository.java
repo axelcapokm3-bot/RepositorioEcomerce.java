@@ -10,16 +10,16 @@ public interface IProductoRepository {
    public void guardar(Producto producto);
 
     // READ
-    public Optional<Producto> buscarPorId(int id);
-  public  List<Producto> listarTodos();
+    public Optional<Producto> buscarPorId(long idNegocio, int id);
+  public  List<Producto> listarTodos(long idNegocio);
 
     // UPDATE
-   public void actualizar(int id ,Producto producto);
+    public void actualizar(long idNegocio, int id ,Producto producto);
 
-     default void actualizar(int id, Producto producto, Connection connection) throws java.sql.SQLException {
-       actualizar(id, producto);
-     }
+      default void actualizar(long idNegocio, int id, Producto producto, Connection connection) throws java.sql.SQLException {
+        actualizar(idNegocio, id, producto);
+      }
 
     // DELETE
-  public  void eliminar(int id);
+  public  void eliminar(long idNegocio, int id);
 }

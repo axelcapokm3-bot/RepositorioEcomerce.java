@@ -12,6 +12,16 @@ El proyecto ha sido analizado para establecer la infraestructura inicial de agen
 - Se establecieron principios estrictos para la generación de código (no lambdas por defecto, nombres en español para el dominio, no sobre-ingeniería).
 - Se definió una jerarquía de autoridad clara para la toma de decisiones.
 - Se adoptó el protocolo estricto de autoridad del usuario para todos los agentes y subagentes; las decisiones no definidas deben consultarse y no pueden resolverse mediante suposiciones.
+- Autenticación con tokens HMAC-SHA256 firmados (JDK-only, sin nuevas dependencias), expiración 12 h configurable, formato `base64url(contenido).base64url(firma)` (aprobado por el usuario, 2026-10-13).
+- Hash de contraseñas con PBKDF2-HMAC-SHA256 (210.000 iteraciones + sal de 16 bytes), verificación en tiempo constante y respuesta genérica ante credenciales inválidas (aprobado por el usuario, 2026-10-13).
+- Roles `ADMIN` (gestión total) y `CLIENTE` (solo sus propios datos); catálogo en lectura y webhooks firmados permanecen públicos; bootstrap de primer ADMIN permitido solo con tabla de cuentas vacía (aprobado por el usuario, 2026-10-13).
+- CORS por allowlist configurable (`app.cors.allowed-origins`), sin comodín `*`; headers de seguridad `nosniff/DENY/no-referrer/no-store`; límite de cuerpo 1 MB y rate limiting en memoria para auth y webhooks (aprobado por el usuario, 2026-10-13).
+- Sin credenciales DB predeterminadas: la aplicación falla al arrancar si faltan `db.url/db.username/db.password` (aprobado por el usuario, 2026-10-13).
+- `AUTH_TOKEN_SECRET` obligatorio en producción (`APP_PERFIL=prod`): sin secreto válido el servidor no inicia; en desarrollo usa secreto efímero solo local (aprobado por el usuario, 2026-10-13).
+- Migración multi-tenant al esquema de `ULTIMAVERSIONDB\Nueva carpeta` (aprobado por el usuario, 2026-10-16): negocio por subdominio del `Host` o header `X-Negocio-Subdominio`; `cuentas`→negocio derivado de `clientes.id_negocio` (JOIN, sin tocar el esquema); `long idNegocio` en entidades/contratos; token con claim de negocio (formato de 5 campos, invalida tokens viejos); auditoría scopeada por EXISTS (la tabla no tiene `id_negocio`); webhooks resuelven el negocio desde el pago persistido y prueban secretos/firmas de todos los negocios activos; `NegocioConfigController` registrado en `/api/negocios`; requests autenticados usan siempre el negocio del token (header distinto ⇒ 403); catálogo público anónimo sin negocio ⇒ 400 (el frontend aún no envía el header).
+- Bootstrap del primer ADMIN con token de setup (`AUTH_BOOTSTRAP_TOKEN` + header `X-Setup-Token`, comparación constante); sin token configurado no hay registro público de administradores; reemplaza el mecanismo anterior por conteo de cuentas, vulnerable a condiciones de carrera (aprobado por el usuario, 2026-10-13).
+- `config.properties` excluido del `.jar` empaquetado para no distribuir secretos locales; precedencia: propiedad Java → archivo local → variable de entorno (aprobado por el usuario, 2026-10-13).
+- Frontend: sesión en `sessionStorage` (no `localStorage` persistente); cookie `HttpOnly` evaluada y pospuesta (requeriría CORS con credenciales + CSRF); login por correo electrónico según decisión del usuario (aprobado por el usuario, 2026-10-13).
 
 Para nuevas decisiones aprobadas, registrar contexto, alternativas relevantes, decisión explícita del usuario, estado y fecha. Las propuestas pendientes no se registran como decisiones.
 
@@ -53,3 +63,4 @@ No hay próximos pasos de modernización de agentes registrados.
 - Creación de `AGENTS.md`.
 - Incorporación del protocolo estricto de autoridad del usuario en la configuración global y en todos los perfiles de agentes OpenCode.
 - Centralización de reglas globales de agentes y optimización de contexto, delegación, impacto y revisión.
+- Identidad global multi-tenant (aprobado por el usuario, 2026-10-16): cuentas global + cuentas_negocio con rol/estado por negocio y FK compuesta a clientes; migracion_identidad_global.sql idempotente reemplaza al legado nunca aplicado; registro crea identidad + vinculo CLIENTE; ingreso exige vinculo activo; POST /api/auth/negocio-activo reemite token tras validar el vinculo; pagos y webhooks intactos.
