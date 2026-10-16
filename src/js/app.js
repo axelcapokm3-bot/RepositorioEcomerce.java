@@ -1,4 +1,6 @@
 import { api, sesion } from './api.js';
+import { addToCart, toggleCart } from './components/cart-sidebar.js';
+import { renderSalesList } from './components/sales-list.js';
 import { showToast } from './utils/toast-notifier.js';
 import { showSpinner, hideSpinner } from './utils/spinner.js';
 
@@ -830,4 +832,209 @@ function renderPaymentBarChart(container) {
         }
     });
     resizeObserver.observe(canvas);
+}
+
+// ---------------------------------------------------------------------
+// Vistas cableadas: catálogo, terminal POS, clientes, auditoría/ventas
+// ---------------------------------------------------------------------
+function escaparHtml(texto) {
+    return String(texto ?? '').replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+}
+
+async function renderCatalogo(container) {
+    const productos = await api.productos.listar().catch(() => []);
+    container.innerHTML = `
+        <div class="flex items-center justify-between gap-4 pb-6 border-b border-carbon-700/80">
+            <div>
+                <h1 class="text-2xl font-bold text-white tracking-tight">Catálogo</h1>
+                <p class="text-xs text-slate-400 mt-1">${productos.length} productos en el negocio activo.</p>
+            </div>
+            <button id="catalogo-ver-carrito" class="px-4 py-2.5 bg-brand hover:bg-brand-hover text-white rounded-xl text-xs font-bold transition-all shadow-glow-orange flex items-center gap-2 cursor-pointer">
+                <span class="material-symbols-outlined text-[18px]">shopping_cart</span>
+                <span>Ver Carrito</span>
+            </button>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+            ${productos.map((p) => `
+                <div class="catalogo-product-card bg-carbon-900/60 border border-carbon-700 rounded-2xl p-5 flex flex-col gap-2" data-nombre="${escaparHtml(p.nombre)}" data-categoria="${escaparHtml(p.categoria)}">
+                    <h3 class="text-sm font-bold text-white">${escaparHtml(p.nombre)}</h3>
+                    <p class="text-[11px] text-slate-400 uppercase tracking-wider">${escaparHtml(p.categoria)}</p>
+                    <p class="text-lg font-bold text-white font-mono-numbers">$ ${Number(p.precio).toFixed(2)}</p>
+                    <p class="text-[11px] ${p.stockDisponible > 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold">Stock disponible: ${p.stockDisponible}</p>
+                    <button class="catalogo-agregar mt-2 px-3 py-2 bg-carbon-800 hover:bg-carbon-750 text-white rounded-xl text-xs font-bold border border-carbon-700 transition-colors" data-id="${p.id}" ${p.stockDisponible <= 0 ? 'disabled' : ''}>Agregar al Carrito</button>
+                </div>`).join('') || '<p class="text-xs text-slate-400">Sin productos en este negocio.</p>'}
+        </div>`;
+    const porId = new Map(productos.map((p) => [Number(p.id), p]));
+    container.querySelector('#catalogo-ver-carrito')?.addEventListener('click', toggleCart);
+    container.querySelectorAll('.catalogo-agregar').forEach((boton) => {
+        boton.addEventListener('click', () => {
+            const producto = porId.get(Number(boton.dataset.id));
+            if (producto) {
+                addToCart(producto);
+            }
+        });
+    });
+}
+
+async function renderTerminal(container) {
+    const productos = await api.productos.listar().catch(() => []);
+    const orden = new Map();
+
+    container.innerHTML = `
+        <div class="pb-6 border-b border-carbon-700/80">
+            <h1 class="text-2xl font-bold text-white tracking-tight">Terminal POS</h1>
+            <p class="text-xs text-slate-400 mt-1">Venta presencial con checkout online (Mercado Pago / Stripe).</p>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-6">
+            <div class="lg:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4" id="pos-productos">
+                ${productos.filter((p) => p.stockDisponible > 0).map((p) => `
+                    <div class="pos-product-item bg-carbon-900/60 border border-carbon-700 rounded-2xl p-4 flex items-center justify-between gap-3" data-nombre="${escaparHtml(p.nombre)}">
+                        <div>
+                            <h3 class="text-sm font-bold text-white">${escaparHtml(p.nombre)}</h3>
+                            <p class="text-xs text-slate-400 font-mono-numbers">$ ${Number(p.precio).toFixed(2)} · Stock ${p.stockDisponible}</p>
+                        </div>
+                        <button class="pos-agregar px-3 py-2 bg-brand hover:bg-brand-hover text-white rounded-xl text-xs font-bold transition-colors" data-id="${p.id}">＋</button>
+                    </div>`).join('') || '<p class="text-xs text-slate-400">Sin stock disponible.</p>'}
+            </div>
+            <div class="bg-carbon-900/60 border border-carbon-700 rounded-2xl p-5 flex flex-col gap-3 h-fit">
+                <h3 class="text-sm font-bold text-white">Orden actual</h3>
+                <div id="pos-lineas" class="flex flex-col gap-2 text-xs text-slate-300"><p class="text-slate-500">Sin ítems.</p></div>
+                <p class="text-sm font-bold text-white font-mono-numbers">Total: $ <span id="pos-total">0.00</span></p>
+                <label class="flex flex-col gap-1 text-[11px] font-semibold text-slate-300">Tipo de pago
+                    <select id="pos-tipopago" class="h-10 px-3 bg-carbon-800 border border-carbon-700 text-white rounded-xl text-xs focus:border-brand focus:outline-none">
+                        <option value="MERCADO_PAGO">Mercado Pago</option>
+                        <option value="STRIPE">Stripe</option>
+                    </select>
+                </label>
+                <button id="pos-cobrar" class="h-11 rounded-xl bg-brand hover:bg-brand-hover text-white text-xs font-bold transition-all shadow-glow-orange">Cobrar</button>
+                <div id="pos-resultado"></div>
+            </div>
+        </div>`;
+
+    const porId = new Map(productos.map((p) => [Number(p.id), p]));
+    const lineasEl = container.querySelector('#pos-lineas');
+    const totalEl = container.querySelector('#pos-total');
+
+    function pintarOrden() {
+        if (orden.size === 0) {
+            lineasEl.innerHTML = '<p class="text-slate-500">Sin ítems.</p>';
+            totalEl.textContent = '0.00';
+            return;
+        }
+        let total = 0;
+        lineasEl.innerHTML = [...orden.entries()].map(([id, cantidad]) => {
+            const p = porId.get(id);
+            const subtotal = Number(p.precio) * cantidad;
+            total += subtotal;
+            return `<div class="flex items-center justify-between gap-2">
+                <span>${escaparHtml(p.nombre)} x ${cantidad}</span>
+                <span class="font-mono-numbers">$ ${subtotal.toFixed(2)}</span>
+            </div>`;
+        }).join('');
+        totalEl.textContent = total.toFixed(2);
+    }
+
+    container.querySelectorAll('.pos-agregar').forEach((boton) => {
+        boton.addEventListener('click', () => {
+            const id = Number(boton.dataset.id);
+            orden.set(id, (orden.get(id) || 0) + 1);
+            pintarOrden();
+        });
+    });
+
+    container.querySelector('#pos-cobrar')?.addEventListener('click', async () => {
+        const resultadoEl = container.querySelector('#pos-resultado');
+        resultadoEl.innerHTML = '';
+        const actual = sesion.obtener();
+        if (!actual || !actual.idCliente) {
+            showToast('Inicie sesión para cobrar.', 'error');
+            window.location.href = 'login.html';
+            return;
+        }
+        if (orden.size === 0) {
+            showToast('La orden está vacía.', 'error');
+            return;
+        }
+        const payload = {
+            idCliente: actual.idCliente,
+            tipoPago: container.querySelector('#pos-tipopago').value,
+            descuento: null,
+            items: [...orden.entries()].map(([idProducto, cantidad]) => ({ idProducto, cantidad }))
+        };
+        try {
+            const resultado = await api.ventas.crear(payload, obtenerClaveIdempotenciaCheckout(payload));
+            orden.clear();
+            pintarOrden();
+            resultadoEl.innerHTML = `
+                <div class="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-300 flex flex-col gap-1">
+                    <span class="font-bold">Checkout generado: ${escaparHtml(resultado.paymentId || '')}</span>
+                    <span>${escaparHtml(resultado.mensaje || '')}</span>
+                    ${resultado.urlPago ? `<a class="text-orange-400 hover:underline font-semibold" href="${escaparHtml(resultado.urlPago)}" target="_blank" rel="noopener">Abrir link de pago</a>` : ''}
+                </div>`;
+        } catch (error) {
+            showToast(error?.message || 'No se pudo crear la venta.', 'error');
+        }
+    });
+}
+
+async function renderClientes(container) {
+    const clientes = await api.clientes.listar().catch(() => []);
+    container.innerHTML = `
+        <div class="pb-6 border-b border-carbon-700/80">
+            <h1 class="text-2xl font-bold text-white tracking-tight">Clientes</h1>
+            <p class="text-xs text-slate-400 mt-1">${clientes.length} clientes en el negocio activo.</p>
+        </div>
+        <div class="mt-6 overflow-x-auto bg-carbon-900/60 border border-carbon-700 rounded-2xl">
+            <table class="w-full text-xs text-left">
+                <thead>
+                    <tr class="text-slate-400 uppercase tracking-wider text-[10px] border-b border-carbon-700/60">
+                        <th class="px-4 py-3">ID</th>
+                        <th class="px-4 py-3">DNI</th>
+                        <th class="px-4 py-3">Nombre</th>
+                        <th class="px-4 py-3">Localidad</th>
+                        <th class="px-4 py-3">Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${clientes.map((c) => `
+                        <tr class="cliente-row border-b border-carbon-700/30 text-slate-200">
+                            <td class="px-4 py-2.5 font-mono-numbers">${c.id}</td>
+                            <td class="px-4 py-2.5 font-mono-numbers">${escaparHtml(c.dni)}</td>
+                            <td class="px-4 py-2.5 font-semibold text-white">${escaparHtml(c.nombreCompleto)}</td>
+                            <td class="px-4 py-2.5">${escaparHtml(c.localidad || '—')}</td>
+                            <td class="px-4 py-2.5 ${c.activo ? 'text-emerald-400' : 'text-red-400'} font-semibold">${c.activo ? 'Activo' : 'Baja'}</td>
+                        </tr>`).join('') || '<tr><td class="px-4 py-4 text-slate-500" colspan="5">Sin clientes en este negocio.</td></tr>'}
+                </tbody>
+            </table>
+        </div>`;
+}
+
+async function renderAuditoria(container) {
+    const registros = await api.auditoria.listar().catch(() => []);
+    container.innerHTML = `
+        <div class="pb-6 border-b border-carbon-700/80">
+            <h1 class="text-2xl font-bold text-white tracking-tight">Auditoría y Ventas</h1>
+            <p class="text-xs text-slate-400 mt-1">Trazabilidad del negocio activo y gestión de ventas por ID.</p>
+        </div>
+        <div class="mt-6 bg-carbon-900/60 border border-carbon-700 rounded-2xl p-5">
+            <div id="auditoria-ventas"></div>
+        </div>
+        <div class="mt-4 bg-carbon-900/60 border border-carbon-700 rounded-2xl p-5">
+            <h3 class="text-sm font-bold text-white mb-3">Registros recientes</h3>
+            <div class="flex flex-col gap-2 max-h-96 overflow-y-auto">
+                ${registros.slice(0, 50).map((r) => `
+                    <div class="text-[11px] text-slate-300 border-b border-carbon-700/30 pb-2">
+                        <span class="font-bold text-white">${escaparHtml(r.accion)}</span>
+                        <span class="text-slate-500">· ${escaparHtml(r.entidad)} #${r.idEntidad}</span>
+                        <span class="text-slate-500">· ${escaparHtml(r.resultado || '')}</span>
+                        <p class="text-slate-400 mt-0.5">${escaparHtml(r.descripcion || '')}</p>
+                    </div>`).join('') || '<p class="text-[11px] text-slate-500">Sin registros.</p>'}
+            </div>
+        </div>`;
+    const ventasEl = container.querySelector('#auditoria-ventas');
+    if (ventasEl) {
+        renderSalesList(ventasEl);
+    }
 }
