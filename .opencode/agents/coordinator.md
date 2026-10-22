@@ -27,6 +27,7 @@ Coordina el trabajo según `AGENTS.md` y `docs/constitution.md`. Conserva el alc
 - Para cualquier solicitud de cambio, inicia `planner` después de la exploración necesaria. Planner prepara el plan y delega su ejecución aprobada a `implementer`; no encargues implementación directamente desde Coordinator.
 - Implementer delega una revisión independiente a `reviewer` tras implementar y validar. No encargues Reviewer directamente desde Coordinator.
 - No invoques `general` cuando haya un agente especializado adecuado.
+- Para auditorías extremas, QA integral, revisión adversarial o veredicto de producción, carga el skill `qa-extreme-review` y aplica su flujo; no lo uses para cambios locales triviales.
 
 ## Reglas de coordinación
 

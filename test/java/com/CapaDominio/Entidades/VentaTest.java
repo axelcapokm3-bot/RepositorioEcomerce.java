@@ -85,15 +85,25 @@ class VentaTest {
     }
 
     @Test
-    @DisplayName("Cancelar: solo permitido desde PAGADO")
+    @DisplayName("Cancelar: solo permitido desde PENDIENTE")
     void cancelar() {
         Venta pendiente = ventaPendiente();
-        assertThrows(IllegalStateException.class, () -> pendiente.Cancelar());
+        pendiente.Cancelar();
+        assertEquals(EstadoVenta.CANCELADO, pendiente.getEstadoCompra());
 
         Venta pagada = ventaPendiente();
         pagada.Pagar();
-        pagada.Cancelar();
-        assertEquals(EstadoVenta.CANCELADO, pagada.getEstadoCompra());
+        assertThrows(IllegalStateException.class, pagada::Cancelar);
+        assertEquals(EstadoVenta.PAGADO, pagada.getEstadoCompra());
+    }
+
+    @Test
+    @DisplayName("Rehidratar estado: restaura estados persistidos sin validar transiciones")
+    void rehidratarEstado() {
+        Venta venta = ventaPendiente();
+        venta.rehidratarEstado(EstadoVenta.CANCELADO);
+        assertEquals(EstadoVenta.CANCELADO, venta.getEstadoCompra());
+        assertThrows(IllegalArgumentException.class, () -> venta.rehidratarEstado(null));
     }
 
     @Test

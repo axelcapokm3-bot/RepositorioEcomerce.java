@@ -32,11 +32,12 @@ public class AuditoriaController extends BaseController {
         if (handlePreflight(exchange)) {
             return;
         }
-        Principal principal = exigirAutenticacion(exchange, proveedor);
-        exigirAdmin(principal);
-        long idNegocio = negocioAutorizado(exchange, principal);
 
         try {
+            Principal principal = exigirAutenticacion(exchange, proveedor);
+            exigirAdmin(principal);
+            long idNegocio = negocioAutorizado(exchange, principal);
+
             if ("/api/auditoria".equals(path) || "/api/auditoria/".equals(path)) {
                 if ("GET".equalsIgnoreCase(method)) {
                     handleAsync(exchange, servicio.obtenerTodosAsync(idNegocio), 200);

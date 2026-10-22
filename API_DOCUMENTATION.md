@@ -81,13 +81,13 @@ Todas las respuestas de error usan un **objeto único**:
 |---|---|
 | `200 OK` | GET/PUT/DELETE exitosos y operaciones de negocio (pago, cancelar, transferir, evaluar stock, recomendaciones) |
 | `201 Created` | POST de creación exitoso (producto, cliente, cuenta, venta, auditoría) |
-| `204 No Content` | Solo respuesta a preflight `OPTIONS` |
+| `204 No Content` | Preflight `OPTIONS` o `DELETE /api/carrito` exitoso |
 | `400 Bad Request` | `IllegalArgumentException` / `IllegalStateException` del servicio, ID inválido en ruta, parámetro requerido ausente, JSON inválido, enum inválido |
 | `401 Unauthorized` | Falta el header `Authorization` o el token es inválido/expirado |
 | `403 Forbidden` | Token válido pero sin rol o propiedad suficiente sobre el recurso |
 | `404 Not Found` | Recurso no encontrado (`Optional` vacío) o ruta inexistente |
 | `405 Method Not Allowed` | Verbo HTTP no soportado en la ruta |
-| `429 Too Many Requests` | Se superó el límite por minuto (auth: 20/IP, webhooks: 60/IP) |
+| `429 Too Many Requests` | Se superó el límite configurable (`rate-limit.*`): login 10/IP, registro 20, auth-cuenta 120, productos-admin/clientes-admin/ventas-consulta 120, ventas-previsualizar 60, ventas-crear 30, catálogo público 300/IP y 600/negocio, `carrito-consulta` 240/IP, 240/cuenta y 600/negocio, `carrito-modificacion` 120/IP, 120/cuenta y 300/negocio, y webhooks 600 por ventana; incluye `Retry-After` |
 | `500 Internal Server Error` | `RuntimeException` genérica no mapeada (ver [Caveats](#15-advertencias-y-caveats-importante)) |
 
 ---
@@ -99,34 +99,45 @@ Valores **exactos** (cadenas que llegan al frontend en los JSON):
 ### 3.1 `CategoriaProducto`
 
 ```
-ELECTRONICA, ROPA, HOGAR, DEPORTES, LIBROS
+ELECTRONICA, ROPA, HOGAR_Y_MUEBLES, DEPORTES, INFORMATICA,
+ALMACEN, HERRAMIENTAS, BEBIDAS, OTROS
 ```
+
+`OTROS` es una constante de **solo lectura**: agrupa categorías de la base de datos que aún no tienen constante propia. Las respuestas de producto incluyen además `categoriaOriginal` con el nombre exacto almacenado en la tabla `categorias`. En escritura (`POST`/`PUT`) solo se aceptan categorías reales; `OTROS` se rechaza con `400 Bad Request`.
 
 ### 3.2 `TipoDePago`
 
-> Importante: el valor real del enum es `TARJETA_CREDITO` (NO `TARJETA` ni `TRANSFERENCIA`).
+> Importante: `TARJETA_CREDITO` existe en el enum, pero **no tiene pasarela implementada**; el checkout y la creación de ventas lo rechazan. Para cobros online usar `MERCADO_PAGO` o `STRIPE`; para cobro manual, `EFECTIVO` o `TRANSFERENCIA`.
 
 ```
-EFECTIVO, TARJETA_CREDITO
+EFECTIVO, TARJETA_CREDITO, TRANSFERENCIA, MERCADO_PAGO, STRIPE
 ```
 
 ### 3.3 `EstadoVenta` — Máquina de Estados
 
 ```
 PENDIENTE  ──►  PAGADO  ──►  ENVIADO      (ENVIADO es estado terminal)
-PENDIENTE  ──►  PAGADO  ──►  CANCELADO    (CANCELADO es estado terminal)
+PENDIENTE  ──►  CANCELADO                 (CANCELADO es estado terminal)
+PENDIENTE  ──►  EXPIRADO                  (EXPIRADO es estado terminal)
 ```
 
 Matriz de transiciones permitidas (`Venta.cambiarEstado`):
 
 | Estado actual | Puede ir a |
 |---|---|
-| `PENDIENTE` | `PAGADO` |
-| `PAGADO` | `ENVIADO`, `CANCELADO` |
+| `PENDIENTE` | `PAGADO`, `CANCELADO`, `EXPIRADO` |
+| `PAGADO` | `ENVIADO` |
 | `ENVIADO` | *(ninguno)* |
 | `CANCELADO` | *(ninguno)* |
+| `EXPIRADO` | *(ninguno)* |
 
-**Toda transición no permitida lanza `IllegalStateException` → `400 Bad Request`.**
+`EXPIRADO` lo asigna el job de expiración cuando una venta `PENDIENTE` supera el
+TTL configurado (`ventas.expiracion.minutos`, 30 por defecto). La transición
+libera el stock y publica `"EXPIRADA"`; no se expone un endpoint público para
+forzarla. Un pago aprobado tardío se conserva para conciliación sin reactivar la
+venta.
+
+**Toda transición no permitida lanza `IllegalStateException` → `400 Bad Request`; en `POST /api/ventas/{id}/cancelar` el estado no cancelable se traduce en `409 Conflict`.**
 
 ### 3.4 `EstadoStock` — Dos criterios DISTINTOS en producción
 
@@ -289,11 +300,11 @@ Posibles valores: `DISPONIBLE`, `CRITICO`, `AGOTADO`, `EN_REPOSICION` (`EN_REPOS
 ### 5.4 `PUT /api/clientes/{id}`
 
 - **Request:** body `ClienteRequestDTO` (igual que 5.2).
-- **Response `200 OK`:** sin cuerpo. **`500`** si el cliente no existe.
+- **Response `200 OK`:** sin cuerpo. **`404`** si el cliente no existe o pertenece a otro negocio.
 
 ### 5.5 `DELETE /api/clientes/{id}`
 
-- **Response `200 OK`:** sin cuerpo. No-op silencioso si no existe.
+- **Response `200 OK`:** sin cuerpo. **`404`** si el cliente no existe o pertenece a otro negocio; no se revela su existencia en otro tenant.
 
 ---
 
@@ -303,10 +314,10 @@ Posibles valores: `DISPONIBLE`, `CRITICO`, `AGOTADO`, `EN_REPOSICION` (`EN_REPOS
 
 ### 6.1 `POST /api/auth/registro`
 
-- **Caso de uso:** Crear identidad global y vincularla al negocio del request con un perfil de cliente existente. La contraseña se hashea con PBKDF2-SHA256 (nunca se devuelve).
-- **Negocio:** se resuelve del header `X-Negocio-Subdominio` o del subdominio del host (negocio activo); el vínculo se crea solo en ese negocio.
+- **Caso de uso:** Crear identidad global y vincularla al negocio del request con un perfil de cliente identificado por DNI. Si el DNI ya existe en el negocio, solo se vincula cuando `nombreCliente`, `apellidoCliente` y `fechaNacimientoCliente` coinciden con el titular registrado; los datos del cliente no se modifican. Si el DNI no existe, se crea el cliente en la tabla `clientes` con los datos enviados. La contraseña se hashea con PBKDF2-SHA256 (nunca se devuelve) y todo el alta se ejecuta en una única transacción.
+- **Negocio:** se resuelve del header `X-Negocio-Subdominio` o del subdominio del host (negocio activo); el vínculo y el cliente nuevo pertenecen solo a ese negocio.
 - **Autenticación:** no requerida. El campo `rol` solo acepta `ADMIN` si el solicitante es `ADMIN` del mismo negocio (enviar su token) o si se envía el header `X-Setup-Token` con el token de bootstrap del operador (`AUTH_BOOTSTRAP_TOKEN`); en cualquier otro caso la cuenta se crea como `CLIENTE`. Sin token de bootstrap configurado no existe registro público de administradores.
-- **Correo existente:** no se duplica la cuenta. Solo un `ADMIN` del negocio puede vincular ese correo como `ADMIN` en su negocio; en cualquier otro caso se responde `409` y el usuario debe ingresar y vincular el negocio desde su sesión.
+- **Correo existente:** no se duplica la cuenta y nunca se emite una sesión sin autenticar al titular. El request debe incluir la contraseña correcta de esa cuenta; si el solicitante está autenticado, la cuenta existente debe ser la suya. Un `ADMIN` no puede registrar ni vincular el correo de otra cuenta en su negocio: debe hacerlo el titular desde su propia sesión (`POST /api/auth/vincular`).
 - **Request:**
 
 ```json
@@ -314,8 +325,13 @@ Posibles valores: `DISPONIBLE`, `CRITICO`, `AGOTADO`, `EN_REPOSICION` (`EN_REPOS
   "nombreCuenta": "jperez",
   "correoElectronico": "jperez@gmail.com",
   "contraseniaPlana": "Password123",
-  "idCliente": 1,
-  "rol": "CLIENTE"
+  "dniCliente": "38456789",
+  "rol": "CLIENTE",
+  "nombreCliente": "Juan",
+  "apellidoCliente": "Pérez",
+  "fechaNacimientoCliente": "1990-05-15",
+  "direccionCliente": "Av. Siempre Viva 742",
+  "localidadCliente": "Springfield"
 }
 ```
 
@@ -324,8 +340,10 @@ Posibles valores: `DISPONIBLE`, `CRITICO`, `AGOTADO`, `EN_REPOSICION` (`EN_REPOS
 | `nombreCuenta` | obligatorio, sin espacios, ≤ 100 chars |
 | `correoElectronico` | obligatorio, formato válido, único |
 | `contraseniaPlana` | ≥ 8 chars, 1 mayúscula + 1 minúscula + 1 número |
-| `idCliente` | obligatorio, debe existir en clientes |
+| `dniCliente` | obligatorio, 7 u 8 dígitos |
 | `rol` | opcional (`CLIENTE` por defecto) |
+| `nombreCliente`, `apellidoCliente`, `fechaNacimientoCliente` | obligatorios siempre: si el DNI ya existe deben coincidir con el titular registrado (comparación normalizada); si el DNI es nuevo crean el cliente |
+| `direccionCliente`, `localidadCliente` | obligatorios solo si el DNI no existe en el negocio; se validan con las reglas de `ClienteRequestDTO` (letras y espacios, mayoría de 18 años, sin fechas futuras) |
 
 - **Response `201 Created`:**
 
@@ -340,7 +358,7 @@ Posibles valores: `DISPONIBLE`, `CRITICO`, `AGOTADO`, `EN_REPOSICION` (`EN_REPOS
 }
 ```
 
-- **Errores:** `400` validación (incluye negocio no identificado); `409` correo duplicado, vínculo ya existente u operación no permitida; `429` si se supera 20 intentos/min por IP.
+- **Errores:** `400` validación (incluye negocio no identificado, datos de cliente inválidos cuando el DNI es nuevo y credenciales incorrectas si el correo ya existe); `409` vínculo ya existente, perfil ya vinculado a otra cuenta, identidad que no coincide, negocio inactivo o intento de operar una cuenta ajena; `429` si se supera el límite configurable de registro por IP/cuenta.
 
 ### 6.2 `POST /api/auth/ingreso`
 
@@ -352,22 +370,24 @@ Posibles valores: `DISPONIBLE`, `CRITICO`, `AGOTADO`, `EN_REPOSICION` (`EN_REPOS
 ### 6.2bis `POST /api/auth/negocio-activo`
 
 - **Caso de uso:** Cambiar el negocio activo de la sesión (una misma identidad global accede a varios negocios). Requiere `Authorization: Bearer <token>`.
-- **Request:** `{ "idNegocio": 2 }`. El servidor comprueba que la cuenta tenga un vínculo activo con ese negocio, re-resuelve su rol y emite un token nuevo. Nunca confía en el `idNegocio` sin validar el vínculo.
+- **Negocio objetivo:** se resuelve del header `X-Negocio-Subdominio` o del subdominio del `Host`; si no se indica ninguno, se usa el negocio del JWT. El valor `idNegocio` del body se ignora y no forma parte del contrato. El servidor comprueba que la cuenta tenga un vínculo activo con ese negocio, re-resuelve su rol y emite un token nuevo.
+- **Request:** sin body (cualquier `idNegocio` enviado en el body se descarta).
 - **Response `200 OK`:** `SesionResponseDTO` del negocio solicitado.
-- **Errores:** `401` token inválido; `400` ID inválido; `409` sin acceso al negocio solicitado o vínculo bloqueado/dado de baja; `429` por abuso.
+- **Errores:** `401` token inválido; `400` subdominio inexistente o inactivo; `409` sin acceso al negocio solicitado o vínculo bloqueado/dado de baja; `429` por abuso.
 
 ### 6.2ter `GET /api/auth/negocios`
 
-- **Caso de uso:** Listar los negocios vinculados a la cuenta autenticada (para el selector de negocio activo). Requiere `Authorization: Bearer <token>`.
+- **Caso de uso:** Listar los negocios con vínculo activo de la cuenta autenticada (para el selector de negocio activo). Omite vínculos dados de baja y negocios inactivos. Requiere `Authorization: Bearer <token>`.
 - **Response `200 OK`:** `[{ "idNegocio": 1, "nombreNegocio": "Tienda Uno", "subdominio": "uno", "idCliente": 5, "rol": "CLIENTE", "estado": "ACTIVA" }, …]`.
 - **Errores:** `401` token inválido.
 
 ### 6.2quater `POST /api/auth/vincular`
 
-- **Caso de uso:** Vincular la cuenta autenticada a otro negocio con un perfil de cliente de ese negocio. Requiere `Authorization: Bearer <token>`.
-- **Request:** `{ "idNegocio": 2, "idCliente": 9, "contraseniaPlana": "…" }` (reconfirma la contraseña; el rol otorgado es siempre `CLIENTE`, nunca `ADMIN`).
+- **Caso de uso:** Vincular la cuenta autenticada a otro negocio con un perfil de cliente existente de ese negocio. El servidor resuelve el perfil por DNI y exige que nombre, apellido y fecha de nacimiento coincidan con el titular; no acepta un `idCliente` arbitrario. Requiere `Authorization: Bearer <token>`.
+- **Negocio objetivo:** se resuelve del header `X-Negocio-Subdominio` o del subdominio del `Host`; si no se indica ninguno, se usa el negocio del JWT. Debe existir y estar activo. El valor `idNegocio` del body se ignora y no forma parte del contrato.
+- **Request:** `{ "dniCliente": "30987654", "nombreCliente": "Ana", "apellidoCliente": "Gómez", "fechaNacimientoCliente": "1992-03-10", "contraseniaPlana": "…" }` (reconfirma la contraseña; el rol otorgado es siempre `CLIENTE`, nunca `ADMIN`).
 - **Response `200 OK`:** `SesionResponseDTO` del negocio recién vinculado.
-- **Errores:** `401` token inválido; `400` datos inválidos o credenciales incorrectas; `409` vínculo ya existente, negocio inactivo o perfil inexistente; `429` por abuso.
+- **Errores:** `401` token inválido; `400` datos inválidos, subdominio inexistente/inactivo o credenciales incorrectas; `409` vínculo ya existente, identidad que no coincide, perfil ya vinculado a otra cuenta, negocio inactivo o perfil inexistente; `429` por abuso.
 
 ### 6.3 `GET /api/auth/sesion`
 
@@ -387,7 +407,6 @@ Posibles valores: `DISPONIBLE`, `CRITICO`, `AGOTADO`, `EN_REPOSICION` (`EN_REPOS
 | `GET/PUT /api/clientes/{id}` | ❌ | propio `id` | ✅ |
 | `DELETE /api/clientes/{id}` | ❌ | ❌ | ✅ |
 | `POST /api/ventas/*`, `GET /api/ventas/{id}` | ❌ | propias | ✅ |
-| `GET/POST /api/metodos-pago*` | ❌ | propios | ✅ |
 | `GET/POST /api/auditoria*` | ❌ | ❌ | ✅ |
 | `GET/PUT/POST /api/negocios/*/configuraciones` | ❌ | ❌ | ✅ (secretos redactados como `***`) |
 | `GET/POST /api/stock/*`, `POST /api/recomendaciones` | ❌ | ✅ | ✅ |
@@ -525,6 +544,7 @@ Posibles valores: `DISPONIBLE`, `CRITICO`, `AGOTADO`, `EN_REPOSICION` (`EN_REPOS
 - **Response `201 Created`:** resultado del checkout, incluido su estado y `urlPago` cuando la pasarela devuelve una URL. Mercado Pago usa Orders API y devuelve su `checkout_url`; no crea una Preference.
 - **Configuración local de Mercado Pago:** `MERCADOPAGO_PUBLIC_BASE_URL` debe ser la URL HTTPS pública del frontend alcanzable por ngrok hacia Caddy (`localhost:8081`). Con el Caddyfile local compartido, `/api/*` se reenvía a Java (`localhost:8080`) y el resto de las rutas a Live Server (`localhost:5500`), preservando la ruta. Por eso, si Live Server sirve `src/index.html` en `/src/index.html`, usa `https://<host-ngrok-actual>/src/index.html` como base de retorno. El hostname lo asigna ngrok y puede cambiar; no lo fijes en el repositorio. El backend deriva los retornos con `payment_status=success`, `payment_status=failure` y `payment_status=pending`; el `auto_return` queda en `approved`. Como alternativa, se admiten las propiedades `mercadopago.public-base-url` o `mercadopago.checkout-return-url`.
 - **URL del webhook de Mercado Pago:** configurar en Mercado Pago `https://<host-ngrok-actual>/api/webhooks/mercado-pago`. La regla `@api path /api/*` de Caddy reenvía esa ruta al backend Java (`localhost:8080`); no usar la URL del frontend para notificaciones. La firma se valida con `MERCADOPAGO_WEBHOOK_SECRET`/`mercadopago.webhook-secret`, no con la URL. La URL del frontend recibe los retornos visibles del checkout; el webhook se procesa en el backend.
+- **Durabilidad de webhooks:** tras validar la firma, el backend persiste el evento en `eventos_webhook` antes de responder `200`. Si falla la persistencia responde `500` para que el proveedor reintente; si el cuerpo o el identificador son inválidos responde `400`. El procesamiento posterior es asíncrono, con reintentos y dead-letter (`webhook.outbox.*`). Un evento duplicado por `(proveedor, tipo, evento_id)` no se vuelve a registrar.
 - **URL de API del frontend:** cuando se sirve detrás de Caddy (local o por ngrok), el navegador usa `/api` en el mismo origen para que Caddy aplique la regla de proxy. Al abrir Live Server directamente en `localhost:5500`, el cliente conserva el destino local `localhost:8080`.
 - **Fuente de configuración:** `ConfigLoader` busca primero propiedades del sistema Java, luego `config.properties` local o el recurso empaquetado y, por último, la variable de entorno correspondiente. Por esa precedencia, una propiedad no vacía en el archivo de configuración prevalece sobre la variable de entorno. No guardar la URL temporal de ngrok en producción ni versionarla.
 - **Errores de negocio `400`:**
@@ -572,36 +592,67 @@ Posibles valores: `DISPONIBLE`, `CRITICO`, `AGOTADO`, `EN_REPOSICION` (`EN_REPOS
 
 ### 7.4 `POST /api/ventas/{id}/cancelar`
 
-- **Caso de uso:** Cancelar una venta. Solo permitido desde `PENDIENTE` (transición `PENDIENTE → CANCELADO` no existe en la máquina de estados; ver caveat). Reintegra stock de cada producto del detalle. Publica evento `"CANCELADA"`.
+- **Caso de uso:** Cancelar una venta. El dominio permite únicamente la transición `PENDIENTE → CANCELADO`; una venta `PAGADO` o `ENVIADO` no puede cancelarse. La operación es transaccional (venta + stock) e idempotente: cancelar una venta ya `CANCELADO` responde `200` sin reintegrar stock ni publicar un nuevo evento. Publica evento `"CANCELADA"` solo después del commit.
 - **Request:** ruta `{id}`. Sin body.
 - **Response `200 OK`:** sin cuerpo.
 - **Errores:**
-  - `400` `"Transición inválida: no se puede pasar de X a CANCELADO."`
-  - `500` (ver Caveats) si venta/producto no encontrado.
+  - `404` si la venta no existe o pertenece a otro negocio: `"No existe la venta solicitada para cancelar."`
+  - `404` si un producto del detalle ya no existe; la transacción revierte todo (stock y venta).
+  - `409` si el estado no permite cancelar (p. ej. `PAGADO` o `ENVIADO`): `"La venta no se puede cancelar en su estado actual: X."`
+  - `409` si falla la persistencia dentro de la transacción; no hay cambios parciales.
 
 ---
 
 ## 9. Módulo Carrito
 
-**No existe un controller REST de carrito.** El `Carrito` es un concepto **transitorio del dominio** (`Carrito`, `ItemCarrito`) que se construye del lado del servidor en el momento de `POST /api/ventas/crear` y se descarta tras persistir la venta.
+El carrito se persiste en Redis por **negocio + cliente** con TTL de 24 horas. El `idNegocio` y el `idCliente` se obtienen del token autenticado; el body nunca define el dueño del carrito. El precio, el nombre y el stock se releen de MySQL al consultar o modificar el carrito.
 
-**Implicación para el frontend:** el carrito debe implementarse 100% en el cliente (`js/app.js`, estado en memoria / `localStorage`) y enviarse como parte del payload de `POST /api/ventas/crear`:
+**Endpoints (requieren `Authorization: Bearer <token>`):**
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/api/carrito` | Devuelve el carrito actual. |
+| `POST` | `/api/carrito/items` | Agrega unidades de un producto y devuelve el carrito actualizado. |
+| `DELETE` | `/api/carrito/items/{idProducto}` | Quita el producto y devuelve el carrito actualizado. |
+| `DELETE` | `/api/carrito` | Vacía el carrito (`204 No Content`). |
+
+**Request de `POST /api/carrito/items`:**
+
+```json
+{ "idProducto": 2, "cantidad": 1 }
+```
+
+**Response de `GET`, `POST` y `DELETE /items/{idProducto}`:**
 
 ```json
 {
   "idCliente": 1,
-  "tipoPago": "TARJETA_CREDITO",
-  "descuento": null,
   "items": [
-    { "idProducto": 2, "cantidad": 1 }
-  ]
+    {
+      "idProducto": 2,
+      "nombre": "Yerba mate",
+      "precio": 1500.00,
+      "cantidad": 2,
+      "subtotal": 3000.00
+    }
+  ],
+  "total": 3000.00
 }
 ```
 
-Reglas de dominio relevantes para el UI del carrito:
+**Errores:**
+- `400` cantidad o producto inválido, o método no admitido en la ruta.
+- `401`/`403` token ausente, inválido o negocio no autorizado.
+- `404` producto inexistente o inactivo en el negocio.
+- `409` stock insuficiente o conflicto de concurrencia en Redis.
+- `429` rate limit: `carrito-consulta` 240/IP, 240/cuenta, 600/negocio; `carrito-modificacion` 120/IP, 120/cuenta, 300/negocio (ventana de 60 s).
+
+**Checkout:** el frontend envía el contenido actual del carrito en `POST /api/ventas/crear` (mismo contrato de §7.1); al confirmarse el pago, el frontend llama `DELETE /api/carrito`. El endpoint de checkout no consume el carrito de Redis para no alterar su contrato.
+
+Reglas de dominio relevantes:
 - Cantidad por ítem debe ser `> 0`.
-- Cantidad total por ítem no puede superar `stockDisponible` del producto (el backend rechaza con `400`).
-- Si se agrega dos veces el mismo producto, el backend **suma** las cantidades (`Carrito.agregarItem`).
+- Al agregar un producto ya existente, las cantidades se **suman**.
+- La cantidad total por producto no puede superar el `stockDisponible` actual.
 
 ---
 
@@ -861,21 +912,22 @@ const state = {
   clientes: [],       // ClienteResponseDTO[]
   cuentas: [],        // CuentaResponseDTO[]
   ventaActual: null,  // Venta | null
-  carrito: new Map(), // Map<idProducto, { idProducto, cantidad }>
+  carrito: [],        // items devueltos por GET /api/carrito
   filtros: { categoria: "", estadoStock: "", busqueda: "" },
 };
 ```
 
 ### 13.2 Máquina de estados de Venta (mapeo de `EstadoVenta`)
 
-El backend controla las transiciones con la siguiente matriz (cualquier otra combinación → `400`):
+El backend controla las transiciones con la siguiente matriz (cualquier otra combinación → `409` en `/cancelar`):
 
 | `estadoCompra` | Acciones UI habilitadas |
 |---|---|
-| `PENDIENTE` | `Pagar` (`POST /ventas/{id}/pago`), `Cancelar` (`POST /ventas/{id}/cancelar`) |
-| `PAGADO` | `Marcar Enviado` (no hay endpoint; si la UI lo simula, usar el valor de estado) |
+| `PENDIENTE` | `Pagar` (`POST /ventas/{id}/pago`) y `Cancelar` (`POST /ventas/{id}/cancelar`) |
+| `PAGADO` | ninguna en la UI actual (el backend admite `PAGADO → ENVIADO`, sin botón expuesto) |
 | `ENVIADO` | ninguna (terminal) |
 | `CANCELADO` | ninguna (terminal) |
+| `EXPIRADO` | ninguna (terminal; lo asigna el job de expiración) |
 
 Recomendación de UI por estado:
 
@@ -885,10 +937,11 @@ const VENTA_UI = {
   PAGADO:    { label: "Pagado",    color: "success", acciones: [] },
   ENVIADO:   { label: "Enviado",   color: "info",    acciones: [] },
   CANCELADO: { label: "Cancelado", color: "danger",  acciones: [] },
+  EXPIRADO:  { label: "Expirado",  color: "danger",  acciones: [] },
 };
 ```
 
-Regla de negocio visible para el usuario: **una venta solo se puede pagar/cancelar mientras esté `PENDIENTE`**. Después de `PAGADO`, solo `CANCELADO` es legal (pero no hay endpoint dedicado para cancelar pagadas; el endpoint `/cancelar` solo funciona desde `PENDIENTE`).
+Regla de negocio visible para el usuario: **una venta `PENDIENTE` puede pagarse o cancelarse (reintegra stock); una venta `PAGADO` no puede cancelarse.** `ENVIADO`, `CANCELADO` y `EXPIRADO` son terminales. Cancelar una venta ya `CANCELADO` responde `200` sin efectos (idempotente). Una venta `EXPIRADO` no se reactiva si llega un pago tardío.
 
 ### 13.3 Reposición de stock y badges (mapeo de `EstadoStock`)
 
@@ -913,13 +966,13 @@ function stockHabilitado(producto) {
 ### 13.4 Mapeo de selectores y enums
 
 - **Categoría de producto:** poblar el `<select>` con `["ELECTRONICA","ROPA","HOGAR","DEPORTES","LIBROS"]` y enviar el valor tal cual (MAYÚSCULAS).
-- **Tipo de pago:** `["EFECTIVO","TARJETA_CREDITO"]`. No usar `TARJETA`/`TRANSFERENCIA` (no existen).
+- **Tipo de pago:** para checkout online `["MERCADO_PAGO","STRIPE"]`; para cobro manual `["EFECTIVO","TRANSFERENCIA"]`. `TARJETA_CREDITO` existe en el enum pero no está soportado y se rechaza.
 - **Acciones de auditoría:** `["CREAR","ACTUALIZAR","ELIMINAR","REGISTRAR_VENTA","CANCELAR_VENTA"]` (para `POST /api/auditoria` y filtros por acción).
 - **Descuento:** tipo `["PORCENTAJE","MONTO","ESPECIAL"]`. Para `MONTO`, `valor` es importe en moneda; para `PORCENTAJE`, fracción (ej. `0.10` = 10%). Enviar `descuento: null` si no aplica.
 
 ### 13.5 Flujos críticos de UI
 
-1. **Agregar al carrito → Crear venta:** construir el payload en el formato exacto del contrato 7.1 (idCliente, tipoPago, descuento|null, items). Validar antes `cantidad <= stockDisponible`.
+1. **Agregar al carrito → Crear venta:** persistir con `POST /api/carrito/items`; para el checkout construir el payload en el formato exacto del contrato 7.1 (`idCliente`, `tipoPago`, `descuento|null`, `items`). Validar antes `cantidad <= stockDisponible`.
 2. **Pago:** llamar `pagarVenta(id)` y luego re-consultar `obtenerVenta(id)` (o re-listar) para refrescar el estado; mostrar `"PAGADO"`.
 3. **Cancelación:** confirmación obligatoria en UI; tras éxito, refrescar producto(s) del detalle porque el stock se reintegra.
 4. **Errores de negocio:** capturar `error.message` (extraído de `{"error": ...}`) y mostrarlo al usuario (ej. saldo insuficiente al pagar).
@@ -938,8 +991,8 @@ function stockHabilitado(producto) {
 | GET `/api/clientes` | 200 | array DTO | – | – | – |
 | POST `/api/clientes` | 201 | vacío | validación | – | – |
 | GET `/api/clientes/{id}` | 200 | DTO | id inválido | no existe | – |
-| PUT `/api/clientes/{id}` | 200 | vacío | validación | – | no existe |
-| DELETE `/api/clientes/{id}` | 200 | vacío | id inválido | (no-op) | – |
+| PUT `/api/clientes/{id}` | 200 | vacío | validación | — | no existe (404) |
+| DELETE `/api/clientes/{id}` | 200 | vacío | id inválido | — | no existe (404) |
 | GET `/api/cuentas` | 200 | array DTO | – | – | – |
 | POST `/api/cuentas` | 201 | vacío | validación | – | – |
 | GET `/api/cuentas/{id}` | 200 | DTO | id inválido | no existe | – |
@@ -950,7 +1003,11 @@ function stockHabilitado(producto) {
 | POST `/api/ventas/crear` | 201 | vacío | ítems/producto/stock/tipoPago | – | – |
 | GET `/api/ventas/{id}` | 200 | Venta | id inválido | no existe | – |
 | POST `/api/ventas/{id}/pago` | 200 | vacío | estado inválido | – | venta/cuentas/saldo |
-| POST `/api/ventas/{id}/cancelar` | 200 | vacío | transición inválida | – | venta/producto |
+| POST `/api/ventas/{id}/cancelar` | 200 | vacío | – | venta/producto | 409 estado inválido |
+| GET `/api/carrito` | 200 | CarritoResponse | – | – | – |
+| POST `/api/carrito/items` | 200 | CarritoResponse | cantidad/producto | producto | – |
+| DELETE `/api/carrito/items/{idProducto}` | 200 | CarritoResponse | id inválido | – | – |
+| DELETE `/api/carrito` | 204 | vacío | – | – | – |
 | GET `/api/auditoria` | 200 | array | – | – | – |
 | POST `/api/auditoria` | 201 | vacío | acción/descripción | – | – |
 | GET `/api/auditoria/producto/{id}` | 200 | array | id inválido | – | – |
@@ -965,14 +1022,14 @@ function stockHabilitado(producto) {
 
 ## 16. Advertencias y Caveats (Importante)
 
-1. **PUT/DELETE de recursos inexistentes → `500` (no `404`).** `ProductoService.actualizarAsync`, `ClienteService.actualizarAsync` y `CuentaService.actualizarAsync` lanzan `RuntimeException` que el `BaseController` mapea a `500`. **El frontend debe comprobar existencia (GET previo) o tratar `500` como recurso ausente.**
-2. **DELETE silencioso:** eliminar un ID inexistente en productos/clientes/cuentas no produce error (no-op). La UI debe asumir éxito y refrescar.
-3. **Errores de pago/cancelación de venta → `500`** (RuntimeException): venta no encontrada, cliente sin cuentas, saldo insuficiente. El `error.message` describe el problema; mostrarlo tal cual al usuario.
+1. **PUT/DELETE de recursos inexistentes → `500` (no `404`).** `ProductoService.actualizarAsync` y `CuentaService.actualizarAsync` lanzan `RuntimeException` que el `BaseController` mapea a `500`. **El frontend debe comprobar existencia (GET previo) o tratar `500` como recurso ausente.**
+2. **DELETE silencioso:** eliminar un ID inexistente en productos/cuentas no produce error (no-op); en clientes responde `404`. La UI debe asumir éxito y refrescar.
+3. **Errores de pago de venta → `500`** (RuntimeException): cliente sin cuentas o saldo insuficiente. La **cancelación** responde `404` (venta/producto inexistente) o `409` (estado inválido o fallo transaccional) y es idempotente (ver §7.4).
 4. **`cuit` no se persiste** en clientes (mapper lo omite). Respuesta siempre `cuit: ""`.
 5. **`CuentaResponseDTO` no incluye `idCliente`.** Para mostrar el vínculo cuenta-cliente hay que cruzar con el módulo de clientes.
 6. **Dos umbrales de stock diferentes** (10 en DTO de producto vs 5 en `/api/stock`). Usar el del DTO para la vitrina.
-7. **`TipoDePago` real es `TARJETA_CREDITO`**, no `TARJETA`.
-8. **`POST /api/ventas/{id}/cancelar` solo funciona desde `PENDIENTE`** (la máquina de estados no permite `PAGADO → CANCELADO` en el endpoint actual). Una venta `PAGADO` no puede cancelarse por API.
+7. **`TARJETA_CREDITO` no está disponible**: no hay pasarela implementada. El checkout acepta `MERCADO_PAGO`/`STRIPE` y la confirmación manual acepta `EFECTIVO`/`TRANSFERENCIA`.
+8. **Cancelación de venta:** la máquina de estados solo permite `PENDIENTE → CANCELADO`; `PAGADO` y `ENVIADO` responden `409`. La operación es transaccional e idempotente: una venta ya `CANCELADO` responde `200` sin reintegrar stock.
 9. **`detalles[].precioUnitario`** ya incluye descuento prorrateado (con redondeo a 2 decimales). El total es `Σ(precioUnitario * cantidad)`.
-10. **Datos en memoria:** los repositorios son `static` in-memory; al reiniciar el servidor se pierde todo excepto los 3 productos precargados (`ServerMain.prepopulateData`).
+10. **Persistencia:** los datos principales y los pagos (`pagos`) están en MySQL; el carrito está en Redis con TTL de 24 h y controller REST propio en `/api/carrito`. El endpoint `/api/metodos-pago` y su almacenamiento en memoria fueron eliminados.
 11. **Serialización por reflexión:** los enums se envían como su nombre; `fechaCompra`/`fecha` como ISO `LocalDateTime`; no hay envoltorio `data:` en las respuestas.

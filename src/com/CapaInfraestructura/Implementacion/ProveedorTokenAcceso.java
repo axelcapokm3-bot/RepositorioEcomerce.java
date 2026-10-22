@@ -1,6 +1,7 @@
 package com.CapaInfraestructura.Implementacion;
 
 import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
+import com.CapaAplicacion.Interfaces.IValidadorSesion;
 import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaDominio.Entidades.RolUsuario;
 import com.CapaInfraestructura.Configuracion.ConfigLoader;
@@ -18,26 +19,42 @@ public class ProveedorTokenAcceso implements IProveedorTokenAcceso {
     private static final Logger LOGGER = Logger.getLogger(ProveedorTokenAcceso.class.getName());
     private static final long SEGUNDOS_VIDA_PREDETERMINADO = 12L * 60L * 60L;
 
+    private static final IValidadorSesion VALIDADOR_PERMISIVO = new IValidadorSesion() {
+        @Override
+        public boolean estaVigente(long idCuenta, int idCliente, long idNegocio, RolUsuario rol) {
+            return true;
+        }
+    };
+
     private final byte[] secreto;
     private final long segundosDeVida;
+    private final IValidadorSesion validadorSesion;
 
     public ProveedorTokenAcceso() {
-        this(resolverSecreto(), resolverVida());
+        this(resolverSecreto(), resolverVida(), new MySqlValidadorSesion());
     }
 
     ProveedorTokenAcceso(byte[] secreto, long segundosDeVida) {
+        this(secreto, segundosDeVida, VALIDADOR_PERMISIVO);
+    }
+
+    ProveedorTokenAcceso(byte[] secreto, long segundosDeVida, IValidadorSesion validadorSesion) {
         if (secreto == null || secreto.length < 32) {
             throw new IllegalArgumentException("El secreto del token debe tener al menos 32 bytes.");
         }
         if (segundosDeVida <= 0) {
             throw new IllegalArgumentException("La vida del token debe ser positiva.");
         }
+        if (validadorSesion == null) {
+            throw new IllegalArgumentException("El validador de sesión es obligatorio.");
+        }
         this.secreto = secreto.clone();
         this.segundosDeVida = segundosDeVida;
+        this.validadorSesion = validadorSesion;
     }
 
     @Override
-    public String emitir(int idCuenta, int idCliente, long idNegocio, String rol) {
+    public String emitir(long idCuenta, int idCliente, long idNegocio, String rol) {
         if (idCuenta <= 0 || idCliente <= 0 || idNegocio <= 0) {
             throw new IllegalArgumentException("Los identificadores del token no son válidos.");
         }
@@ -74,8 +91,9 @@ public class ProveedorTokenAcceso implements IProveedorTokenAcceso {
         if (campos.length != 5) {
             return Optional.empty();
         }
+        Principal principal;
         try {
-            int idCuenta = Integer.parseInt(campos[0]);
+            long idCuenta = Long.parseLong(campos[0]);
             int idCliente = Integer.parseInt(campos[1]);
             long idNegocio = Long.parseLong(campos[2]);
             RolUsuario rol = RolUsuario.desdeTexto(campos[3]);
@@ -83,10 +101,15 @@ public class ProveedorTokenAcceso implements IProveedorTokenAcceso {
             if (idCuenta <= 0 || idCliente <= 0 || idNegocio <= 0 || expiracion <= ahoraEpoch()) {
                 return Optional.empty();
             }
-            return Optional.of(new Principal(idCuenta, idCliente, idNegocio, rol));
+            principal = new Principal(idCuenta, idCliente, idNegocio, rol);
         } catch (IllegalArgumentException e) {
             return Optional.empty();
         }
+        if (!validadorSesion.estaVigente(
+                principal.idCuenta(), principal.idCliente(), principal.idNegocio(), principal.rol())) {
+            return Optional.empty();
+        }
+        return Optional.of(principal);
     }
 
     @Override

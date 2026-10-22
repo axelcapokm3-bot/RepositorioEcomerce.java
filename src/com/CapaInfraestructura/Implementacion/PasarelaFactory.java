@@ -43,6 +43,9 @@ public class PasarelaFactory {
             case STRIPE:
                 pasarela = new PasarelaStripe(idNegocio, negocioRepositoryStatic);
                 break;
+            case TARJETA_CREDITO:
+                throw new ReglaNegocioException(
+                        "El pago con tarjeta de crédito no está disponible. Use Mercado Pago o Stripe.");
             default:
                 throw new ReglaNegocioException("Tipo de pago no soportado: " + tipo);
         }

@@ -36,10 +36,11 @@ public class StockController extends BaseController {
         if (handlePreflight(exchange)) {
             return;
         }
-        Principal principal = exigirAutenticacion(exchange, proveedor);
-        long idNegocio = negocioAutorizado(exchange, principal);
 
         try {
+            Principal principal = exigirAutenticacion(exchange, proveedor);
+            long idNegocio = negocioAutorizado(exchange, principal);
+
             if ("/api/stock/evaluar".equals(path)) {
                 if ("POST".equalsIgnoreCase(method)) {
                     EvaluarStockRequest req = parseRequestBody(exchange, EvaluarStockRequest.class);

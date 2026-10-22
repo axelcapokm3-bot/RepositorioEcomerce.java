@@ -15,7 +15,8 @@ public class ProductoMapper {
             p.getStockReservado(),
             p.getStockDisponible(),
             EstadoStock.evaluarEstado(p.getStockFisico()), // Mapea el Enum
-            p.getCategoria()
+            p.getCategoria(),
+            p.getCategoriaOriginal() != null ? p.getCategoriaOriginal() : p.getCategoria().name()
         );
     }
 }

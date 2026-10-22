@@ -3,6 +3,7 @@ package com.CapaInfraestructura.Implementacion;
 import com.CapaAplicacion.Interfaces.IPagoRepository;
 import com.CapaDominio.Entidades.EstadoPago;
 import com.CapaDominio.Entidades.Pago;
+import com.CapaDominio.Entidades.TipoDePago;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -90,6 +91,56 @@ public class MySqlRepositorioPago implements IPagoRepository {
     }
 
     @Override
+    public Optional<Pago> buscarPorId(int id) {
+        if (id <= 0) throw new IllegalArgumentException("El ID del pago debe ser mayor a cero.");
+        String sql = "SELECT " + COLUMNAS + " FROM pagos WHERE id = ?";
+        try (Connection connection = connectionProvider.get();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, id);
+            try (ResultSet result = statement.executeQuery()) {
+                if (result.next()) return Optional.of(mapPago(result));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException("Error al buscar el pago por ID: " + e.getMessage(), e);
+        }
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<Pago> buscarPorIdParaUpdate(int id, Connection connection) throws SQLException {
+        if (id <= 0) throw new IllegalArgumentException("El ID del pago debe ser mayor a cero.");
+        if (connection == null) throw new IllegalArgumentException("La conexión es obligatoria.");
+        String sql = "SELECT " + COLUMNAS + " FROM pagos WHERE id = ? FOR UPDATE";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, id);
+            try (ResultSet result = statement.executeQuery()) {
+                if (result.next()) return Optional.of(mapPago(result));
+            }
+        }
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<Pago> buscarPendientePorVentaParaUpdate(long idNegocio, int idVenta,
+                                                            Connection connection) throws SQLException {
+        if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
+        if (idVenta <= 0) throw new IllegalArgumentException("El ID de venta debe ser mayor a cero.");
+        if (connection == null) throw new IllegalArgumentException("La conexión es obligatoria.");
+        String sql = "SELECT " + COLUMNAS + " FROM pagos "
+                + "WHERE id_venta = ? AND id_negocio = ? AND estado = ? "
+                + "ORDER BY fecha_creacion, id LIMIT 1 FOR UPDATE";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, idVenta);
+            statement.setLong(2, idNegocio);
+            statement.setString(3, EstadoPago.PENDIENTE.name());
+            try (ResultSet result = statement.executeQuery()) {
+                if (result.next()) return Optional.of(mapPago(result));
+            }
+        }
+        return Optional.empty();
+    }
+
+    @Override
     public List<Pago> buscarPorVenta(long idNegocio, int idVenta) {
         if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
         String sql = "SELECT " + COLUMNAS + " FROM pagos WHERE id_venta = ? AND id_negocio = ? ORDER BY fecha_creacion, id";
@@ -103,6 +154,29 @@ public class MySqlRepositorioPago implements IPagoRepository {
             }
         } catch (SQLException e) {
             throw new RuntimeException("Error al buscar pagos de la venta: " + e.getMessage(), e);
+        }
+        return pagos;
+    }
+
+    @Override
+    public List<Pago> buscarCandidatosMercadoPagoPorVenta(int idVenta) {
+        if (idVenta <= 0) throw new IllegalArgumentException("El ID de venta debe ser mayor a cero.");
+        String columnas = "p." + COLUMNAS.replace(", ", ", p.");
+        String sql = "SELECT " + columnas + " FROM pagos p "
+                + "JOIN ventas v ON v.id = p.id_venta AND v.id_negocio = p.id_negocio "
+                + "WHERE p.id_venta = ? AND UPPER(p.pasarela) = ? "
+                + "ORDER BY p.fecha_creacion, p.id";
+        List<Pago> pagos = new ArrayList<>();
+        try (Connection connection = connectionProvider.get();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setInt(1, idVenta);
+            statement.setString(2, TipoDePago.MERCADO_PAGO.name());
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) pagos.add(mapPago(rs));
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(
+                    "Error al buscar pagos de Mercado Pago de la venta: " + e.getMessage(), e);
         }
         return pagos;
     }
@@ -179,26 +253,43 @@ public class MySqlRepositorioPago implements IPagoRepository {
 
     @Override
     public void actualizarEstado(int id, EstadoPago estado, String rawResponse) {
-        String sql = "UPDATE pagos SET estado = ?, raw_response = ?, fecha_actualizacion = ? WHERE id = ?";
-        try (Connection connection = connectionProvider.get();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, estado.name());
-            statement.setString(2, rawResponse);
-            statement.setTimestamp(3, Timestamp.valueOf(LocalDateTime.now()));
-            statement.setInt(4, id);
-            verificarActualizacion(statement.executeUpdate(), id);
+        try (Connection connection = connectionProvider.get()) {
+            actualizarEstado(id, estado, rawResponse, connection);
         } catch (SQLException e) {
             throw new RuntimeException("Error al actualizar estado del pago: " + e.getMessage(), e);
         }
     }
 
     @Override
+    public void actualizarEstado(int id, EstadoPago estado, String rawResponse,
+                                 Connection connection) throws SQLException {
+        String sql = "UPDATE pagos SET estado = ?, raw_response = ?, fecha_actualizacion = ? WHERE id = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, estado.name());
+            statement.setString(2, rawResponse);
+            statement.setTimestamp(3, Timestamp.valueOf(LocalDateTime.now()));
+            statement.setInt(4, id);
+            verificarActualizacion(statement.executeUpdate(), id);
+        }
+    }
+
+    @Override
     public void actualizarWebhook(int id, String mpPaymentId, String orderId,
                                   EstadoPago estado, String rawResponse) {
+        try (Connection connection = connectionProvider.get()) {
+            actualizarWebhook(id, mpPaymentId, orderId, estado, rawResponse, connection);
+        } catch (SQLException e) {
+            throw new RuntimeException("Error al actualizar pago desde webhook: " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public void actualizarWebhook(int id, String mpPaymentId, String orderId,
+                                  EstadoPago estado, String rawResponse,
+                                  Connection connection) throws SQLException {
         String sql = "UPDATE pagos SET mp_payment_id = ?, order_id = ?, estado = ?, raw_response = ?, " +
                 "fecha_actualizacion = ? WHERE id = ?";
-        try (Connection connection = connectionProvider.get();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, mpPaymentId);
             statement.setString(2, orderId);
             statement.setString(3, estado.name());
@@ -206,8 +297,6 @@ public class MySqlRepositorioPago implements IPagoRepository {
             statement.setTimestamp(5, Timestamp.valueOf(LocalDateTime.now()));
             statement.setInt(6, id);
             verificarActualizacion(statement.executeUpdate(), id);
-        } catch (SQLException e) {
-            throw new RuntimeException("Error al actualizar pago desde webhook: " + e.getMessage(), e);
         }
     }
 

@@ -1,12 +1,14 @@
 package com.CapaAplicacion.Interfaces;
 
-import com.CapaDominio.Entidades.Carrito;
 import java.util.Optional;
 
 public interface ICarritoRepository {
-    Optional<Carrito> obtenerPorClienteId(int idCliente);
+    Optional<CarritoPersistido> obtener(long idNegocio, int idCliente);
 
-    void guardar(Carrito carrito);
+    CarritoPersistido agregarItem(long idNegocio, int idCliente, int idProducto,
+                                  int cantidad, int maxCantidad);
 
-    void eliminarPorClienteId(int idCliente);
+    CarritoPersistido eliminarItem(long idNegocio, int idCliente, int idProducto);
+
+    void eliminar(long idNegocio, int idCliente);
 }

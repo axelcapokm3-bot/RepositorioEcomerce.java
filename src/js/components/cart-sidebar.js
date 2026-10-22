@@ -4,23 +4,76 @@ import { showToast } from '../../js/utils/toast-notifier.js';
 const cart = [];
 let isCartOpen = false;
 
-export function addToCart(product) {
-    const existingItem = cart.find(item => item.id === product.id);
-    if (existingItem) {
-        existingItem.quantity++;
-    } else {
-        cart.push({ ...product, quantity: 1 });
-    }
-    showToast(`${product.nombre} añadido al carrito`, 'success');
+const CLAVE_PENDIENTE = 'ecommerce.checkout.pendiente';
+const HOSTS_PAGO_PERMITIDOS = [
+    'checkout.stripe.com',
+    'mercadopago.com',
+    'mercadopago.com.ar',
+    'mercadopago.com.br',
+    'mercadopago.com.mx',
+    'mercadopago.com.co',
+    'mercadopago.com.pe',
+    'mercadopago.com.uy',
+    'mercadopago.cl'
+];
+
+function aplicarCarrito(datos) {
+    const items = datos && Array.isArray(datos.items) ? datos.items : [];
+    cart.length = 0;
+    items.forEach(item => {
+        cart.push({
+            id: Number(item.idProducto),
+            nombre: String(item.nombre ?? ''),
+            precio: Number(item.precio ?? 0),
+            quantity: Number(item.cantidad ?? 0)
+        });
+    });
     renderCart();
 }
 
-export function removeFromCart(productId) {
-    const index = cart.findIndex(item => item.id === productId);
-    if (index > -1) {
-        cart.splice(index, 1);
+async function cargarCarrito() {
+    if (!sesion.obtener()) {
+        cart.length = 0;
+        renderCart();
+        return;
     }
-    renderCart();
+    try {
+        aplicarCarrito(await api.carrito.obtener());
+    } catch (error) {
+        console.error('No se pudo cargar el carrito:', error);
+        cart.length = 0;
+        renderCart();
+    }
+}
+
+async function vaciarCarritoEnServidor() {
+    try {
+        await api.carrito.vaciar();
+    } catch (error) {
+        console.error('No se pudo vaciar el carrito en el servidor:', error);
+    }
+}
+
+export async function addToCart(product) {
+    try {
+        const datos = await api.carrito.agregar({
+            idProducto: product.id,
+            cantidad: 1
+        });
+        aplicarCarrito(datos);
+        showToast(`${product.nombre} añadido al carrito`, 'success');
+    } catch (error) {
+        showToast(mensajeDeError(error, 'No se pudo agregar el producto al carrito.'), 'error');
+    }
+}
+
+export async function removeFromCart(productId) {
+    try {
+        const datos = await api.carrito.eliminar(productId);
+        aplicarCarrito(datos);
+    } catch (error) {
+        showToast(mensajeDeError(error, 'No se pudo quitar el producto del carrito.'), 'error');
+    }
 }
 
 export function renderCart() {
@@ -29,25 +82,36 @@ export function renderCart() {
 
     const cartItemsContainer = cartSidebar.querySelector('.cart-items');
     const cartTotalSpan = cartSidebar.querySelector('.cart-total span');
+    if (!cartItemsContainer) return;
 
-    cartItemsContainer.innerHTML = cart.map(item => `
-        <div class="cart-item">
-            <span>${item.nombre} x ${item.quantity}</span>
-            <span>$${(item.precio * item.quantity).toFixed(2)}
-                <button class="remove-from-cart-btn" data-product-id="${item.id}">X</button>
-            </span>
-        </div>
-    `).join('');
+    cartItemsContainer.innerHTML = '';
+
+    cart.forEach(item => {
+        const fila = document.createElement('div');
+        fila.className = 'cart-item';
+
+        const detalle = document.createElement('span');
+        detalle.textContent = `${item.nombre} x ${item.quantity}`;
+
+        const subtotal = document.createElement('span');
+        subtotal.textContent = `$${(item.precio * item.quantity).toFixed(2)} `;
+
+        const boton = document.createElement('button');
+        boton.className = 'remove-from-cart-btn';
+        boton.dataset.productId = String(item.id);
+        boton.textContent = 'X';
+        boton.addEventListener('click', () => removeFromCart(item.id));
+
+        subtotal.appendChild(boton);
+        fila.appendChild(detalle);
+        fila.appendChild(subtotal);
+        cartItemsContainer.appendChild(fila);
+    });
 
     const total = cart.reduce((sum, item) => sum + (item.precio * item.quantity), 0);
-    cartTotalSpan.textContent = total.toFixed(2);
-
-    cartSidebar.querySelectorAll('.remove-from-cart-btn').forEach(button => {
-        button.addEventListener('click', (e) => {
-            const productId = parseInt(e.target.dataset.productId);
-            removeFromCart(productId);
-        });
-    });
+    if (cartTotalSpan) {
+        cartTotalSpan.textContent = total.toFixed(2);
+    }
 }
 
 export function toggleCart() {
@@ -58,8 +122,108 @@ export function toggleCart() {
     }
 }
 
+function leerPendiente() {
+    try {
+        const crudo = sessionStorage.getItem(CLAVE_PENDIENTE);
+        return crudo ? JSON.parse(crudo) : null;
+    } catch {
+        return null;
+    }
+}
+
+function guardarPendiente(datos) {
+    try {
+        sessionStorage.setItem(CLAVE_PENDIENTE, JSON.stringify(datos));
+    } catch {
+    }
+}
+
+function limpiarPendiente() {
+    try {
+        sessionStorage.removeItem(CLAVE_PENDIENTE);
+    } catch {
+    }
+}
+
+function crearClaveIdempotencia() {
+    return (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : 'idemp-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
+}
+
+export function urlPagoPermitida(url) {
+    if (!url || typeof url !== 'string') return null;
+    try {
+        const destino = new URL(url, window.location.origin);
+        if (destino.protocol !== 'https:') return null;
+        const host = destino.hostname.toLowerCase();
+        const permitido = HOSTS_PAGO_PERMITIDOS.some(
+            base => host === base || host.endsWith('.' + base));
+        return permitido ? destino.toString() : null;
+    } catch {
+        return null;
+    }
+}
+
+function mensajeDeError(error, mensajePorDefecto) {
+    if (error && typeof error.message === 'string' && error.message.trim()) {
+        return error.message;
+    }
+    return mensajePorDefecto;
+}
+
+async function aplicarResultadoCheckout(resultado) {
+    const estado = resultado && resultado.estado ? String(resultado.estado).toUpperCase() : '';
+    const idVenta = resultado && resultado.transaccionId ? Number(resultado.transaccionId) : null;
+
+    if (estado === 'APROBADO') {
+        limpiarPendiente();
+        await vaciarCarritoEnServidor();
+        cart.length = 0;
+        renderCart();
+        toggleCart();
+        showToast('Pago aprobado. ¡Gracias por tu compra!', 'success');
+        return;
+    }
+
+    if (estado === 'PENDIENTE') {
+        const pendiente = leerPendiente() || {};
+        guardarPendiente({ ...pendiente, idVenta: idVenta });
+        const urlPago = urlPagoPermitida(resultado.urlPago);
+        if (urlPago) {
+            showToast('Pedido creado. Te redirigimos a la pasarela para completar el pago.', 'info');
+            window.location.assign(urlPago);
+            return;
+        }
+        showToast('El pedido quedó pendiente de pago. Podés retomarlo desde el carrito.', 'error');
+        return;
+    }
+
+    const mensaje = resultado && resultado.mensaje
+        ? resultado.mensaje
+        : 'El pago no se completó. Tu carrito quedó intacto; podés reintentar.';
+    showToast(mensaje, 'error');
+}
+
+async function retomarPagoPendiente() {
+    const pendiente = leerPendiente();
+    if (!pendiente || !pendiente.idVenta) return;
+    try {
+        const resultado = await api.ventas.pagar(pendiente.idVenta);
+        await aplicarResultadoCheckout(resultado);
+    } catch (error) {
+        console.error('Error al retomar el pago pendiente:', error);
+        showToast(mensajeDeError(error, 'No se pudo retomar el pago. Podés volver a intentarlo.'), 'error');
+    }
+}
+
 export async function checkout() {
     if (cart.length === 0) {
+        const pendiente = leerPendiente();
+        if (pendiente && pendiente.idVenta) {
+            await retomarPagoPendiente();
+            return;
+        }
         showToast('El carrito está vacío.', 'error');
         return;
     }
@@ -69,11 +233,6 @@ export async function checkout() {
         showToast('Por favor, selecciona un tipo de pago.', 'error');
         return;
     }
-
-    const itemsForSale = cart.map(item => ({
-        idProducto: item.id,
-        cantidad: item.quantity
-    }));
 
     const clienteActual = sesion.obtener();
     if (!clienteActual || !clienteActual.idCliente) {
@@ -86,21 +245,36 @@ export async function checkout() {
         idCliente: clienteActual.idCliente,
         tipoPago: tipoPago,
         descuento: null,
-        items: itemsForSale
+        items: cart.map(item => ({
+            idProducto: item.id,
+            cantidad: item.quantity
+        }))
     };
-    const claveIdempotencia = (typeof crypto !== 'undefined' && crypto.randomUUID)
-        ? crypto.randomUUID()
-        : 'idemp-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
+
+    const pendienteAnterior = leerPendiente();
+    const claveIdempotencia = pendienteAnterior && pendienteAnterior.claveIdempotencia
+        ? pendienteAnterior.claveIdempotencia
+        : crearClaveIdempotencia();
+    const idVentaPendiente = pendienteAnterior && pendienteAnterior.idVenta
+        ? pendienteAnterior.idVenta
+        : null;
+
+    guardarPendiente({
+        claveIdempotencia: claveIdempotencia,
+        idCliente: clienteActual.idCliente,
+        idVenta: idVentaPendiente,
+        creadoEn: Date.now()
+    });
 
     try {
-        await api.ventas.crear(createVentaRequest, claveIdempotencia);
-        showToast('Compra finalizada con éxito!', 'success');
-        cart.length = 0; // Clear cart
-        renderCart();
-        toggleCart(); // Close cart after checkout
+        const resultado = idVentaPendiente
+            ? await api.ventas.pagar(idVentaPendiente)
+            : await api.ventas.crear(createVentaRequest, claveIdempotencia);
+        await aplicarResultadoCheckout(resultado);
     } catch (error) {
         console.error('Error al finalizar la compra:', error);
-        showToast('Error al finalizar la compra.', 'error');
+        showToast(mensajeDeError(error,
+            'No se pudo iniciar el pago. Tu carrito quedó intacto; podés reintentar.'), 'error');
     }
 }
 
@@ -149,5 +323,25 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.appendChild(openCartButton);
     }
 
-    renderCart(); // Render cart on load
+    const pendiente = leerPendiente();
+    if (pendiente && pendiente.idVenta && !document.getElementById('retomar-pago-btn')) {
+        const retomarButton = document.createElement('button');
+        retomarButton.id = 'retomar-pago-btn';
+        retomarButton.textContent = '💳 Retomar pago pendiente';
+        retomarButton.style.position = 'fixed';
+        retomarButton.style.bottom = '90px';
+        retomarButton.style.right = '20px';
+        retomarButton.style.padding = '12px 18px';
+        retomarButton.style.backgroundColor = 'var(--primary-color)';
+        retomarButton.style.color = 'white';
+        retomarButton.style.border = 'none';
+        retomarButton.style.borderRadius = '50px';
+        retomarButton.style.cursor = 'pointer';
+        retomarButton.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+        retomarButton.style.zIndex = '998';
+        retomarButton.addEventListener('click', retomarPagoPendiente);
+        document.body.appendChild(retomarButton);
+    }
+
+    cargarCarrito();
 });

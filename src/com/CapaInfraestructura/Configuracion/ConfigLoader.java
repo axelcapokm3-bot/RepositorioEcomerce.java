@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.Properties;
 
 public final class ConfigLoader {
@@ -61,7 +62,7 @@ public final class ConfigLoader {
     }
 
     private static String obtenerNombreVariableEntorno(String key) {
-        return switch (key) {
+        String explicit = switch (key) {
             case "db.url" -> "ECOMMERCE_DB_URL";
             case "db.username" -> "ECOMMERCE_DB_USERNAME";
             case "db.password" -> "ECOMMERCE_DB_PASSWORD";
@@ -81,6 +82,29 @@ public final class ConfigLoader {
             case "app.cors.allowed-origins" -> "APP_CORS_ALLOWED_ORIGINS";
             default -> null;
         };
+        if (explicit != null) {
+            return explicit;
+        }
+        if (key.startsWith("rate-limit.")) {
+            return "RATE_LIMIT_" + normalizarVariable(key.substring("rate-limit.".length()));
+        }
+        if (key.startsWith("redis.")) {
+            return "REDIS_" + normalizarVariable(key.substring("redis.".length()));
+        }
+        if (key.startsWith("webhook.")) {
+            return "WEBHOOK_" + normalizarVariable(key.substring("webhook.".length()));
+        }
+        if (key.startsWith("ventas.")) {
+            return "VENTAS_" + normalizarVariable(key.substring("ventas.".length()));
+        }
+        if (key.startsWith("negocio.")) {
+            return "NEGOCIO_" + normalizarVariable(key.substring("negocio.".length()));
+        }
+        return null;
+    }
+
+    private static String normalizarVariable(String sufijo) {
+        return sufijo.replace('-', '_').replace('.', '_').toUpperCase(Locale.ROOT);
     }
 
     private static String valorNoVacio(String value) {

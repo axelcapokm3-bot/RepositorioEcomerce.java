@@ -4,8 +4,10 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.SQLIntegrityConstraintViolationException;
 import java.sql.Statement;
 import java.sql.Timestamp;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -15,6 +17,7 @@ import com.CapaDominio.Entidades.DetalleVenta;
 import com.CapaDominio.Entidades.EstadoVenta;
 import com.CapaDominio.Entidades.TipoDePago;
 import com.CapaDominio.Entidades.Venta;
+import com.CapaDominio.Excepciones.ReglaNegocioException;
 
 public class MySqlRepositorioVenta implements IVentaRepository {
     private static final String DETALLE_TABLE = "detalle_ventas";
@@ -47,10 +50,21 @@ public class MySqlRepositorioVenta implements IVentaRepository {
     }
 
     public Optional<Venta> buscarPorId(long idNegocio, int id, Connection connection) throws SQLException {
+        return consultarVenta(idNegocio, id, connection, "");
+    }
+
+    @Override
+    public Optional<Venta> buscarPorIdParaUpdate(long idNegocio, int id, Connection connection) throws SQLException {
+        return consultarVenta(idNegocio, id, connection, " FOR UPDATE");
+    }
+
+    private Optional<Venta> consultarVenta(long idNegocio, int id, Connection connection, String sufijo)
+            throws SQLException {
         String sql = "SELECT v." + VENTA_COLUMNS.replace(", ", ", v.")
                 + ", ev.nombre AS estado, tp.nombre AS tipo_pago FROM ventas v "
                 + "JOIN estado_venta ev ON ev.id = v.id_estado_venta "
-                + "JOIN tipo_pago tp ON tp.id = v.id_tipo_pago WHERE v.id = ? AND v.id_negocio = ?";
+                + "JOIN tipo_pago tp ON tp.id = v.id_tipo_pago WHERE v.id = ? AND v.id_negocio = ?"
+                + sufijo;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setInt(1, id);
             statement.setLong(2, idNegocio);
@@ -87,6 +101,32 @@ public class MySqlRepositorioVenta implements IVentaRepository {
             }
         } catch (SQLException exception) {
             throw databaseError("buscar venta por clave de idempotencia", exception);
+        }
+    }
+
+    @Override
+    public List<Venta> buscarPendientesAnteriores(LocalDateTime limite, int cantidad) {
+        if (limite == null) throw new IllegalArgumentException("El límite temporal es obligatorio.");
+        if (cantidad <= 0) throw new IllegalArgumentException("La cantidad debe ser positiva.");
+        String sql = "SELECT v." + VENTA_COLUMNS.replace(", ", ", v.")
+                + ", ev.nombre AS estado, tp.nombre AS tipo_pago FROM ventas v "
+                + "JOIN estado_venta ev ON ev.id = v.id_estado_venta "
+                + "JOIN tipo_pago tp ON tp.id = v.id_tipo_pago "
+                + "WHERE ev.nombre = 'PENDIENTE' AND v.fecha_compra < ? "
+                + "ORDER BY v.fecha_compra, v.id LIMIT ?";
+        List<Venta> ventas = new ArrayList<>();
+        try (Connection connection = DatabaseConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setTimestamp(1, Timestamp.valueOf(limite));
+            statement.setInt(2, cantidad);
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    ventas.add(mapVenta(result));
+                }
+            }
+            return ventas;
+        } catch (SQLException exception) {
+            throw databaseError("buscar ventas pendientes anteriores", exception);
         }
     }
 
@@ -166,7 +206,19 @@ public class MySqlRepositorioVenta implements IVentaRepository {
                     delete.executeUpdate();
                 }
             }
-            ventaStatement.executeUpdate();
+            int filasActualizadas;
+            try {
+                filasActualizadas = ventaStatement.executeUpdate();
+            } catch (SQLException exception) {
+                if (!update && esDuplicadoDeIdempotencia(exception)) {
+                    throw new ReglaNegocioException(
+                            "La clave Idempotency-Key ya fue utilizada para este negocio.", exception);
+                }
+                throw exception;
+            }
+            if (update && filasActualizadas != 1) {
+                throw new SQLException("No se actualizó la venta esperada (id=" + id + ").");
+            }
             if (!update) {
                 try (ResultSet keys = ventaStatement.getGeneratedKeys()) {
                     if (!keys.next()) throw new SQLException("MySQL no devolvió el ID de la venta.");
@@ -217,14 +269,16 @@ public class MySqlRepositorioVenta implements IVentaRepository {
                 result.getString("clave_idempotencia"));
         venta.setId(result.getInt("id"));
         venta.setIdNegocio(result.getLong("id_negocio"));
+        Timestamp fechaCompra = result.getTimestamp("fecha_compra");
+        if (fechaCompra != null) {
+            venta.rehidratarFechaCompra(fechaCompra.toLocalDateTime());
+        }
         restaurarEstado(venta, EstadoVenta.valueOf(result.getString("estado")));
         return venta;
     }
 
     private static void restaurarEstado(Venta venta, EstadoVenta estado) {
-        if (estado == EstadoVenta.PAGADO) venta.Pagar();
-        if (estado == EstadoVenta.ENVIADO) { venta.Pagar(); venta.Enviar(); }
-        if (estado == EstadoVenta.CANCELADO) { venta.Pagar(); venta.Cancelar(); }
+        venta.rehidratarEstado(estado);
     }
 
     private static void bindVenta(PreparedStatement statement, Venta venta, boolean update, int id) throws SQLException {
@@ -245,6 +299,21 @@ public class MySqlRepositorioVenta implements IVentaRepository {
     private static void requireVenta(Venta venta) {
         if (venta == null) throw new IllegalArgumentException("La venta no puede ser nula.");
         if (venta.getIdNegocio() <= 0) throw new IllegalArgumentException("La venta debe pertenecer a un negocio válido.");
+    }
+
+    static boolean esDuplicadoDeIdempotencia(SQLException exception) {
+        SQLException actual = exception;
+        while (actual != null) {
+            boolean duplicado = actual instanceof SQLIntegrityConstraintViolationException
+                    || ("23000".equals(actual.getSQLState()) && actual.getErrorCode() == 1062);
+            String mensaje = actual.getMessage();
+            if (duplicado && mensaje != null
+                    && mensaje.toLowerCase(java.util.Locale.ROOT).contains("idempotencia")) {
+                return true;
+            }
+            actual = actual.getNextException();
+        }
+        return false;
     }
 
     private static IllegalStateException databaseError(String operation, SQLException exception) {

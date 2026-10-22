@@ -1,11 +1,18 @@
 package com.CapaAplicacion.DTOentrada;
 
+import java.time.LocalDate;
+
 public record CuentaRegistroDTO(
         String nombreCuenta,
         String correoElectronico,
         String contraseniaPlana,
-        int idCliente,
-        String rol
+        String dniCliente,
+        String rol,
+        String nombreCliente,
+        String apellidoCliente,
+        LocalDate fechaNacimientoCliente,
+        String direccionCliente,
+        String localidadCliente
 ) {
     public CuentaRegistroDTO {
         if (nombreCuenta == null || nombreCuenta.trim().isEmpty()) {
@@ -18,8 +25,22 @@ public record CuentaRegistroDTO(
             throw new IllegalArgumentException("El correo electrónico es obligatorio.");
         }
         validarContrasenia(contraseniaPlana);
-        if (idCliente <= 0) {
-            throw new IllegalArgumentException("La cuenta debe vincularse a un cliente válido.");
+        validarDni(dniCliente);
+        dniCliente = dniCliente.trim();
+    }
+
+    private static void validarDni(String dni) {
+        if (dni == null || dni.trim().isEmpty()) {
+            throw new IllegalArgumentException("El DNI del cliente es obligatorio.");
+        }
+        String dniLimpio = dni.trim();
+        if (dniLimpio.length() < 7 || dniLimpio.length() > 8) {
+            throw new IllegalArgumentException("El DNI debe contener entre 7 y 8 dígitos.");
+        }
+        for (int i = 0; i < dniLimpio.length(); i++) {
+            if (!Character.isDigit(dniLimpio.charAt(i))) {
+                throw new IllegalArgumentException("El DNI debe contener únicamente números.");
+            }
         }
     }
 

@@ -42,12 +42,17 @@ function showToast(message, type = 'success') {
         </div>
         <div class="flex-1 min-w-0 pt-0.5">
             <div class="text-[11px] font-bold uppercase tracking-wider ${currentTheme.titleColor} mb-0.5">${currentTheme.title}</div>
-            <div class="text-xs text-slate-100 font-medium leading-relaxed break-words">${message}</div>
+            <div class="text-xs text-slate-100 font-medium leading-relaxed break-words" data-rol="mensaje"></div>
         </div>
         <button class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-carbon-800/60 transition-colors shrink-0" aria-label="Cerrar notificación">
             <span class="material-symbols-outlined text-[16px]">close</span>
         </button>
     `;
+
+    const mensajeEl = toast.querySelector('[data-rol="mensaje"]');
+    if (mensajeEl) {
+        mensajeEl.textContent = message === null || message === undefined ? '' : String(message);
+    }
 
     const closeBtn = toast.querySelector('button');
     const dismiss = () => {

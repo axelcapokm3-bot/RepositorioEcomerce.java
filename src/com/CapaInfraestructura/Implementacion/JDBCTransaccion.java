@@ -3,6 +3,7 @@ package com.CapaInfraestructura.Implementacion;
 import java.sql.Connection;
 import java.sql.SQLException;
 import com.CapaAplicacion.Interfaces.ITransaccion;
+import com.CapaDominio.Excepciones.BusinessException;
 
 public class JDBCTransaccion implements ITransaccion {
 
@@ -16,6 +17,9 @@ public class JDBCTransaccion implements ITransaccion {
                 conexion.commit();
             } catch (Exception e) {
                 conexion.rollback(); 
+                if (e instanceof BusinessException businessException) {
+                    throw businessException;
+                }
                 throw new RuntimeException("Transacción abortada debido a un error: " + e.getMessage(), e);
             }
 

@@ -40,11 +40,22 @@ public class ProductoService implements RepositorioProductoService {
 
     @Override
     public CompletableFuture<Optional<ProductoResponseDTO>> buscarPorIdAsync(final long idNegocio, final int id) {
+        return buscarAsync(idNegocio, id, false);
+    }
+
+    @Override
+    public CompletableFuture<Optional<ProductoResponseDTO>> buscarActivoPorIdAsync(
+            final long idNegocio, final int id) {
+        return buscarAsync(idNegocio, id, true);
+    }
+
+    private CompletableFuture<Optional<ProductoResponseDTO>> buscarAsync(
+            final long idNegocio, final int id, final boolean soloVendibles) {
         return executor.ejecutar(new java.util.concurrent.Callable<Optional<ProductoResponseDTO>>() {
             @Override
             public Optional<ProductoResponseDTO> call() {
                 Optional<Producto> opt = repository.buscarPorId(idNegocio, id);
-                if (opt.isPresent()) {
+                if (opt.isPresent() && (!soloVendibles || opt.get().puedeVenderse())) {
                     return Optional.of(ProductoMapper.toResponseDTO(opt.get()));
                 }
                 return Optional.empty();
@@ -54,10 +65,22 @@ public class ProductoService implements RepositorioProductoService {
 
     @Override
     public CompletableFuture<List<ProductoResponseDTO>> listarTodosAsync(final long idNegocio) {
+        return listarAsync(idNegocio, false);
+    }
+
+    @Override
+    public CompletableFuture<List<ProductoResponseDTO>> listarActivosAsync(final long idNegocio) {
+        return listarAsync(idNegocio, true);
+    }
+
+    private CompletableFuture<List<ProductoResponseDTO>> listarAsync(
+            final long idNegocio, final boolean soloActivos) {
         return executor.ejecutar(new java.util.concurrent.Callable<List<ProductoResponseDTO>>() {
             @Override
             public List<ProductoResponseDTO> call() {
-                List<Producto> listaEntidades = repository.listarTodos(idNegocio);
+                List<Producto> listaEntidades = soloActivos
+                        ? repository.listarActivos(idNegocio)
+                        : repository.listarTodos(idNegocio);
                 List<ProductoResponseDTO> listaDTOs = new ArrayList<>();
                 for (Producto p : listaEntidades) {
                     listaDTOs.add(ProductoMapper.toResponseDTO(p));

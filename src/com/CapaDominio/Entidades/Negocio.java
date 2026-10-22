@@ -34,4 +34,8 @@ public class Negocio {
     public boolean isActivo() { return activo; }
     public LocalDateTime getFechaAlta() { return fechaAlta; }
     public LocalDateTime getFechaBaja() { return fechaBaja; }
+
+    public boolean estaOperativo() {
+        return activo && fechaBaja == null;
+    }
 }

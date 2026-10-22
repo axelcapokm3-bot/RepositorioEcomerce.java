@@ -5,6 +5,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
+import com.CapaAplicacion.Interfaces.INegocioRepository;
 import com.CapaAplicacion.Interfaces.IProductoRepository;
 import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
 import com.CapaAplicacion.Interfaces.IVentaRepository;
@@ -13,6 +14,7 @@ import com.CapaAplicacion.Service.VentaService;
 import com.CapaDominio.Entidades.Carrito;
 import com.CapaDominio.Entidades.IDescuentos;
 import com.CapaDominio.Entidades.ItemCarrito;
+import com.CapaDominio.Entidades.Negocio;
 import com.CapaDominio.Entidades.PoliticaDescuento;
 import com.CapaDominio.Entidades.Producto;
 import com.CapaDominio.Entidades.Venta;
@@ -20,10 +22,13 @@ import com.sun.net.httpserver.HttpExchange;
 
 public class VentaController extends BaseController {
 
+    private static final int LIMITE_POR_MINUTO = 120;
+
     private final VentaService servicio;
     private final IProductoRepository productoRepository;
     private final IVentaRepository ventaRepository;
     private final IProveedorTokenAcceso proveedor;
+    private final INegocioRepository negocioRepository;
 
     public record CreateVentaRequest(
         int idCliente,
@@ -49,6 +54,12 @@ public class VentaController extends BaseController {
 
     public VentaController(VentaService servicio, IProductoRepository productoRepository,
                            IVentaRepository ventaRepository, IProveedorTokenAcceso proveedor) {
+        this(servicio, productoRepository, ventaRepository, proveedor, null);
+    }
+
+    public VentaController(VentaService servicio, IProductoRepository productoRepository,
+                           IVentaRepository ventaRepository, IProveedorTokenAcceso proveedor,
+                           INegocioRepository negocioRepository) {
         if (servicio == null || productoRepository == null
                 || ventaRepository == null || proveedor == null) {
             throw new IllegalArgumentException("Las dependencias del controlador de ventas son obligatorias.");
@@ -57,6 +68,7 @@ public class VentaController extends BaseController {
         this.productoRepository = productoRepository;
         this.ventaRepository = ventaRepository;
         this.proveedor = proveedor;
+        this.negocioRepository = negocioRepository;
     }
 
     @Override
@@ -68,6 +80,18 @@ public class VentaController extends BaseController {
         String path = exchange.getRequestURI().getPath();
 
         try {
+            Principal principalLimite = extraerPrincipal(exchange, proveedor).orElse(null);
+            String ambitoLimite;
+            if (path.equals("/api/ventas/crear")) {
+                ambitoLimite = "ventas-crear";
+            } else if (path.equals("/api/ventas/previsualizar")) {
+                ambitoLimite = "ventas-previsualizar";
+            } else {
+                ambitoLimite = "ventas-consulta";
+            }
+            if (limitarSolicitud(exchange, principalLimite, ambitoLimite, LIMITE_POR_MINUTO)) {
+                return;
+            }
             if (path.equals("/api/ventas/previsualizar")) {
                 if ("POST".equalsIgnoreCase(method)) {
                     Principal principal = exigirAutenticacion(exchange, proveedor);
@@ -183,6 +207,7 @@ public class VentaController extends BaseController {
                     "No se recibió una forma de pago válida."
             );
         }
+        exigirNegocioOperativo(idNegocio);
 
         Carrito carrito = new Carrito(req.idCliente());
         for (ItemRequest itemReq : req.items()) {
@@ -199,9 +224,28 @@ public class VentaController extends BaseController {
                         "No existe un producto con el ID solicitado."
                 );
             }
+            if (!prodOpt.get().puedeVenderse()) {
+                throw new ControllerException.NoEncontrado(
+                        "Producto no disponible.",
+                        "El producto solicitado ya no está disponible para la venta."
+                );
+            }
             carrito.agregarItem(new ItemCarrito(prodOpt.get(), itemReq.cantidad()));
         }
         return carrito;
+    }
+
+    private void exigirNegocioOperativo(long idNegocio) {
+        if (negocioRepository == null) {
+            return;
+        }
+        Optional<Negocio> negocio = negocioRepository.buscarPorId(idNegocio);
+        if (negocio.isEmpty() || !negocio.get().estaOperativo()) {
+            throw new ControllerException.Conflicto(
+                    "El negocio no está disponible.",
+                    "El negocio se encuentra inactivo o dado de baja."
+            );
+        }
     }
 
     private void exigirPermisoSobreVenta(long idNegocio, Principal principal, int idVenta) {

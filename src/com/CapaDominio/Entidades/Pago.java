@@ -1,5 +1,7 @@
 package com.CapaDominio.Entidades;
 
+import com.CapaDominio.Excepciones.TransicionPagoInvalidaException;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
@@ -98,6 +100,21 @@ public class Pago {
 
     public void setEstado(EstadoPago estado) {
         this.estado = estado;
+    }
+
+    public void transicionarA(EstadoPago nuevoEstado) {
+        if (nuevoEstado == null) {
+            throw new IllegalArgumentException("El nuevo estado del pago no puede ser nulo.");
+        }
+        if (this.estado == nuevoEstado) {
+            return;
+        }
+        if (this.estado == null || !this.estado.puedeTransicionarA(nuevoEstado)) {
+            throw new TransicionPagoInvalidaException(
+                    "Transición de pago inválida: no se puede pasar de "
+                            + this.estado + " a " + nuevoEstado + ".");
+        }
+        this.estado = nuevoEstado;
     }
 
     public BigDecimal getMonto() {

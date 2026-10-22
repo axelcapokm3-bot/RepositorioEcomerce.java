@@ -11,5 +11,6 @@ public record ProductoResponseDTO(
     int stockReservado,
     int stockDisponible, 
     EstadoStock estadoStock,
-    CategoriaProducto categoria
+    CategoriaProducto categoria,
+    String categoriaOriginal
 ) {}

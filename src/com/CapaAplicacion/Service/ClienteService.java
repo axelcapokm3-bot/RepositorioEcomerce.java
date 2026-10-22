@@ -9,6 +9,7 @@ import com.CapaAplicacion.Interfaces.TipoServicio;
 import com.CapaAplicacion.Mapper.ClienteMapper;
 import com.CapaInfraestructura.Implementacion.RegistroExecutors;
 import com.CapaDominio.Entidades.Cliente;
+import com.CapaDominio.Excepciones.RecursoNoEncontradoException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -72,9 +73,7 @@ public CompletableFuture<Void> guardarAsync(final long idNegocio, final ClienteR
         return executor.ejecutar(new Runnable() {
             @Override
             public void run() {
-                repository.buscarPorId(idNegocio, id)
-                        .orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
-                
+                exigirClienteDelNegocio(idNegocio, id);
                 Cliente clienteActualizado = ClienteMapper.toEntidad(id, dto);
                 clienteActualizado.setIdNegocio(idNegocio);
                 repository.actualizar(idNegocio, id, clienteActualizado);
@@ -87,8 +86,15 @@ public CompletableFuture<Void> guardarAsync(final long idNegocio, final ClienteR
         return executor.ejecutar(new Runnable() {
             @Override
             public void run() {
+                exigirClienteDelNegocio(idNegocio, id);
                 repository.eliminar(idNegocio, id);
             }
         });
+    }
+
+    private void exigirClienteDelNegocio(long idNegocio, int id) {
+        if (repository.buscarPorId(idNegocio, id).isEmpty()) {
+            throw new RecursoNoEncontradoException("Cliente no encontrado.");
+        }
     }
 }

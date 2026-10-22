@@ -12,6 +12,7 @@ import java.util.Optional;
 
 import com.CapaAplicacion.Interfaces.IClienteRepositorio;
 import com.CapaDominio.Entidades.Cliente;
+import com.CapaDominio.Excepciones.RecursoNoEncontradoException;
 
 public class MySqlRepositorioCliente implements IClienteRepositorio {
     private static final String COLUMNS = "id, dni, cuit, nombre, apellido, direccion, "
@@ -19,14 +20,25 @@ public class MySqlRepositorioCliente implements IClienteRepositorio {
 
     @Override
     public void guardar(Cliente cliente) {
+        try (Connection connection = DatabaseConnection.getConnection()) {
+            guardar(connection, cliente);
+        } catch (SQLException exception) {
+            throw databaseError("guardar cliente", exception);
+        }
+    }
+
+    @Override
+    public void guardar(Connection connection, Cliente cliente) {
+        if (connection == null) {
+            throw new IllegalArgumentException("La conexión es obligatoria.");
+        }
         requireCliente(cliente);
         String sql = cliente.getId() == 0
                 ? "INSERT INTO clientes (dni, cuit, nombre, apellido, direccion, fecha_nacimiento, localidad, activo, motivo_baja, id_negocio) "
                 + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 : "INSERT INTO clientes (id, dni, cuit, nombre, apellido, direccion, fecha_nacimiento, localidad, activo, motivo_baja, id_negocio) "
                 + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        try (Connection connection = DatabaseConnection.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        try (PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             int index = 1;
             if (cliente.getId() != 0) statement.setInt(index++, cliente.getId());
             bind(statement, index, cliente);
@@ -59,6 +71,41 @@ public class MySqlRepositorioCliente implements IClienteRepositorio {
     }
 
     @Override
+    public Optional<Cliente> buscarPorDni(long idNegocio, String dni) {
+        if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
+        if (dni == null || dni.isBlank()) throw new IllegalArgumentException("El DNI es obligatorio.");
+        try (Connection connection = DatabaseConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement("SELECT " + COLUMNS + " FROM clientes WHERE dni = ? AND id_negocio = ?")) {
+            statement.setString(1, dni.trim());
+            statement.setLong(2, idNegocio);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? Optional.of(map(result)) : Optional.empty();
+            }
+        } catch (SQLException exception) {
+            throw databaseError("buscar cliente por DNI", exception);
+        }
+    }
+
+    @Override
+    public Optional<Cliente> buscarPorDniParaActualizar(Connection connection, long idNegocio, String dni) {
+        if (connection == null) {
+            throw new IllegalArgumentException("La conexión es obligatoria.");
+        }
+        if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
+        if (dni == null || dni.isBlank()) throw new IllegalArgumentException("El DNI es obligatorio.");
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT " + COLUMNS + " FROM clientes WHERE dni = ? AND id_negocio = ? FOR UPDATE")) {
+            statement.setString(1, dni.trim());
+            statement.setLong(2, idNegocio);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? Optional.of(map(result)) : Optional.empty();
+            }
+        } catch (SQLException exception) {
+            throw databaseError("buscar cliente por DNI", exception);
+        }
+    }
+
+    @Override
     public List<Cliente> listarTodos(long idNegocio) {
         if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
         List<Cliente> clientes = new ArrayList<>();
@@ -77,6 +124,8 @@ public class MySqlRepositorioCliente implements IClienteRepositorio {
     @Override
     public void actualizar(long idNegocio, int id, Cliente cliente) {
         requireCliente(cliente);
+        if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
+        if (id <= 0) throw new IllegalArgumentException("El ID debe ser mayor a cero.");
         String sql = "UPDATE clientes SET dni = ?, cuit = ?, nombre = ?, apellido = ?, direccion = ?, "
                 + "fecha_nacimiento = ?, localidad = ?, activo = ?, motivo_baja = ? WHERE id = ? AND id_negocio = ?";
         try (Connection connection = DatabaseConnection.getConnection();
@@ -84,7 +133,9 @@ public class MySqlRepositorioCliente implements IClienteRepositorio {
             bind(statement, 1, cliente);
             statement.setInt(10, id);
             statement.setLong(11, idNegocio);
-            statement.executeUpdate();
+            if (statement.executeUpdate() != 1) {
+                throw new RecursoNoEncontradoException("Cliente no encontrado.");
+            }
         } catch (SQLException exception) {
             throw databaseError("actualizar cliente", exception);
         }
@@ -101,7 +152,9 @@ public class MySqlRepositorioCliente implements IClienteRepositorio {
             statement.setString(2, "Eliminado por el sistema");
             statement.setInt(3, id);
             statement.setLong(4, idNegocio);
-            statement.executeUpdate();
+            if (statement.executeUpdate() != 1) {
+                throw new RecursoNoEncontradoException("Cliente no encontrado.");
+            }
         } catch (SQLException exception) {
             throw databaseError("dar de baja cliente", exception);
         }
@@ -119,7 +172,8 @@ public class MySqlRepositorioCliente implements IClienteRepositorio {
 
     private static void bind(PreparedStatement statement, int start, Cliente cliente) throws SQLException {
         statement.setString(start, cliente.getDni());
-        statement.setString(start + 1, cliente.getCuit());
+        String cuit = cliente.getCuit();
+        statement.setString(start + 1, (cuit == null || cuit.trim().isEmpty()) ? null : cuit.trim());
         statement.setString(start + 2, cliente.getNombre());
         statement.setString(start + 3, cliente.getApellido());
         statement.setString(start + 4, cliente.getDireccion());

@@ -4,6 +4,8 @@ package com.CapaAplicacion.Interfaces;
 
 import com.CapaDominio.Entidades.Venta;
 import java.sql.Connection;
+import java.time.LocalDateTime;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -13,8 +15,15 @@ public interface IVentaRepository {
         guardar(venta);
     }
     Optional<Venta> buscarPorId(long idNegocio, int id);
+    default Optional<Venta> buscarPorIdParaUpdate(long idNegocio, int id, Connection connection)
+            throws java.sql.SQLException {
+        return buscarPorId(idNegocio, id);
+    }
     default Optional<Venta> buscarPorClaveIdempotenciaSolicitud(long idNegocio, String claveIdempotenciaSolicitud) {
         return Optional.empty();
+    }
+    default List<Venta> buscarPendientesAnteriores(LocalDateTime limite, int cantidad) {
+        return Collections.emptyList();
     }
     default boolean marcarComoPagada(long idNegocio, int id) {
         Optional<Venta> venta = buscarPorId(idNegocio, id);

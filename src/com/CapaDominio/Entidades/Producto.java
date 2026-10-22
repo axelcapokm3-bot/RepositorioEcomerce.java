@@ -9,6 +9,7 @@ public class Producto {
     private int stockFisico ;
     private int stockReservado ; 
     private CategoriaProducto categoria  ;
+    private String categoriaOriginal;
     private long idNegocio;
     private boolean activo = true;
 
@@ -38,7 +39,7 @@ public class Producto {
         this.nombre = nombre;
         this.precio = precio;
         this.stockFisico = stockFisico;
-         this.stockReservado =  0 ;
+        this.stockReservado = stockReservado;
         this.id = id;
         this.categoria = categoria  ;
     }
@@ -84,6 +85,14 @@ public class Producto {
         return categoria;
     }
 
+    public String getCategoriaOriginal() {
+        return categoriaOriginal;
+    }
+
+    public void setCategoriaOriginal(String categoriaOriginal) {
+        this.categoriaOriginal = categoriaOriginal;
+    }
+
     public long getIdNegocio() {
         return idNegocio;
     }
@@ -93,6 +102,10 @@ public class Producto {
     }
 
     public boolean isActivo() {
+        return activo;
+    }
+
+    public boolean puedeVenderse() {
         return activo;
     }
 

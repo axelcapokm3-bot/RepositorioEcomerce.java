@@ -1,6 +1,7 @@
 package com.CapaPresentacion.Controllers;
 
 import java.io.IOException;
+import java.time.LocalDate;
 import java.util.Map;
 
 import com.CapaAplicacion.DTOentrada.CuentaIngresoDTO;
@@ -9,6 +10,7 @@ import com.CapaAplicacion.DTOsalida.SesionResponseDTO;
 import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
 import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaAplicacion.Service.AutenticacionService;
+import com.CapaPresentacion.Utilidades.ResolutorNegocio;
 import com.sun.net.httpserver.HttpExchange;
 
 import java.util.Optional;
@@ -16,10 +18,11 @@ import java.util.concurrent.CompletableFuture;
 
 public class AuthController extends BaseController {
     private static final int LIMITE_POR_MINUTO = 20;
+    private static final int LIMITE_LOGIN_POR_MINUTO = 10;
 
-    public record CambioNegocioRequest(long idNegocio) {}
-
-    public record VincularNegocioRequest(long idNegocio, int idCliente, String contraseniaPlana) {}
+    public record VincularNegocioRequest(String dniCliente, String nombreCliente,
+                                         String apellidoCliente, LocalDate fechaNacimientoCliente,
+                                         String contraseniaPlana) {}
 
     private final AutenticacionService servicio;
     private final IProveedorTokenAcceso proveedor;
@@ -64,8 +67,16 @@ public class AuthController extends BaseController {
             if (!"POST".equalsIgnoreCase(method)) {
                 throw new ControllerException.Validacion("Método no permitido.", "La ruta solo admite POST.");
             }
-            if (excedeLimite(exchange, LIMITE_POR_MINUTO, "auth")) {
-                sendError(exchange, 429, "Código: LIMITE_EXCEDIDO | Mensaje: Demasiadas solicitudes. | Causa: Intente nuevamente en un minuto.");
+            Principal principalLimite = extraerPrincipal(exchange, proveedor).orElse(null);
+            if (path.equals("/api/auth/ingreso") || path.equals("/api/auth/ingreso/")) {
+                if (limitarSolicitud(exchange, null, "auth-login", LIMITE_LOGIN_POR_MINUTO)) {
+                    return;
+                }
+            } else if (path.equals("/api/auth/registro") || path.equals("/api/auth/registro/")) {
+                if (limitarSolicitud(exchange, principalLimite, "auth-registro", LIMITE_POR_MINUTO)) {
+                    return;
+                }
+            } else if (limitarSolicitud(exchange, principalLimite, "auth-cuenta", LIMITE_POR_MINUTO)) {
                 return;
             }
             if (path.equals("/api/auth/registro") || path.equals("/api/auth/registro/")) {
@@ -82,24 +93,26 @@ public class AuthController extends BaseController {
                 handleAsync(exchange, servicio.ingresarAsync(idNegocio, dto), 200);
             } else if (path.equals("/api/auth/negocio-activo") || path.equals("/api/auth/negocio-activo/")) {
                 Principal principal = exigirAutenticacion(exchange, proveedor);
-                CambioNegocioRequest req = parseRequestBody(exchange, CambioNegocioRequest.class);
-                if (req == null || req.idNegocio() <= 0) {
-                    throw new ControllerException.Validacion(
-                            "El negocio solicitado no es válido.",
-                            "Debe indicar un ID de negocio positivo.");
-                }
-                handleAsync(exchange, servicio.cambiarNegocioAsync(principal, req.idNegocio()), 200);
+                long idNegocio = negocioObjetivo(exchange, principal);
+                handleAsync(exchange, servicio.cambiarNegocioAsync(principal, idNegocio), 200);
             } else if (path.equals("/api/auth/vincular") || path.equals("/api/auth/vincular/")) {
                 Principal principal = exigirAutenticacion(exchange, proveedor);
                 VincularNegocioRequest req = parseRequestBody(exchange, VincularNegocioRequest.class);
-                if (req == null || req.idNegocio() <= 0 || req.idCliente() <= 0
+                if (req == null
+                        || req.dniCliente() == null || req.dniCliente().trim().isEmpty()
+                        || req.nombreCliente() == null || req.nombreCliente().trim().isEmpty()
+                        || req.apellidoCliente() == null || req.apellidoCliente().trim().isEmpty()
+                        || req.fechaNacimientoCliente() == null
                         || req.contraseniaPlana() == null || req.contraseniaPlana().isEmpty()) {
                     throw new ControllerException.Validacion(
                             "Los datos de vinculación no son válidos.",
-                            "Debe indicar el negocio, el cliente y confirmar su contraseña.");
+                            "Debe indicar el DNI y la identidad del titular, "
+                            + "y confirmar su contraseña.");
                 }
-                handleAsync(exchange, servicio.vincularNegocioAsync(
-                        principal, req.idNegocio(), req.idCliente(), req.contraseniaPlana()), 200);
+                long idNegocio = negocioObjetivo(exchange, principal);
+                handleAsync(exchange, servicio.vincularNegocioAsync(principal, idNegocio,
+                        req.dniCliente(), req.nombreCliente(), req.apellidoCliente(),
+                        req.fechaNacimientoCliente(), req.contraseniaPlana()), 200);
             } else {
                 throw new ControllerException.NoEncontrado("Ruta no encontrada.", "No existe un recurso para la URL solicitada.");
             }
@@ -112,5 +125,16 @@ public class AuthController extends BaseController {
         } catch (Exception e) {
             sendError(exchange, 500, "Código: ERROR_SERVIDOR | Mensaje: Error interno del servidor. | Causa: Fallo inesperado.");
         }
+    }
+
+    private long negocioObjetivo(HttpExchange exchange, Principal principal) {
+        String subdominio = exchange.getRequestHeaders().getFirst(ResolutorNegocio.HEADER_NEGOCIO);
+        Optional<Long> resuelto = resolverNegocio(exchange);
+        if (subdominio == null || subdominio.isBlank()) {
+            return resuelto.orElse(principal.idNegocio());
+        }
+        return resuelto.orElseThrow(() -> new ControllerException.Validacion(
+                "El negocio indicado no es válido.",
+                "El subdominio no existe o no está activo."));
     }
 }

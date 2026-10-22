@@ -43,9 +43,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const navLinks = document.querySelectorAll('.nav-link, .mobile-nav-link');
     const appView = document.getElementById('app-view');
     const globalSearchInput = document.getElementById('global-search');
+    const rolSesion = String(sesion.obtener()?.rol || '').toUpperCase();
+    const esAdmin = rolSesion === 'ADMIN';
+    const vistasAdministrativas = ['dashboard', 'terminal', 'clientes', 'auditoria'];
+
+    if (!esAdmin) {
+        navLinks.forEach((link) => {
+            if (vistasAdministrativas.includes(link.getAttribute('data-view'))) {
+                link.style.display = 'none';
+            }
+        });
+        const accesoRapidoPos = document.querySelector('header a[href="#terminal"]');
+        if (accesoRapidoPos) {
+            accesoRapidoPos.style.display = 'none';
+        }
+    }
 
     async function router() {
-        const hash = window.location.hash.substring(1) || 'dashboard';
+        const hash = window.location.hash.substring(1) || (esAdmin ? 'dashboard' : 'catalogo');
+
+        if (!esAdmin && vistasAdministrativas.includes(hash)) {
+            window.location.hash = '#catalogo';
+            return;
+        }
         
         // Update active navigation state
         navLinks.forEach(link => {
@@ -87,23 +107,49 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (hash === 'catalogo') await renderCatalogo(appView);
             else if (hash === 'terminal') await renderTerminal(appView);
             else if (hash === 'auditoria') await renderAuditoria(appView);
-            else await renderDashboard(appView);
+            else await (esAdmin ? renderDashboard(appView) : renderCatalogo(appView));
         } catch (e) {
             console.error('Error de enrutamiento:', e);
-            appView.innerHTML = `
-                <div class="p-6 md:p-8 bg-carbon-900/50 border border-carbon-700/30 rounded-2xl text-white shadow-xl max-w-2xl mx-auto my-12">
-                    <div class="flex items-start gap-4">
-                        <span class="material-symbols-outlined text-[32px] text-orange-400 shrink-0">signal_wifi_connected_no_internet_4</span>
-                        <div class="flex flex-col gap-2">
-                            <h3 class="font-bold text-base text-white tracking-tight">Comunicación HTTP Interrumpida con el Servidor</h3>
-                            <p class="text-xs text-slate-400/90 leading-relaxed">No se pudo completar la solicitud con el backend Java en el puerto local 8080. Detalle técnico: <code class="bg-carbon-900 px-2 py-0.5 rounded text-orange-400 font-mono text-sm">${e.message}</code></p>
+            const esPermiso = e.status === 403;
+            const esSesion = e.status === 401;
+            const esHttp = typeof e.status === 'number';
+            const titulo = esPermiso
+                ? 'Permisos Insuficientes'
+                : esSesion
+                    ? 'Sesión Expirada'
+                    : esHttp
+                        ? 'No se pudo cargar la información'
+                        : 'No se pudo conectar con el servidor';
+            const detalle = esPermiso
+                ? 'Tu cuenta no tiene permisos para acceder a este módulo. La autorización final la define el servidor.'
+                : esSesion
+                    ? 'Tu sesión expiró o no es válida. Volvé a iniciar sesión.'
+                    : esHttp
+                        ? `El servidor respondió con HTTP ${e.status}. No se pudo completar la carga.`
+                        : 'No se pudo conectar con el backend Java en el puerto local 8080. Verificá tu conexión y que el servidor esté activo.';
+            const icono = esPermiso
+                ? 'lock'
+                : esSesion
+                    ? 'passkey'
+                    : esHttp
+                        ? 'error'
+                        : 'signal_wifi_connected_no_internet_4';
+            const ayudaConexion = esHttp ? '' : `
                             <div class="mt-4 pt-3 border-t border-carbon-700/20 text-xs text-slate-400">
                                 <span>Verificá que el servidor esté activo:</span>
                                 <pre class="mt-2 p-3 bg-carbon-900 rounded-xl text-[11px] font-mono text-orange-400 overflow-x-auto border border-carbon-700">mvn exec:java -Dexec.mainClass="com.CapaExterna.ServerMain"</pre>
-                            </div>
+                            </div>`;
+            appView.innerHTML = `
+                <div class="p-6 md:p-8 bg-carbon-900/50 border border-carbon-700/30 rounded-2xl text-white shadow-xl max-w-2xl mx-auto my-12">
+                    <div class="flex items-start gap-4">
+                        <span class="material-symbols-outlined text-[32px] text-orange-400 shrink-0">${icono}</span>
+                        <div class="flex flex-col gap-2">
+                            <h3 class="font-bold text-base text-white tracking-tight">${titulo}</h3>
+                            <p class="text-xs text-slate-400/90 leading-relaxed">${detalle} Detalle técnico: <code class="bg-carbon-900 px-2 py-0.5 rounded text-orange-400 font-mono text-sm">${escaparHtml(e.message || 'Error desconocido')}</code></p>
+                            ${ayudaConexion}
                             <button onclick="window.location.reload()" class="mt-4 px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-xl text-xs font-semibold w-fit transition-all flex items-center gap-2 cursor-pointer shadow-md">
                                 <span class="material-symbols-outlined text-[16px]">refresh</span>
-                                Reintentar Conexión
+                                Reintentar
                             </button>
                         </div>
                     </div>
@@ -181,9 +227,9 @@ function mostrarResultadoCheckout() {
 // ---------------------------------------------------------------------
 async function renderDashboard(container) {
     const [productos, clientes, auditoria] = await Promise.all([
-        api.productos.listar().catch(() => []),
-        api.clientes.listar().catch(() => []),
-        api.auditoria.listar().catch(() => [])
+        api.productos.listar(),
+        api.clientes.listar(),
+        api.auditoria.listar()
     ]);
 
     const totalStock = productos.reduce((sum, p) => sum + (p.stockFisico || 0), 0);
@@ -303,6 +349,8 @@ async function renderDashboard(container) {
                     </div>
                 </div>
             </div>
+
+            <div id="d3-visualizations" class="grid grid-cols-1 xl:grid-cols-2 gap-6"></div>
         </div>
     `;
 
@@ -314,6 +362,7 @@ async function renderDashboard(container) {
 // 2. KPI CARDS WITH TREND INDICATORS
 // ---------------------------------------------------------------------
 function renderKPIs(container, productos, clientes, auditoria) {
+    const totalStock = productos.reduce((sum, p) => sum + (p.stockFisico || 0), 0);
     // Datos simulados de tendencias (en producción vendrían del backend)
     const tendencias = {
         productos: { valor: productos.length, cambio: +2.5 },
@@ -343,7 +392,7 @@ function renderKPIs(container, productos, clientes, auditoria) {
                     <div class="text-2xl font-extrabold text-white font-mono-numbers">${kpi.value}</div>
                     <div class="flex items-center gap-1.5 text-[10px] ${kpi.trend >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
                         <span class="font-mono font-medium">${kpi.trend >= 0 ? '+' : ''}${kpi.trend}%</span>
-                        <span class="material-symbols-outlined text-[10px] ${kpi.trend >= 0 ? 'arrow_downward' : 'arrow_upward'}">${kpi.trend >= 0 ? 'expand_more' : 'trending_down'</span>
+                        <span class="material-symbols-outlined text-[10px]">${kpi.trend >= 0 ? 'expand_more' : 'trending_down'}</span>
                     </div>
                 </div>
             </div>
@@ -355,17 +404,12 @@ function renderKPIs(container, productos, clientes, auditoria) {
 // 3. D3.JS VISUALIZATIONS
 // ---------------------------------------------------------------------
 async function renderD3Visualizations(productos, auditoria) {
-    // Container already exists or create it
-    let vizContainer = document.getElementById('d3-visualizations');
-    if (!vizContainer) {
-        vizContainer = document.createElement('div');
-        vizContainer.id = 'd3-visualizations';
-        vizContainer.className = 'pb-8';
-        const main = document.getElementById('app-view');
-        if (main) main.appendChild(vizContainer);
-    }
+    const vizContainer = document.getElementById('d3-visualizations');
+    if (!vizContainer) return;
 
-    // Fetch datos transaccionales para los gráficos
+    // El dashboard se vuelve a renderizar en cada navegación: no acumular SVG.
+    vizContainer.innerHTML = '';
+
     try {
         // Nota: no existe endpoint de listado de ventas/stock global;
         // los gráficos usan auditoría y el catálogo ya cargado.
@@ -392,7 +436,7 @@ async function renderD3Visualizations(productos, auditoria) {
 
 function renderTransactionLineChart(container, auditoria) {
     const canvas = document.createElement('div');
-    canvas.className = 'bg-carbon-900/80 rounded-2xl border border-carbon-700 p-6 mb-6 shadow-card resize-observer';
+    canvas.className = 'relative bg-carbon-900/80 rounded-2xl border border-carbon-700 p-6 shadow-card xl:col-span-2';
     canvas.innerHTML = `
         <h3 class="text-font text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Actividad Transaccional Reciente</h3>
         <div id="transaction-line-chart" class="relative h-64"></div>
@@ -401,38 +445,38 @@ function renderTransactionLineChart(container, auditoria) {
 
     // Datos simulados basados en auditoria (en producción obtendría del backend)
     const datosTransaccionales = auditoria.slice(0, 30).map((log, i) => ({
-        fecha: new Date(Date.now() - i * 3600000).toLocaleTimeString(),
+        fecha: new Date(Date.now() - i * 3600000),
         monto: Math.floor(Math.random() * 50000) + 1000,
         accion: log.accion
     })).reverse();
 
     // Si no hay datos, usar datos simulados
     const datos = datosTransaccionales.length > 0 ? datosTransaccionales : Array.from({ length: 30 }, (_, i) => ({
-        fecha: new Date(Date.now() - (30 - i) * 3600000).toLocaleTimeString(),
+        fecha: new Date(Date.now() - (30 - i) * 3600000),
         monto: Math.floor(Math.random() * 50000) + 1000,
         accion: i % 5 === 0 ? 'COMPRA' : i % 5 === 1 ? 'CREACION' : i % 5 === 2 ? 'ELIMINACION' : 'TRANSFERENCIA'
     }));
 
-    let width = canvas.offsetWidth || 400;
-    let height = 60;
-    const margin = { top: 20, right: 20, bottom: 20, left: 40 };
+    const chartEl = canvas.querySelector('#transaction-line-chart');
+    const ancho = Math.max(300, chartEl.clientWidth || 400);
+    const alto = Math.max(200, chartEl.clientHeight || 256);
+    const margin = { top: 20, right: 20, bottom: 30, left: 60 };
+    const width = ancho - margin.left - margin.right;
+    const height = alto - margin.top - margin.bottom;
 
-    const resizeObserver = new ResizeObserver(entries => {
-        for (let entry of entries) {
-            redrawTransactionLineChart();
-        }
-    });
-    resizeObserver.observe(canvas);
-
-    const svg = d3.select('#' + canvas.querySelector('div').id.replace('-chart', ''))
-        .attr('width', width + margin.left + margin.right)
-        .attr('height', height + margin.top + margin.bottom)
+    const svg = d3.select(chartEl)
+        .append('svg')
+        .attr('viewBox', `0 0 ${ancho} ${alto}`)
+        .attr('width', '100%')
+        .attr('height', '100%')
+        .attr('role', 'img')
+        .attr('aria-label', 'Actividad transaccional reciente')
         .append('g')
         .attr('transform', `translate(${margin.left},${margin.top})`);
 
     // Escalas
     const x = d3.scaleTime()
-        .domain(d3.extent(datos, d => new Date(d.fecha)))
+        .domain(d3.extent(datos, d => d.fecha))
         .range([0, width]);
 
     const y = d3.scaleLinear()
@@ -443,16 +487,16 @@ function renderTransactionLineChart(container, auditoria) {
     svg.append('g')
         .attr('class', 'x-axis')
         .attr('transform', `translate(0,${height})`)
-        .call(d3.axisBottom(x).ticks(6).tickFormat(d => d.split(' ')[0]))
+        .call(d3.axisBottom(x).ticks(6).tickFormat(d3.timeFormat('%H:%M')))
         .selectAll('.tick line')
-        .stroke('#3F3F46');
+        .attr('stroke', '#3F3F46');
 
     // Eje Y
     svg.append('g')
         .attr('class', 'y-axis')
         .call(d3.axisLeft(y).tickFormat(d => `$${d.toLocaleString()}`))
         .selectAll('.tick line')
-        .stroke('#3F3F46');
+        .attr('stroke', '#3F3F46');
 
     // Área de relleno con gradiente
     const defs = svg.append('defs');
@@ -475,7 +519,7 @@ function renderTransactionLineChart(container, auditoria) {
 
     // Línea
     const line = d3.line()
-        .x(d => x(new Date(d.fecha)))
+        .x(d => x(d.fecha))
         .y(d => y(d.monto))
         .curve(d3.curveMonotoneX);
 
@@ -492,75 +536,40 @@ function renderTransactionLineChart(container, auditoria) {
         .data(datos)
         .enter().append('circle')
         .attr('class', 'data-point')
-        .attr('cx', d => x(new Date(d.fecha)))
+        .attr('cx', d => x(d.fecha))
         .attr('cy', d => y(d.monto))
         .attr('r', 3)
         .attr('fill', '#FF6B00')
         .attr('stroke', '#0A0A0A')
         .attr('stroke-width', 1);
 
-    // Tooltips
+    // Tooltip dentro de la tarjeta para que se elimine junto con el gráfico.
     const tooltip = document.createElement('div');
-    tooltip.className = 'absolute opacity-0 pointer-events-none text-[10px] font-medium text-white transition-all';
+    tooltip.className = 'absolute opacity-0 pointer-events-none z-10 text-[10px] font-medium text-white bg-carbon-800 border border-carbon-600 rounded-lg px-2 py-1 shadow-lg transition-opacity';
     tooltip.innerHTML = '$<span></span>';
-    document.body.appendChild(tooltip);
-
-    let timeoutId;
+    canvas.appendChild(tooltip);
 
     svg.selectAll('.data-point')
         .on('mouseover', (event, d) => {
-            const xPos = x(new Date(d.fecha)) + margin.left;
-            const yPos = y(d.monto) + margin.top;
-            tooltip.style.left = `${xPos}px`;
-            tooltip.style.top = `${yPos - 20}px`;
+            const rect = canvas.getBoundingClientRect();
             tooltip.querySelector('span').textContent = d.monto.toLocaleString();
+            tooltip.style.left = `${Math.max(4, Math.min(event.clientX - rect.left + 12, rect.width - 90))}px`;
+            tooltip.style.top = `${Math.max(4, event.clientY - rect.top - 28)}px`;
             tooltip.style.opacity = '1';
         })
         .on('mousemove', (event) => {
-            const xPos = event.clientX + 10;
-            tooltip.style.left = `${Math.min(xPos, window.innerWidth - 200)}px`;
+            const rect = canvas.getBoundingClientRect();
+            tooltip.style.left = `${Math.max(4, Math.min(event.clientX - rect.left + 12, rect.width - 90))}px`;
+            tooltip.style.top = `${Math.max(4, event.clientY - rect.top - 28)}px`;
         })
         .on('mouseout', () => {
             tooltip.style.opacity = '0';
         });
-
-    // Función para redibujar el gráfico al redimensionar
-    function redrawTransactionLineChart() {
-        const newWidth = canvas.offsetWidth || 400;
-        const newHeight = 60;
-
-        // Actualizar escalas
-        x.domain(d3.extent(datos, d => new Date(d.fecha)));
-        x.range([0, newWidth]);
-
-        y.domain([0, d3.max(datos, d => d.monto) * 1.1]);
-        y.range([newHeight, 0]);
-
-        // Actualizar ancho del SVG
-        svg.attr('width', newWidth + margin.left + margin.right);
-        svg.attr('height', newHeight + margin.top + margin.bottom);
-
-        // Actualizar eje X
-        svg.select('.x-axis')
-            .call(d3.axisBottom(x).ticks(6).tickFormat(d => d.split(' ')[0]));
-
-        // Actualizar eje Y
-        svg.select('.y-axis')
-            .call(d3.axisLeft(y).tickFormat(d => `$${d.toLocaleString()}`));
-
-        // Actualizar línea
-        svg.select('path')
-            .attr('d', line);
-
-        // Actualizar puntos
-        svg.selectAll('.data-point')
-            .attr('cx', d => x(new Date(d.fecha)))
-            .attr('cy', d => y(d.monto));
-    }
+}
 
 function renderStockDonutChart(container, productos) {
     const canvas = document.createElement('div');
-    canvas.className = 'bg-carbon-900/80 rounded-2xl border border-carbon-700 p-6 mb-6 shadow-card resize-observer';
+    canvas.className = 'bg-carbon-900/80 rounded-2xl border border-carbon-700 p-6 shadow-card';
     canvas.innerHTML = `
         <h3 class="text-font text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Salud de Stock</h3>
         <div id="stock-donut-chart" class="relative h-64"></div>
@@ -583,19 +592,26 @@ function renderStockDonutChart(container, productos) {
     }).length;
 
     const total = stockCritico + stockOptimo + stockAgotado;
-    constCritico = total > 0 ? (stockCritico / total) * 100 : 0;
-    constOptimo = total > 0 ? (stockOptimo / total) * 100 : 0;
-    constAgotado = total > 0 ? (stockAgotado / total) * 100 : 0;
+    const constCritico = total > 0 ? (stockCritico / total) * 100 : 0;
+    const constOptimo = total > 0 ? (stockOptimo / total) * 100 : 0;
+    const constAgotado = total > 0 ? (stockAgotado / total) * 100 : 0;
 
-    let width = canvas.offsetWidth || 400;
-    let height = 140;
-    const radius = Math.min(width, height) / 2 * 0.7;
+    const chartEl = canvas.querySelector('#stock-donut-chart');
+    const ancho = Math.max(300, chartEl.clientWidth || 400);
+    const alto = Math.max(200, chartEl.clientHeight || 256);
+    const radio = Math.min(ancho * 0.4, alto * 0.42);
+    const centroX = ancho * 0.34;
+    const centroY = alto / 2;
 
-    const svg = d3.select('#' + canvas.querySelector('div').id.replace('-chart', ''))
-        .attr('width', width)
-        .attr('height', height)
+    const svg = d3.select(chartEl)
+        .append('svg')
+        .attr('viewBox', `0 0 ${ancho} ${alto}`)
+        .attr('width', '100%')
+        .attr('height', '100%')
+        .attr('role', 'img')
+        .attr('aria-label', 'Distribución de salud de stock')
         .append('g')
-        .attr('transform', `translate(${width / 2},${height / 2})`);
+        .attr('transform', `translate(${centroX},${centroY})`);
 
     // Datos para el donut
     const datos = [
@@ -604,15 +620,10 @@ function renderStockDonutChart(container, productos) {
         { label: 'Agotado', valor: Math.max(0.01, constAgotado), color: '#FFB86B' }
     ];
 
-    // Generar colores consistentes
-    const color = d3.scaleOrdinal()
-        .domain(datos.map(d => d.label))
-        .range(['#FF6B00', '#FFFFFF', '#FFB86B']);
-
     // Arco donut
     const arc = d3.arc()
-        .innerRadius(radius * 0.6)
-        .outerRadius(radius);
+        .innerRadius(radio * 0.6)
+        .outerRadius(radio);
 
     // Pie layout
     const pie = d3.pie()
@@ -624,7 +635,7 @@ function renderStockDonutChart(container, productos) {
         .data(pie(datos))
         .enter()
         .append('path')
-        .attr('fill', d => color(d.data.label))
+        .attr('fill', d => d.data.color)
         .attr('d', arc)
         .each(function(d) { this._current = d; });
 
@@ -639,17 +650,32 @@ function renderStockDonutChart(container, productos) {
             };
         });
 
-    // Leyenda
+    // Valores centrales y leyenda
+    svg.append('text')
+        .attr('text-anchor', 'middle')
+        .attr('y', -4)
+        .attr('fill', '#FFFFFF')
+        .attr('font-size', '20px')
+        .attr('font-weight', 'bold')
+        .text(total);
+
+    svg.append('text')
+        .attr('text-anchor', 'middle')
+        .attr('y', 14)
+        .attr('fill', '#94A3B8')
+        .attr('font-size', '10px')
+        .text('productos');
+
     const legend = svg.append('g')
-        .attr('transform', `translate(-${radius * 0.8}, ${radius * 1.3})`)
+        .attr('transform', `translate(${ancho * 0.62 - centroX}, ${-36})`)
         .selectAll('g')
         .data(datos)
         .enter()
         .append('g')
-        .attr('transform', (d, i) => `translate(0, ${i * 20})`);
+        .attr('transform', (d, i) => `translate(0, ${i * 24})`);
 
     legend.append('circle')
-        .attr('fill', d => color(d.data.label))
+        .attr('fill', d => d.color)
         .attr('r', 6);
 
     legend.append('text')
@@ -657,42 +683,12 @@ function renderStockDonutChart(container, productos) {
         .attr('y', 4)
         .attr('font-size', '10px')
         .attr('fill', '#E0E0E0')
-        .text(d => `${d.data.label}: ${Math.round(d.data.valor)}%`);
-
-    // Función para redibujar el gráfico donut al redimensionar
-    function redrawStockDonutChart() {
-        width = canvas.offsetWidth || 400;
-        height = 140;
-        radius = Math.min(width, height) / 2 * 0.7;
-
-        // Actualizar ancho/alto del SVG
-        svg.attr('width', width).attr('height', height);
-
-        // Actualizar radio del arco
-        arc.innerRadius(radius * 0.6).outerRadius(radius);
-
-        // Re-dibujar sectores con nuevo arco
-        svg.selectAll('path')
-            .data(pie(datos))
-            .attr('d', arc);
-
-        // Re-dibujar leyenda posición
-        const legend = svg.select('g').attr('transform', `translate(-${radius * 0.8}, ${radius * 1.3})`);
-        legend.selectAll('g')
-            .attr('transform', (d, i) => `translate(0, ${i * 20})`);
-    }
-
-    const resizeObserver = new ResizeObserver(entries => {
-        for (let entry of entries) {
-            redrawStockDonutChart();
-        }
-    });
-    resizeObserver.observe(canvas);
+        .text(d => `${d.label}: ${Math.round(d.valor)}%`);
 }
 
 function renderPaymentBarChart(container) {
     const canvas = document.createElement('div');
-    canvas.className = 'bg-carbon-900/80 rounded-2xl border border-carbon-700 p-6 shadow-card resize-observer';
+    canvas.className = 'bg-carbon-900/80 rounded-2xl border border-carbon-700 p-6 shadow-card';
     canvas.innerHTML = `
         <h3 class="text-font text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">Volumen de Transacciones por Pasarela</h3>
         <div id="payment-bar-chart" class="relative h-48"></div>
@@ -705,15 +701,20 @@ function renderPaymentBarChart(container) {
         { nombre: 'Stripe', volumen: 98200 }
     ];
 
-    let width = canvas.offsetWidth || 500;
-    let height = 80;
-    const margin = { top: 20, right: 20, bottom: 40, left: 60 };
-    const barWidth = 40;
-    const barPadding = 20;
+    const chartEl = canvas.querySelector('#payment-bar-chart');
+    const ancho = Math.max(300, chartEl.clientWidth || 500);
+    const alto = Math.max(200, chartEl.clientHeight || 192);
+    const margin = { top: 20, right: 20, bottom: 40, left: 70 };
+    const width = ancho - margin.left - margin.right;
+    const height = alto - margin.top - margin.bottom;
 
-    const svg = d3.select('#' + canvas.querySelector('div').id.replace('-chart', ''))
-        .attr('width', width + margin.left + margin.right)
-        .attr('height', height + margin.top + margin.bottom)
+    const svg = d3.select(chartEl)
+        .append('svg')
+        .attr('viewBox', `0 0 ${ancho} ${alto}`)
+        .attr('width', '100%')
+        .attr('height', '100%')
+        .attr('role', 'img')
+        .attr('aria-label', 'Volumen de transacciones por pasarela')
         .append('g')
         .attr('transform', `translate(${margin.left},${margin.top})`);
 
@@ -787,51 +788,6 @@ function renderPaymentBarChart(container) {
         .attr('font-size', '10px')
         .text('Volumen de Transacciones (ARS)');
 
-    // Función para redibujar el gráfico de barras al redimensionar
-    function redrawPaymentBarChart() {
-        width = canvas.offsetWidth || 500;
-        height = 80;
-
-        // Actualizar escalas
-        x.range([0, width]);
-        y.domain([0, d3.max(datosPago, d => d.volumen) * 1.1]);
-
-        // Actualizar ancho/alto del SVG
-        svg.attr('width', width + margin.left + margin.right)
-            .attr('height', height + margin.top + margin.bottom);
-
-        // Actualizar ejes
-        svg.select('.x-axis')
-            .call(d3.axisBottom(x))
-            .selectAll('.tick text')
-            .attr('fill', '#E0E0E0')
-            .attr('font-size', '10px');
-
-        svg.select('.y-axis')
-            .call(d3.axisLeft(y).tickFormat(d => `$${d.toLocaleString()}`))
-            .selectAll('.tick line')
-            .attr('stroke', '#3F3F46');
-
-        // Actualizar barras
-        svg.selectAll('.bar')
-            .attr('x', d => x(d.nombre))
-            .attr('y', d => y(d.volumen))
-            .attr('width', x.bandwidth())
-            .attr('height', d => height - y(d.volumen));
-
-        // Actualizar etiquetas de valor
-        svg.selectAll('.label')
-            .attr('x', d => x(d.nombre) + x.bandwidth() / 2)
-            .attr('y', d => y(d.volumen) - 5)
-            .text(d => `$${d.volumen.toLocaleString()}`);
-    }
-
-    const resizeObserver = new ResizeObserver(entries => {
-        for (let entry of entries) {
-            redrawPaymentBarChart();
-        }
-    });
-    resizeObserver.observe(canvas);
 }
 
 // ---------------------------------------------------------------------
@@ -844,7 +800,7 @@ function escaparHtml(texto) {
 }
 
 async function renderCatalogo(container) {
-    const productos = await api.productos.listar().catch(() => []);
+    const productos = await api.productos.listar();
     container.innerHTML = `
         <div class="flex items-center justify-between gap-4 pb-6 border-b border-carbon-700/80">
             <div>
@@ -860,7 +816,7 @@ async function renderCatalogo(container) {
             ${productos.map((p) => `
                 <div class="catalogo-product-card bg-carbon-900/60 border border-carbon-700 rounded-2xl p-5 flex flex-col gap-2" data-nombre="${escaparHtml(p.nombre)}" data-categoria="${escaparHtml(p.categoria)}">
                     <h3 class="text-sm font-bold text-white">${escaparHtml(p.nombre)}</h3>
-                    <p class="text-[11px] text-slate-400 uppercase tracking-wider">${escaparHtml(p.categoria)}</p>
+                    <p class="text-[11px] text-slate-400 uppercase tracking-wider">${escaparHtml(p.categoriaOriginal || p.categoria)}</p>
                     <p class="text-lg font-bold text-white font-mono-numbers">$ ${Number(p.precio).toFixed(2)}</p>
                     <p class="text-[11px] ${p.stockDisponible > 0 ? 'text-emerald-400' : 'text-red-400'} font-semibold">Stock disponible: ${p.stockDisponible}</p>
                     <button class="catalogo-agregar mt-2 px-3 py-2 bg-carbon-800 hover:bg-carbon-750 text-white rounded-xl text-xs font-bold border border-carbon-700 transition-colors" data-id="${p.id}" ${p.stockDisponible <= 0 ? 'disabled' : ''}>Agregar al Carrito</button>
@@ -879,7 +835,7 @@ async function renderCatalogo(container) {
 }
 
 async function renderTerminal(container) {
-    const productos = await api.productos.listar().catch(() => []);
+    const productos = await api.productos.listar();
     const orden = new Map();
 
     container.innerHTML = `
@@ -980,7 +936,7 @@ async function renderTerminal(container) {
 }
 
 async function renderClientes(container) {
-    const clientes = await api.clientes.listar().catch(() => []);
+    const clientes = await api.clientes.listar();
     container.innerHTML = `
         <div class="pb-6 border-b border-carbon-700/80">
             <h1 class="text-2xl font-bold text-white tracking-tight">Clientes</h1>
@@ -1012,7 +968,7 @@ async function renderClientes(container) {
 }
 
 async function renderAuditoria(container) {
-    const registros = await api.auditoria.listar().catch(() => []);
+    const registros = await api.auditoria.listar();
     container.innerHTML = `
         <div class="pb-6 border-b border-carbon-700/80">
             <h1 class="text-2xl font-bold text-white tracking-tight">Auditoría y Ventas</h1>

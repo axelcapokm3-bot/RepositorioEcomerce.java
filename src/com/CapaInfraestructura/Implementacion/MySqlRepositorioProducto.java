@@ -8,6 +8,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.logging.Logger;
 
 import com.CapaAplicacion.Interfaces.IProductoRepository;
 import com.CapaDominio.Entidades.CategoriaProducto;
@@ -15,11 +16,14 @@ import com.CapaDominio.Entidades.Producto;
 
 public class MySqlRepositorioProducto implements IProductoRepository {
 
+    private static final Logger LOGGER = Logger.getLogger(MySqlRepositorioProducto.class.getName());
 
+    private static final String CATEGORIA_NORMALIZADA =
+            "UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(nombre, 'Á', 'A'), 'É', 'E'), 'Í', 'I'), 'Ó', 'O'), 'Ú', 'U'))";
 
     private static final String INSERT = "INSERT INTO productos "
             + "(nombre, precio, stock_fisico, stock_reservado, id_categoria, id_negocio, activo) "
-            + "VALUES (?, ?, ?, ?, (SELECT id FROM categorias WHERE id_negocio = ? AND nombre = ?), ?, ?)";
+            + "VALUES (?, ?, ?, ?, (SELECT id FROM categorias WHERE id_negocio = ? AND " + CATEGORIA_NORMALIZADA + " = ?), ?, ?)";
     private static final String SELECT_BASE = "SELECT p.id, p.nombre, p.precio, p.stock_fisico, "
             + "p.stock_reservado, p.id_negocio, p.activo, c.nombre AS categoria "
             + "FROM productos p JOIN categorias c ON c.id = p.id_categoria AND c.id_negocio = p.id_negocio ";
@@ -38,7 +42,7 @@ public class MySqlRepositorioProducto implements IProductoRepository {
         String sql = producto.getId() == 0
                 ? INSERT
                 : "INSERT INTO productos (id, nombre, precio, stock_fisico, stock_reservado, id_categoria, id_negocio, activo) "
-                + "VALUES (?, ?, ?, ?, ?, (SELECT id FROM categorias WHERE id_negocio = ? AND UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(nombre, 'Á', 'A'), 'É', 'E'), 'Í', 'I'), 'Ó', 'O'), 'Ú', 'U')) = ?)), ?, ?)";
+                + "VALUES (?, ?, ?, ?, ?, (SELECT id FROM categorias WHERE id_negocio = ? AND " + CATEGORIA_NORMALIZADA + " = ?)), ?, ?)";
         try (PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             int index = 1;
             if (producto.getId() != 0) {
@@ -84,6 +88,7 @@ public class MySqlRepositorioProducto implements IProductoRepository {
         }
     }
 
+    @Override
     public Optional<Producto> buscarPorIdParaUpdate(long idNegocio, int id, Connection connection) throws SQLException {
         if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
         if (id <= 0) throw new IllegalArgumentException("El ID debe ser mayor a cero.");
@@ -99,9 +104,21 @@ public class MySqlRepositorioProducto implements IProductoRepository {
     @Override
     public List<Producto> listarTodos(long idNegocio) {
         if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
+        return listar(idNegocio, false);
+    }
+
+    @Override
+    public List<Producto> listarActivos(long idNegocio) {
+        if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
+        return listar(idNegocio, true);
+    }
+
+    private List<Producto> listar(long idNegocio, boolean soloActivos) {
         List<Producto> productos = new ArrayList<>();
+        String filtro = soloActivos ? " AND p.activo = 1" : "";
         try (Connection connection = DatabaseConnection.getConnection();
-              PreparedStatement statement = connection.prepareStatement(SELECT_BASE + "WHERE p.id_negocio = ? ORDER BY p.id")) {
+              PreparedStatement statement = connection.prepareStatement(
+                      SELECT_BASE + "WHERE p.id_negocio = ?" + filtro + " ORDER BY p.id")) {
             statement.setLong(1, idNegocio);
             try (ResultSet result = statement.executeQuery()) {
                 while (result.next()) productos.add(map(result));
@@ -124,7 +141,7 @@ public class MySqlRepositorioProducto implements IProductoRepository {
     public void actualizar(long idNegocio, int id, Producto producto, Connection connection) throws SQLException {
         requireProducto(producto);
         String sql = "UPDATE productos SET nombre = ?, precio = ?, stock_fisico = ?, "
-                + "stock_reservado = ?, activo = ?, id_categoria = (SELECT id FROM categorias WHERE id_negocio = ? AND nombre = ?) WHERE id = ? AND id_negocio = ?";
+                + "stock_reservado = ?, activo = ?, id_categoria = (SELECT id FROM categorias WHERE id_negocio = ? AND " + CATEGORIA_NORMALIZADA + " = ?) WHERE id = ? AND id_negocio = ?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, producto.getNombre());
             statement.setBigDecimal(2, producto.getPrecio());
@@ -135,7 +152,11 @@ public class MySqlRepositorioProducto implements IProductoRepository {
             statement.setString(7, producto.getCategoria().name());
             statement.setInt(8, id);
             statement.setLong(9, idNegocio);
-            statement.executeUpdate();
+            int filasActualizadas = statement.executeUpdate();
+            if (filasActualizadas != 1) {
+                throw new SQLException("No se pudo actualizar el producto " + id + " del negocio "
+                        + idNegocio + " (filas afectadas: " + filasActualizadas + ").");
+            }
         }
     }
 
@@ -160,17 +181,11 @@ public class MySqlRepositorioProducto implements IProductoRepository {
 
 private Producto map(ResultSet result) throws SQLException {
         String categoriaTexto = result.getString("categoria");
-        
-        // Limpiamos espacios, pasamos a mayúsculas y quitamos tildes
-        String categoriaLimpia = categoriaTexto.trim().toUpperCase()
-                .replace("Á", "A")
-                .replace("É", "E")
-                .replace("Í", "I")
-                .replace("Ó", "O")
-                .replace("Ú", "U")
-                .replace(" ", "_"); 
-
-        CategoriaProducto categoriaEnum = CategoriaProducto.valueOf(categoriaLimpia);
+        CategoriaProducto categoriaEnum = CategoriaProducto.desdeTexto(categoriaTexto);
+        if (!CategoriaProducto.esConocida(categoriaTexto)) {
+            LOGGER.warning("Categoría desconocida '" + categoriaTexto + "' en negocio "
+                    + result.getLong("id_negocio") + "; se mapea a OTROS.");
+        }
 
         Producto producto = new Producto(
                 result.getString("nombre"), 
@@ -182,6 +197,7 @@ private Producto map(ResultSet result) throws SQLException {
         );
         producto.setIdNegocio(result.getLong("id_negocio"));
         producto.setActivo(result.getBoolean("activo"));
+        producto.setCategoriaOriginal(categoriaTexto);
         return producto;
     }
     private static void requireProducto(Producto producto) {

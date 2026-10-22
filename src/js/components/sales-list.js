@@ -56,8 +56,8 @@ function renderTabla(salesTableDiv, sales, parentElement) {
                             <td>${sale.tipoPago}</td>
                             <td>$${sale.detalles.reduce((sum, item) => sum + (item.precioUnitario * item.cantidad), 0).toFixed(2)}</td>
                             <td>
-                                <button class="action-btn pay-btn" data-sale-id="${sale.id}" ${sale.estadoCompra === 'PAGADO' || sale.estadoCompra === 'CANCELADO' ? 'disabled' : ''}>Registrar Pago</button>
-                                <button class="action-btn cancel-btn" data-sale-id="${sale.id}" ${sale.estadoCompra === 'PAGADO' || sale.estadoCompra === 'CANCELADO' ? 'disabled' : ''}>Cancelar Venta</button>
+                                <button class="action-btn pay-btn" data-sale-id="${sale.id}" ${sale.estadoCompra === 'PENDIENTE' ? '' : 'disabled'}>Registrar Pago</button>
+                                <button class="action-btn cancel-btn" data-sale-id="${sale.id}" ${sale.estadoCompra === 'PENDIENTE' ? '' : 'disabled'}>Cancelar Venta</button>
                             </td>
                         </tr>
                     `).join('')}

@@ -8,4 +8,13 @@ public record ProductoRequestDTO(
     BigDecimal precio,
     int stock, 
     CategoriaProducto categoria
-) {}
+) {
+    public ProductoRequestDTO {
+        if (categoria == null) {
+            throw new IllegalArgumentException("La categoría del producto es obligatoria.");
+        }
+        if (categoria == CategoriaProducto.OTROS) {
+            throw new IllegalArgumentException("La categoría OTROS es solo de lectura. Especifique una categoría real.");
+        }
+    }
+}

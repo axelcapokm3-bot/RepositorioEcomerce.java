@@ -6,6 +6,7 @@ import com.CapaAplicacion.Interfaces.INegocioService;
 import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
 import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaDominio.Entidades.Negocio;
+import com.CapaPresentacion.Utilidades.ResolutorNegocio;
 import com.sun.net.httpserver.HttpExchange;
 
 import java.io.IOException;
@@ -55,6 +56,7 @@ public class NegocioConfigController extends BaseController {
                         throw new ControllerException.Validacion("Datos incompletos.", "La clave y el valor son obligatorios.");
                     }
                     negocioService.actualizarConfiguracion(subdominio, dto.getClave(), dto.getValor());
+                    ResolutorNegocio.invalidar(subdominio);
                     sendResponse(exchange, 200, "{\"mensaje\": \"Configuración actualizada correctamente\"}");
                 } else {
                     throw new ControllerException.Validacion("Método no permitido.", "La ruta no admite este método HTTP.");

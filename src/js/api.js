@@ -79,6 +79,12 @@ export const negocio = {
     }
 };
 
+function errorHttp(mensaje, status) {
+    const error = new Error(mensaje);
+    error.status = status;
+    return error;
+}
+
 async function request(endpoint, options = {}, mostrarError = true) {
     try {
         const token = sesion.token();
@@ -105,14 +111,14 @@ async function request(endpoint, options = {}, mostrarError = true) {
             if (!esPaginaLogin()) {
                 window.location.href = 'login.html';
             }
-            throw new Error('Su sesión expiró o no es válida. Ingrese nuevamente.');
+            throw errorHttp('Su sesión expiró o no es válida. Ingrese nuevamente.', response.status);
         }
         if (response.status === 403) {
-            throw new Error('No tiene permisos para realizar esta operación.');
+            throw errorHttp('No tiene permisos para realizar esta operación.', response.status);
         }
         if (!response.ok) {
             const errorMsg = data?.error || text || `Error HTTP ${response.status}`;
-            throw new Error(errorMsg);
+            throw errorHttp(errorMsg, response.status);
         }
 
         return data;
@@ -134,20 +140,23 @@ export const api = {
         registro: (payload) => request('/auth/registro', { method: 'POST', body: payload }),
         sesionActual: () => request('/auth/sesion'),
         negocios: () => request('/auth/negocios'),
-        negocioActivo: async (idNegocio) => {
+        negocioActivo: async (subdominio) => {
             const datos = await request('/auth/negocio-activo', {
                 method: 'POST',
-                body: { idNegocio }
+                headers: { [HEADER_NEGOCIO]: subdominio }
             });
             sesion.guardar(datos);
+            negocio.fijar(subdominio);
             return datos;
         },
-        vincular: async (idNegocio, idCliente, contraseniaPlana) => {
+        vincular: async (subdominio, datosCliente, contraseniaPlana) => {
             const datos = await request('/auth/vincular', {
                 method: 'POST',
-                body: { idNegocio, idCliente, contraseniaPlana }
+                headers: { [HEADER_NEGOCIO]: subdominio },
+                body: { ...datosCliente, contraseniaPlana }
             });
             sesion.guardar(datos);
+            negocio.fijar(subdominio);
             return datos;
         },
         salir: () => {
@@ -167,6 +176,12 @@ export const api = {
         crear: (payload) => request('/clientes', { method: 'POST', body: payload }),
         actualizar: (id, payload) => request(`/clientes/${id}`, { method: 'PUT', body: payload }),
         eliminar: (id) => request(`/clientes/${id}`, { method: 'DELETE' })
+    },
+    carrito: {
+        obtener: () => request('/carrito', {}, false),
+        agregar: (payload) => request('/carrito/items', { method: 'POST', body: payload }, false),
+        eliminar: (idProducto) => request(`/carrito/items/${idProducto}`, { method: 'DELETE' }, false),
+        vaciar: () => request('/carrito', { method: 'DELETE' }, false)
     },
     ventas: {
         crear: (payload, claveIdempotencia) => request('/ventas/crear', {

@@ -13,7 +13,6 @@ import com.CapaDominio.Excepciones.PagoRechazadoException;
 import com.CapaDominio.Excepciones.PasarelaNoDisponibleException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.mercadopago.MercadoPagoConfig;
 import com.mercadopago.core.MPRequestOptions;
 import com.mercadopago.client.order.OrderClient;
 import com.mercadopago.client.order.OrderConfigRequest;
@@ -88,11 +87,13 @@ public class PasarelaMercadoPago implements IPasarelaPago {
         String accessToken = buscarAccessToken();
         ConfiguracionRetorno configuracion = obtenerConfiguracionRetorno();
         try {
-            MercadoPagoConfig.setAccessToken(accessToken);
             OrderCreateRequest request = crearSolicitud(venta, configuracion);
             Map<String, String> headers = new HashMap<>();
             headers.put("X-Idempotency-Key", claveIdempotenciaPasarela);
-            MPRequestOptions options = MPRequestOptions.builder().customHeaders(headers).build();
+            MPRequestOptions options = MPRequestOptions.builder()
+                    .accessToken(accessToken)
+                    .customHeaders(headers)
+                    .build();
 
             Order order = orderClient.create(request, options);
             validarRespuesta(order);

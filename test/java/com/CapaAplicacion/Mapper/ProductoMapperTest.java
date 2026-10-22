@@ -25,5 +25,16 @@ class ProductoMapperTest {
         assertEquals(5, dto.stockDisponible());
         assertEquals(EstadoStock.CRITICO, dto.estadoStock());
         assertEquals(CategoriaProducto.ELECTRONICA, dto.categoria());
+        assertEquals("ELECTRONICA", dto.categoriaOriginal());
+    }
+
+    @Test
+    @DisplayName("Conserva la categoría original de la base de datos")
+    void conservaCategoriaOriginal() {
+        Producto p = new Producto("Arroz", new BigDecimal("20"), 5, 0, 5, CategoriaProducto.ALMACEN);
+        p.setCategoriaOriginal("Almacén");
+        ProductoResponseDTO dto = ProductoMapper.toResponseDTO(p);
+        assertEquals(CategoriaProducto.ALMACEN, dto.categoria());
+        assertEquals("Almacén", dto.categoriaOriginal());
     }
 }

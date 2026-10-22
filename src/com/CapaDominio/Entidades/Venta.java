@@ -145,6 +145,20 @@ public void setId(int id) {
     this.id = id;
 }
 
+    public void rehidratarEstado(EstadoVenta estado) {
+        if (estado == null) {
+            throw new IllegalArgumentException("El estado persistido no puede ser nulo.");
+        }
+        this.estadoCompra = estado;
+    }
+
+    public void rehidratarFechaCompra(LocalDateTime fechaCompra) {
+        if (fechaCompra == null) {
+            throw new IllegalArgumentException("La fecha de compra persistida no puede ser nula.");
+        }
+        this.fechaCompra = fechaCompra;
+    }
+
 
 
 
@@ -154,6 +168,10 @@ public void setId(int id) {
 
         public void Cancelar(){
              cambiarEstado(EstadoVenta.CANCELADO);
+    }
+
+    public void Expirar() {
+        cambiarEstado(EstadoVenta.EXPIRADO);
     }
 
     public void Enviar(){

@@ -3,7 +3,7 @@ package com.CapaAplicacion.Seguridad;
 import com.CapaDominio.Entidades.RolUsuario;
 
 public record Principal(
-        int idCuenta,
+        long idCuenta,
         int idCliente,
         long idNegocio,
         RolUsuario rol

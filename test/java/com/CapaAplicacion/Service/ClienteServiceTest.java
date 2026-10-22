@@ -96,7 +96,21 @@ class ClienteServiceTest {
     @Test
     @DisplayName("eliminarAsync: delega en el repositorio")
     void eliminar() throws Exception {
+        when(repository.buscarPorId(NEGOCIO, 2)).thenReturn(Optional.of(clienteEnRepo(2)));
         service.eliminarAsync(NEGOCIO, 2).get();
         verify(repository).eliminar(NEGOCIO, 2);
+    }
+
+    @Test
+    @DisplayName("eliminarAsync: no borra un cliente inexistente o de otro negocio")
+    void eliminarInexistente() {
+        when(repository.buscarPorId(NEGOCIO, 99)).thenReturn(Optional.empty());
+
+        ExecutionException error = assertThrows(ExecutionException.class,
+                () -> service.eliminarAsync(NEGOCIO, 99).get());
+
+        assertInstanceOf(com.CapaDominio.Excepciones.RecursoNoEncontradoException.class,
+                error.getCause());
+        verify(repository, never()).eliminar(anyLong(), anyInt());
     }
 }

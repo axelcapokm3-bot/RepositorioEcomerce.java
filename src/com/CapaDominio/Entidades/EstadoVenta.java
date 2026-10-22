@@ -4,15 +4,15 @@ public enum EstadoVenta {
     PENDIENTE {
         @Override
         public boolean puedeTransicionarA(EstadoVenta nuevoEstado) {
-          
-            return nuevoEstado == PAGADO;
+            return nuevoEstado == PAGADO
+                    || nuevoEstado == CANCELADO
+                    || nuevoEstado == EXPIRADO;
         }
     },
     PAGADO {
         @Override
         public boolean puedeTransicionarA(EstadoVenta nuevoEstado) {
-         
-            return nuevoEstado == ENVIADO || nuevoEstado == CANCELADO;
+            return nuevoEstado == ENVIADO;
         }
     },
     ENVIADO {
@@ -25,6 +25,12 @@ public enum EstadoVenta {
         @Override
         public boolean puedeTransicionarA(EstadoVenta nuevoEstado) {
             return false; 
+        }
+    },
+    EXPIRADO {
+        @Override
+        public boolean puedeTransicionarA(EstadoVenta nuevoEstado) {
+            return false;
         }
     };
 

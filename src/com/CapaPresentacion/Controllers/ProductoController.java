@@ -1,14 +1,19 @@
 package com.CapaPresentacion.Controllers;
 
 import java.io.IOException;
+import java.util.Optional;
 
 import com.CapaAplicacion.DTOentrada.ProductoRequestDTO;
 import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
 import com.CapaAplicacion.Interfaces.RepositorioProductoService;
+import com.CapaAplicacion.Seguridad.ControlAcceso;
 import com.CapaAplicacion.Seguridad.Principal;
 import com.sun.net.httpserver.HttpExchange;
 
 public class ProductoController extends BaseController {
+
+    private static final int LIMITE_ADMIN_POR_MINUTO = 120;
+    private static final int LIMITE_PUBLICO_POR_MINUTO = 300;
 
     private final RepositorioProductoService servicio;
     private final IProveedorTokenAcceso proveedor;
@@ -35,10 +40,18 @@ public class ProductoController extends BaseController {
             if (path.equals("/api/productos") || path.equals("/api/productos/")) {
                 if ("GET".equalsIgnoreCase(method)) {
                     long idNegocio = exigirNegocio(exchange);
-                    handleAsync(exchange, servicio.listarTodosAsync(idNegocio), 200);
+                    if (limitarSolicitudPublica(exchange, idNegocio, "catalogo", LIMITE_PUBLICO_POR_MINUTO)) {
+                        return;
+                    }
+                    handleAsync(exchange, esAdmin(exchange)
+                            ? servicio.listarTodosAsync(idNegocio)
+                            : servicio.listarActivosAsync(idNegocio), 200);
                 } else if ("POST".equalsIgnoreCase(method)) {
                     Principal principal = exigirAutenticacion(exchange, proveedor);
                     exigirAdmin(principal);
+                    if (limitarSolicitud(exchange, principal, "productos-admin", LIMITE_ADMIN_POR_MINUTO)) {
+                        return;
+                    }
                     long idNegocio = negocioAutorizado(exchange, principal);
                     ProductoRequestDTO dto = parseRequestBody(exchange, ProductoRequestDTO.class);
                     handleAsync(exchange, servicio.guardarAsync(idNegocio, dto), 201);
@@ -53,16 +66,27 @@ public class ProductoController extends BaseController {
 
                 if ("GET".equalsIgnoreCase(method)) {
                     long idNegocio = exigirNegocio(exchange);
-                    handleAsync(exchange, servicio.buscarPorIdAsync(idNegocio, id), 200);
+                    if (limitarSolicitudPublica(exchange, idNegocio, "catalogo", LIMITE_PUBLICO_POR_MINUTO)) {
+                        return;
+                    }
+                    handleAsync(exchange, esAdmin(exchange)
+                            ? servicio.buscarPorIdAsync(idNegocio, id)
+                            : servicio.buscarActivoPorIdAsync(idNegocio, id), 200);
                 } else if ("PUT".equalsIgnoreCase(method)) {
                     Principal principal = exigirAutenticacion(exchange, proveedor);
                     exigirAdmin(principal);
+                    if (limitarSolicitud(exchange, principal, "productos-admin", LIMITE_ADMIN_POR_MINUTO)) {
+                        return;
+                    }
                     long idNegocio = negocioAutorizado(exchange, principal);
                     ProductoRequestDTO dto = parseRequestBody(exchange, ProductoRequestDTO.class);
                     handleAsync(exchange, servicio.actualizarAsync(idNegocio, id, dto), 200);
                 } else if ("DELETE".equalsIgnoreCase(method)) {
                     Principal principal = exigirAutenticacion(exchange, proveedor);
                     exigirAdmin(principal);
+                    if (limitarSolicitud(exchange, principal, "productos-admin", LIMITE_ADMIN_POR_MINUTO)) {
+                        return;
+                    }
                     long idNegocio = negocioAutorizado(exchange, principal);
                     handleAsync(exchange, servicio.eliminarAsync(idNegocio, id), 200);
                 } else {
@@ -75,8 +99,15 @@ public class ProductoController extends BaseController {
             sendError(exchange, 503, new ControllerException.ServicioNoDisponible(
                     "No fue posible responder al cliente.", "Problema de red o comunicación."
             ).respuesta());
+        } catch (IllegalArgumentException e) {
+            sendError(exchange, 400, "Solicitud inválida: " + e.getMessage());
         } catch (Exception e) {
             sendError(exchange, 500, "Código: ERROR_SERVIDOR | Mensaje: Error interno del servidor. | Causa: Fallo inesperado.");
         }
+    }
+
+    private boolean esAdmin(HttpExchange exchange) {
+        Optional<Principal> principal = extraerPrincipal(exchange, proveedor);
+        return principal.isPresent() && ControlAcceso.esAdmin(principal.get());
     }
 }

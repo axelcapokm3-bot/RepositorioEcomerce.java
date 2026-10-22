@@ -22,6 +22,17 @@ function textoVinculo(vinculo) {
     return `${nombre} · ${vinculo.rol}${inactivo ? ` (${vinculo.estado})` : ''}`;
 }
 
+function subdominioDeSesion(vinculos) {
+    const actual = sesion.obtener();
+    if (!actual) {
+        return '';
+    }
+    const vinculo = (vinculos || []).find(
+        (v) => Number(v.idNegocio) === Number(actual.idNegocio)
+    );
+    return vinculo && vinculo.subdominio ? vinculo.subdominio : '';
+}
+
 async function inicializar() {
     const select = document.getElementById(SELECTOR_ID);
     const etiqueta = document.getElementById(ETIQUETA_ID);
@@ -46,10 +57,11 @@ async function inicializar() {
         select.querySelectorAll('option[data-vinculo]').forEach((o) => o.remove());
         for (const vinculo of vinculos || []) {
             const option = document.createElement('option');
-            option.value = String(vinculo.idNegocio);
+            option.value = vinculo.subdominio || '';
             option.dataset.vinculo = '1';
             option.textContent = textoVinculo(vinculo);
-            option.disabled = Boolean(vinculo.estado && vinculo.estado !== 'ACTIVA');
+            option.disabled = !vinculo.subdominio
+                || Boolean(vinculo.estado && vinculo.estado !== 'ACTIVA');
             if (Number(vinculo.idNegocio) === Number(actual.idNegocio)) {
                 option.selected = true;
             }
@@ -71,22 +83,19 @@ async function inicializar() {
         }
         if (destino === VALOR_VINCULAR) {
             mostrarModalVincular(() => {
-                const vigente = sesion.obtener();
-                select.value = vigente ? String(vigente.idNegocio) : '';
+                select.value = subdominioDeSesion(vinculos);
             });
-            const vigente = sesion.obtener();
-            select.value = vigente ? String(vigente.idNegocio) : '';
+            select.value = subdominioDeSesion(vinculos);
             return;
         }
         try {
-            const datos = await api.auth.negocioActivo(Number(destino));
+            const datos = await api.auth.negocioActivo(destino);
             if (etiqueta) {
                 etiqueta.textContent = etiquetaNegocio(datos, vinculos);
             }
             window.location.reload();
         } catch {
-            const vigente = sesion.obtener();
-            select.value = vigente ? String(vigente.idNegocio) : '';
+            select.value = subdominioDeSesion(vinculos);
         }
     });
 }
@@ -103,12 +112,24 @@ function mostrarModalVincular(alCerrar) {
             <h3 class="text-sm font-bold text-white">Vincular otro negocio</h3>
             <p class="text-[11px] text-slate-400 mt-1">Se crea un acceso CLIENTE a ese negocio con tu cuenta actual.</p>
             <div class="flex flex-col gap-3 mt-4">
-                <label class="flex flex-col gap-1 text-[11px] font-semibold text-slate-300">ID del negocio
-                    <input id="vincular-negocio" type="number" min="1" placeholder="Ej.: 2"
+                <label class="flex flex-col gap-1 text-[11px] font-semibold text-slate-300">Subdominio del negocio
+                    <input id="vincular-negocio" type="text" placeholder="Ej.: dos"
                         class="h-10 px-3 bg-carbon-800 border border-carbon-700 text-white rounded-xl text-xs focus:border-brand focus:outline-none" />
                 </label>
-                <label class="flex flex-col gap-1 text-[11px] font-semibold text-slate-300">ID de cliente (tu perfil en ese negocio)
-                    <input id="vincular-cliente" type="number" min="1" placeholder="Ej.: 9"
+                <label class="flex flex-col gap-1 text-[11px] font-semibold text-slate-300">DNI del titular
+                    <input id="vincular-dni" type="text" inputmode="numeric" placeholder="Ej.: 30123456"
+                        class="h-10 px-3 bg-carbon-800 border border-carbon-700 text-white rounded-xl text-xs focus:border-brand focus:outline-none" />
+                </label>
+                <label class="flex flex-col gap-1 text-[11px] font-semibold text-slate-300">Nombre del titular
+                    <input id="vincular-nombre" type="text" placeholder="Ej.: Juan"
+                        class="h-10 px-3 bg-carbon-800 border border-carbon-700 text-white rounded-xl text-xs focus:border-brand focus:outline-none" />
+                </label>
+                <label class="flex flex-col gap-1 text-[11px] font-semibold text-slate-300">Apellido del titular
+                    <input id="vincular-apellido" type="text" placeholder="Ej.: Pérez"
+                        class="h-10 px-3 bg-carbon-800 border border-carbon-700 text-white rounded-xl text-xs focus:border-brand focus:outline-none" />
+                </label>
+                <label class="flex flex-col gap-1 text-[11px] font-semibold text-slate-300">Fecha de nacimiento del titular
+                    <input id="vincular-fecha" type="date"
                         class="h-10 px-3 bg-carbon-800 border border-carbon-700 text-white rounded-xl text-xs focus:border-brand focus:outline-none" />
                 </label>
                 <label class="flex flex-col gap-1 text-[11px] font-semibold text-slate-300">Confirmá tu contraseña
@@ -141,16 +162,25 @@ function mostrarModalVincular(alCerrar) {
     fondo.querySelector('#vincular-confirmar')?.addEventListener('click', async () => {
         const errorEl = fondo.querySelector('#vincular-error');
         errorEl.classList.add('hidden');
-        const idNegocio = Number(fondo.querySelector('#vincular-negocio').value);
-        const idCliente = Number(fondo.querySelector('#vincular-cliente').value);
+        const subdominio = fondo.querySelector('#vincular-negocio').value.trim().toLowerCase();
+        const dniCliente = fondo.querySelector('#vincular-dni').value.trim();
+        const nombreCliente = fondo.querySelector('#vincular-nombre').value.trim();
+        const apellidoCliente = fondo.querySelector('#vincular-apellido').value.trim();
+        const fechaNacimientoCliente = fondo.querySelector('#vincular-fecha').value;
         const clave = fondo.querySelector('#vincular-clave').value;
-        if (!idNegocio || !idCliente || !clave) {
+        if (!subdominio || !dniCliente || !nombreCliente || !apellidoCliente
+                || !fechaNacimientoCliente || !clave) {
             errorEl.textContent = 'Completá todos los campos.';
             errorEl.classList.remove('hidden');
             return;
         }
         try {
-            await api.auth.vincular(idNegocio, idCliente, clave);
+            await api.auth.vincular(subdominio, {
+                dniCliente,
+                nombreCliente,
+                apellidoCliente,
+                fechaNacimientoCliente
+            }, clave);
             showToast('Negocio vinculado correctamente.', 'success');
             cerrar();
             window.location.reload();

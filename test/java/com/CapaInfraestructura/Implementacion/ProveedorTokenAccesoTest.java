@@ -1,8 +1,10 @@
 package com.CapaInfraestructura.Implementacion;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.CapaAplicacion.Interfaces.IValidadorSesion;
 import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaDominio.Entidades.RolUsuario;
 
@@ -51,5 +53,67 @@ class ProveedorTokenAccesoTest {
         ProveedorTokenAcceso validador = new ProveedorTokenAcceso(otro, 3600);
         String token = emisor.emitir(1, 1, 1L, "CLIENTE");
         assertTrue(validador.validar(token).isEmpty());
+    }
+
+    @Test
+    void rechazaTokenSiLaSesionYaNoEstaVigente() {
+        ProveedorTokenAcceso proveedor = new ProveedorTokenAcceso(SECRETO, 3600,
+                new ValidadorSesionFalso(false));
+
+        String token = proveedor.emitir(7, 42, 3L, "CLIENTE");
+
+        assertTrue(proveedor.validar(token).isEmpty());
+    }
+
+    @Test
+    void validaLaSesionConLosDatosDelToken() {
+        ValidadorSesionFalso validador = new ValidadorSesionFalso(true);
+        ProveedorTokenAcceso proveedor = new ProveedorTokenAcceso(SECRETO, 3600, validador);
+
+        String token = proveedor.emitir(7, 42, 3L, "ADMIN");
+        Optional<Principal> principal = proveedor.validar(token);
+
+        assertTrue(principal.isPresent());
+        assertEquals(7, validador.idCuenta);
+        assertEquals(42, validador.idCliente);
+        assertEquals(3L, validador.idNegocio);
+        assertEquals(RolUsuario.ADMIN, validador.rol);
+    }
+
+    @Test
+    void fallaCerradoSiNoSePuedeVerificarLaSesion() {
+        ProveedorTokenAcceso proveedor = new ProveedorTokenAcceso(SECRETO, 3600,
+                new IValidadorSesion() {
+                    @Override
+                    public boolean estaVigente(long idCuenta, int idCliente,
+                                               long idNegocio, RolUsuario rol) {
+                        throw new IllegalStateException("MySQL no disponible");
+                    }
+                });
+
+        String token = proveedor.emitir(7, 42, 3L, "CLIENTE");
+
+        assertThrows(IllegalStateException.class, () -> proveedor.validar(token));
+    }
+
+    private static final class ValidadorSesionFalso implements IValidadorSesion {
+        private final boolean vigente;
+        private long idCuenta;
+        private int idCliente;
+        private long idNegocio;
+        private RolUsuario rol;
+
+        private ValidadorSesionFalso(boolean vigente) {
+            this.vigente = vigente;
+        }
+
+        @Override
+        public boolean estaVigente(long idCuenta, int idCliente, long idNegocio, RolUsuario rol) {
+            this.idCuenta = idCuenta;
+            this.idCliente = idCliente;
+            this.idNegocio = idNegocio;
+            this.rol = rol;
+            return vigente;
+        }
     }
 }

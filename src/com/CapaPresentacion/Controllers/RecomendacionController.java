@@ -42,10 +42,11 @@ public class RecomendacionController extends BaseController {
         if (handlePreflight(exchange)) {
             return;
         }
-        Principal principal = exigirAutenticacion(exchange, proveedor);
-        long idNegocio = negocioAutorizado(exchange, principal);
 
         try {
+            Principal principal = exigirAutenticacion(exchange, proveedor);
+            long idNegocio = negocioAutorizado(exchange, principal);
+
             if ("/api/recomendaciones".equals(path) || "/api/recomendaciones/".equals(path)) {
                 if ("POST".equalsIgnoreCase(method)) {
                     RecomendacionRequest req = parseRequestBody(exchange, RecomendacionRequest.class);

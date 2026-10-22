@@ -15,6 +15,9 @@ import com.CapaAplicacion.Seguridad.ControlAcceso;
 import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaDominio.Excepciones.PagoRechazadoException;
 import com.CapaDominio.Excepciones.PasarelaNoDisponibleException;
+import com.CapaDominio.Excepciones.RecursoNoEncontradoException;
+import com.CapaDominio.Excepciones.ReglaNegocioException;
+import com.CapaDominio.Excepciones.StockInsuficienteException;
 import com.CapaInfraestructura.Configuracion.ConfigLoader;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
@@ -24,7 +27,8 @@ import java.util.logging.Logger;
 public abstract class BaseController implements HttpHandler {
     private static final Logger LOGGER = Logger.getLogger(BaseController.class.getName());
     private static final int MAX_CUERPO_BYTES = 1024 * 1024;
-    private static final String ORIGENES_PREDETERMINADOS = "http://localhost:5500,http://localhost:8080";
+    private static final String ORIGENES_PREDETERMINADOS =
+            "http://localhost:5500,http://127.0.0.1:5500,http://localhost:8080,http://127.0.0.1:8080";
 
     protected boolean handlePreflight(HttpExchange exchange) throws IOException {
         aplicarCors(exchange);
@@ -157,6 +161,21 @@ public abstract class BaseController implements HttpHandler {
                         cause.getMessage(),
                         "La pasarela rechazó los datos del checkout."
                 ).respuesta());
+            } else if (cause instanceof StockInsuficienteException) {
+                sendError(exchange, 409, new ControllerException.Conflicto(
+                        cause.getMessage(),
+                        "El stock disponible ya no alcanza para completar la operación."
+                ).respuesta());
+            } else if (cause instanceof RecursoNoEncontradoException) {
+                sendError(exchange, 404, new ControllerException.NoEncontrado(
+                        cause.getMessage(),
+                        "El recurso solicitado ya no está disponible."
+                ).respuesta());
+            } else if (cause instanceof ReglaNegocioException) {
+                sendError(exchange, 409, new ControllerException.Conflicto(
+                        cause.getMessage(),
+                        "La regla de negocio impide completar la operación."
+                ).respuesta());
             } else if (cause instanceof IllegalArgumentException) {
                 sendError(exchange, 400, new ControllerException.Validacion(
                         "Los datos enviados no son válidos.",
@@ -264,11 +283,87 @@ public abstract class BaseController implements HttpHandler {
         return principal.idNegocio();
     }
 
-    protected boolean excedeLimite(HttpExchange exchange, int maxPorMinuto, String ambito) {
-        String direccion = exchange.getRemoteAddress() == null
+    protected boolean limitarSolicitud(HttpExchange exchange, String ambito, int predeterminado) {
+        return limitarSolicitud(exchange, null, ambito, predeterminado);
+    }
+
+    protected boolean limitarSolicitud(HttpExchange exchange, Principal principal,
+                                       String ambito, int predeterminado) {
+        int limiteIp = LimitadorTasa.limiteConfigurado(ambito, "ip", predeterminado);
+        int limiteCuenta = LimitadorTasa.limiteConfigurado(ambito, "cuenta", predeterminado);
+        int limiteNegocio = LimitadorTasa.limiteConfigurado(ambito, "negocio", predeterminado);
+        LimitadorTasa.Resultado resultado =
+                evaluarLimite(exchange, principal, null, ambito, limiteIp, limiteCuenta, limiteNegocio);
+        return responderSiExcedido(exchange, resultado);
+    }
+
+    protected boolean limitarSolicitudPublica(HttpExchange exchange, long idNegocio,
+                                              String ambito, int predeterminado) {
+        int limiteIp = LimitadorTasa.limiteConfigurado(ambito, "ip", predeterminado);
+        int limiteNegocio = LimitadorTasa.limiteConfigurado(ambito, "negocio", predeterminado);
+        String direccion = direccionCliente(exchange);
+        long ventana = LimitadorTasa.ventanaSegundos(ambito);
+        LimitadorTasa.Resultado porIp = LimitadorTasa.evaluar(
+                "ip|" + direccion + "|" + ambito, limiteIp, ventana);
+        LimitadorTasa.Resultado porNegocio = LimitadorTasa.evaluar(
+                "negocio-publico|" + idNegocio + "|" + ambito, limiteNegocio, ventana);
+        return responderSiExcedido(exchange, masRestrictivo(porIp, porNegocio));
+    }
+
+    private boolean responderSiExcedido(HttpExchange exchange, LimitadorTasa.Resultado resultado) {
+        if (!resultado.excedido()) {
+            return false;
+        }
+        aplicarRetryAfter(exchange, resultado);
+        sendError(exchange, 429,
+                "Código: LIMITE_EXCEDIDO | Mensaje: Demasiadas solicitudes. | Causa: Reintente en "
+                        + resultado.segundosParaReintentar() + " segundos.");
+        return true;
+    }
+
+    private LimitadorTasa.Resultado evaluarLimite(HttpExchange exchange, Principal principal,
+                                                  Long idNegocioPublico, String ambito,
+                                                  int limiteIp, int limiteCuenta, int limiteNegocio) {
+        String direccion = direccionCliente(exchange);
+        long ventana = LimitadorTasa.ventanaSegundos(ambito);
+        LimitadorTasa.Resultado porIp = LimitadorTasa.evaluar(
+                "ip|" + direccion + "|" + ambito, limiteIp, ventana);
+        if (principal == null) {
+            if (idNegocioPublico == null) {
+                return porIp;
+            }
+            return masRestrictivo(porIp, LimitadorTasa.evaluar(
+                    "negocio-publico|" + idNegocioPublico + "|" + ambito, limiteNegocio, ventana));
+        }
+
+        LimitadorTasa.Resultado porCuenta = LimitadorTasa.evaluar(
+                "cuenta|" + principal.idCuenta() + "|" + ambito, limiteCuenta, ventana);
+        LimitadorTasa.Resultado porNegocio = LimitadorTasa.evaluar(
+                "negocio|" + principal.idNegocio() + "|" + ambito, limiteNegocio, ventana);
+        return masRestrictivo(porIp, porCuenta, porNegocio);
+    }
+
+    private LimitadorTasa.Resultado masRestrictivo(LimitadorTasa.Resultado... resultados) {
+        LimitadorTasa.Resultado masRestrictivo = resultados[0];
+        for (LimitadorTasa.Resultado candidato : resultados) {
+            if (candidato.excedido()
+                    && (!masRestrictivo.excedido()
+                    || candidato.segundosParaReintentar() > masRestrictivo.segundosParaReintentar())) {
+                masRestrictivo = candidato;
+            }
+        }
+        return masRestrictivo;
+    }
+
+    private String direccionCliente(HttpExchange exchange) {
+        return exchange.getRemoteAddress() == null
                 ? "desconocida"
                 : exchange.getRemoteAddress().getAddress().getHostAddress();
-        return LimitadorTasa.excede(direccion + "|" + ambito, maxPorMinuto);
+    }
+
+    private void aplicarRetryAfter(HttpExchange exchange, LimitadorTasa.Resultado resultado) {
+        exchange.getResponseHeaders().set(
+                "Retry-After", String.valueOf(resultado.segundosParaReintentar()));
     }
 
     protected Integer getIntIdFromPath(HttpExchange exchange, String contextPath) {

@@ -291,11 +291,62 @@
                             </div>
 
                             <div class="flex flex-col gap-1.5">
-                                <label class="text-xs font-semibold text-slate-300" for="regClienteInput">ID de cliente (tu perfil en este negocio)</label>
+                                <label class="text-xs font-semibold text-slate-300" for="regDniInput">DNI</label>
                                 <div class="relative flex items-center">
                                     <span class="material-symbols-outlined absolute left-3.5 text-slate-400 text-[18px]">badge</span>
-                                    <input class="w-full h-11 pl-10 pr-3 bg-carbon-800 border border-carbon-700 text-white placeholder-slate-500 rounded-xl text-xs focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition-all font-mono-numbers" id="regClienteInput" placeholder="Ej.: 5" type="number" min="1" value=""/>
+                                    <input class="w-full h-11 pl-10 pr-3 bg-carbon-800 border border-carbon-700 text-white placeholder-slate-500 rounded-xl text-xs focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition-all font-mono-numbers" id="regDniInput" placeholder="Ej.: 38456789" type="text" inputmode="numeric" maxlength="8" autocomplete="off" value=""/>
                                 </div>
+                                <span class="text-[10px] text-slate-500">Si el DNI no está registrado en este negocio, se crea el perfil con los datos de abajo.</span>
+                            </div>
+
+                            <div class="flex flex-col gap-1.5">
+                                <label class="text-xs font-semibold text-slate-300" for="regNombreClienteInput">Nombre</label>
+                                <div class="relative flex items-center">
+                                    <span class="material-symbols-outlined absolute left-3.5 text-slate-400 text-[18px]">person</span>
+                                    <input class="w-full h-11 pl-10 pr-3 bg-carbon-800 border border-carbon-700 text-white placeholder-slate-500 rounded-xl text-xs focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition-all" id="regNombreClienteInput" placeholder="Juan" type="text" value=""/>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-col gap-1.5">
+                                <label class="text-xs font-semibold text-slate-300" for="regApellidoClienteInput">Apellido</label>
+                                <div class="relative flex items-center">
+                                    <span class="material-symbols-outlined absolute left-3.5 text-slate-400 text-[18px]">person</span>
+                                    <input class="w-full h-11 pl-10 pr-3 bg-carbon-800 border border-carbon-700 text-white placeholder-slate-500 rounded-xl text-xs focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition-all" id="regApellidoClienteInput" placeholder="Pérez" type="text" value=""/>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-col gap-1.5">
+                                <label class="text-xs font-semibold text-slate-300" for="regFechaNacimientoInput">Fecha de nacimiento</label>
+                                <div class="relative flex items-center">
+                                    <span class="material-symbols-outlined absolute left-3.5 text-slate-400 text-[18px]">cake</span>
+                                    <input class="w-full h-11 pl-10 pr-3 bg-carbon-800 border border-carbon-700 text-white placeholder-slate-500 rounded-xl text-xs focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition-all font-mono-numbers [color-scheme:dark]" id="regFechaNacimientoInput" type="date" value=""/>
+                                </div>
+                                <span class="text-[10px] text-slate-500">El titular debe ser mayor de 18 años.</span>
+                            </div>
+
+                            <div class="flex flex-col gap-1.5">
+                                <label class="text-xs font-semibold text-slate-300" for="regDireccionClienteInput">Dirección</label>
+                                <div class="relative flex items-center">
+                                    <span class="material-symbols-outlined absolute left-3.5 text-slate-400 text-[18px]">home</span>
+                                    <input class="w-full h-11 pl-10 pr-3 bg-carbon-800 border border-carbon-700 text-white placeholder-slate-500 rounded-xl text-xs focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition-all" id="regDireccionClienteInput" placeholder="Av. Siempre Viva 742" type="text" value=""/>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-col gap-1.5">
+                                <label class="text-xs font-semibold text-slate-300" for="regLocalidadClienteInput">Localidad</label>
+                                <div class="relative flex items-center">
+                                    <span class="material-symbols-outlined absolute left-3.5 text-slate-400 text-[18px]">location_on</span>
+                                    <input class="w-full h-11 pl-10 pr-3 bg-carbon-800 border border-carbon-700 text-white placeholder-slate-500 rounded-xl text-xs focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition-all" id="regLocalidadClienteInput" placeholder="Springfield" type="text" value=""/>
+                                </div>
+                            </div>
+
+                            <div class="flex flex-col gap-1.5">
+                                <label class="text-xs font-semibold text-slate-300" for="regNegocioInput">Negocio (subdominio)</label>
+                                <div class="relative flex items-center">
+                                    <span class="material-symbols-outlined absolute left-3.5 text-slate-400 text-[18px]">store</span>
+                                    <input class="w-full h-11 pl-10 pr-3 bg-carbon-800 border border-carbon-700 text-white placeholder-slate-500 rounded-xl text-xs focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition-all" id="regNegocioInput" placeholder="mi-negocio" type="text" value=""/>
+                                </div>
+                                <span class="text-[10px] text-slate-500">Se envía como contexto del negocio. Si accedés por subdominio, se completa solo.</span>
                             </div>
 
                             <button class="w-full h-12 mt-3 bg-brand hover:bg-brand-hover text-white font-bold rounded-xl shadow-glow-orange active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer text-xs" type="submit" id="registroSubmit">
@@ -318,6 +369,11 @@
     <script type="module">
         import { api, sesion, negocio } from './js/api.js';
 
+        function destinoPostAutenticacion(datos) {
+            const rol = String(datos?.rol || '').toUpperCase();
+            return rol === 'ADMIN' ? 'index.html#dashboard' : 'index.html#catalogo';
+        }
+
         document.getElementById('togglePassword')?.addEventListener('click', () => {            const pwd = document.getElementById('passwordInput');
             const icon = document.getElementById('toggleIcon');
             const isPwd = pwd.type === 'password';
@@ -332,10 +388,17 @@
         }
 
         const negocioInput = document.getElementById('negocioInput');
+        const regNegocioInput = document.getElementById('regNegocioInput');
         if (negocioInput && !negocioInput.value) {
             const detectado = negocio.obtener();
             if (detectado) {
                 negocioInput.value = detectado;
+            }
+        }
+        if (regNegocioInput && !regNegocioInput.value) {
+            const detectado = negocio.obtener();
+            if (detectado) {
+                regNegocioInput.value = detectado;
             }
         }
 
@@ -368,7 +431,13 @@
             if (authSubtitulo) {
                 authSubtitulo.textContent = ingreso
                     ? 'Ingresá tus credenciales de operador para acceder a la suite.'
-                    : 'Se crea tu identidad global y se vincula a este negocio como CLIENTE.';
+                    : 'Se crea tu identidad global; si tu DNI no está registrado, se crea tu perfil de cliente en este negocio.';
+            }
+            if (ingreso && negocioInput && !negocioInput.value && regNegocioInput && regNegocioInput.value) {
+                negocioInput.value = regNegocioInput.value;
+            }
+            if (!ingreso && regNegocioInput && !regNegocioInput.value && negocioInput && negocioInput.value) {
+                regNegocioInput.value = negocioInput.value;
             }
         }
 
@@ -381,6 +450,20 @@
             el.classList.remove('hidden');
         }
 
+        function esMayorDeEdad(fechaTexto) {
+            const partes = fechaTexto.split('-');
+            if (partes.length !== 3) {
+                return false;
+            }
+            const nacimiento = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
+            if (isNaN(nacimiento.getTime())) {
+                return false;
+            }
+            const hoy = new Date();
+            const limite = new Date(hoy.getFullYear() - 18, hoy.getMonth(), hoy.getDate());
+            return nacimiento <= limite;
+        }
+
         document.getElementById('registroForm')?.addEventListener('submit', async (e) => {
             e.preventDefault();
             const errorEl = document.getElementById('registroError');
@@ -388,26 +471,50 @@
             const boton = document.getElementById('registroSubmit');
             boton.disabled = true;
             try {
-                const subdominio = document.getElementById('negocioInput')?.value || '';
+                const subdominio = document.getElementById('regNegocioInput')?.value || '';
                 if (!subdominio.trim()) {
                     mostrarRegistroError('Indicá el subdominio del negocio para registrarte.');
                     return;
                 }
                 negocio.fijar(subdominio);
+                const dni = document.getElementById('regDniInput').value.trim();
+                if (!/^\d{7,8}$/.test(dni)) {
+                    mostrarRegistroError('Indicá el DNI del titular del perfil (7 u 8 dígitos, sin puntos).');
+                    return;
+                }
+                const nombreCliente = document.getElementById('regNombreClienteInput').value.trim();
+                const apellidoCliente = document.getElementById('regApellidoClienteInput').value.trim();
+                const fechaNacimientoCliente = document.getElementById('regFechaNacimientoInput').value;
+                const direccionCliente = document.getElementById('regDireccionClienteInput').value.trim();
+                const localidadCliente = document.getElementById('regLocalidadClienteInput').value.trim();
+                if (!nombreCliente || !apellidoCliente || !fechaNacimientoCliente || !direccionCliente || !localidadCliente) {
+                    mostrarRegistroError('Completá los datos del titular del perfil (nombre, apellido, fecha de nacimiento, dirección y localidad).');
+                    return;
+                }
+                const soloLetras = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]+$/;
+                if (!soloLetras.test(nombreCliente) || !soloLetras.test(apellidoCliente)) {
+                    mostrarRegistroError('Nombre y apellido solo pueden contener letras y espacios.');
+                    return;
+                }
+                if (!esMayorDeEdad(fechaNacimientoCliente)) {
+                    mostrarRegistroError('El titular del perfil debe ser mayor de 18 años y la fecha no puede ser futura.');
+                    return;
+                }
                 const payload = {
                     nombreCuenta: document.getElementById('regNombreInput').value.trim(),
                     correoElectronico: document.getElementById('regEmailInput').value.trim(),
                     contraseniaPlana: document.getElementById('regPasswordInput').value,
-                    idCliente: Number(document.getElementById('regClienteInput').value),
-                    rol: 'CLIENTE'
+                    dniCliente: dni,
+                    rol: 'CLIENTE',
+                    nombreCliente: nombreCliente,
+                    apellidoCliente: apellidoCliente,
+                    fechaNacimientoCliente: fechaNacimientoCliente,
+                    direccionCliente: direccionCliente,
+                    localidadCliente: localidadCliente
                 };
-                if (!payload.idCliente || payload.idCliente <= 0) {
-                    mostrarRegistroError('Indicá un ID de cliente válido de este negocio.');
-                    return;
-                }
                 const datos = await api.auth.registro(payload);
                 sesion.guardar(datos);
-                window.location.href = 'index.html#dashboard';
+                window.location.href = destinoPostAutenticacion(datos);
             } catch (error) {
                 mostrarRegistroError(error?.message || 'No se pudo crear la cuenta. Verifique los datos.');
             } finally {
@@ -431,7 +538,7 @@
                 negocio.fijar(subdominio);
                 const datos = await api.auth.ingreso(correo, contrasenia);
                 sesion.guardar(datos);
-                window.location.href = 'index.html#dashboard';
+                window.location.href = destinoPostAutenticacion(datos);
             } catch (error) {
                 mostrarError(error?.message || 'No se pudo iniciar sesión. Verifique su conexión.');
             } finally {

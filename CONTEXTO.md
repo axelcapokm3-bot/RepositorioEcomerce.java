@@ -327,7 +327,7 @@ El flujo de guardado de cuentas en [CuentaService](file:///c:/Users/Axel/Program
 El stock de los productos se actualiza dinámicamente según dos eventos:
 
 * **Creación de Venta:** Cada ítem disminuye el stock físico mediante `reducirStock(cantidad)`. Si el stock llega a `0`, se invoca de manera automática la lógica interna `reponerStock()`.
-* **Cancelación de Venta:** Al cancelar una venta en `VentaService.cancelarVentaAsync`, se itera sobre cada artículo del detalle y se reabastece el stock invocando a `producto.reponerStock()`.
+* **Cancelación de Venta:** `VentaService.cancelarVentaAsync` relee la venta y sus productos con bloqueo dentro de una transacción, reintegra el stock con `reintegrarStock(cantidad)` y es idempotente: una venta ya cancelada no vuelve a reintegrar stock.
 * **Regla de Reposición (`EstadoStock`):** El comportamiento de reposición evalúa el stock físico del producto:
   - Si el stock actual es `0` (`AGOTADO`), se reponen automáticamente **100 unidades**.
   - Si el stock es crítico (entre `1` y `10` unidades, estado `CRITICO`), se reponen **50 unidades**.

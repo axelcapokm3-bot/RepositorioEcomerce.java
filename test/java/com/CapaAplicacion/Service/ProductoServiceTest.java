@@ -84,11 +84,34 @@ class ProductoServiceTest {
     }
 
     @Test
+    @DisplayName("buscarActivoPorIdAsync: oculta productos inactivos")
+    void buscarActivoPorId() throws Exception {
+        Producto activo = productoEnRepo(1);
+        when(repository.buscarPorId(NEGOCIO, 1)).thenReturn(Optional.of(activo));
+        assertTrue(service.buscarActivoPorIdAsync(NEGOCIO, 1).get().isPresent());
+
+        Producto inactivo = productoEnRepo(2);
+        inactivo.setActivo(false);
+        when(repository.buscarPorId(NEGOCIO, 2)).thenReturn(Optional.of(inactivo));
+        assertTrue(service.buscarActivoPorIdAsync(NEGOCIO, 2).get().isEmpty());
+    }
+
+    @Test
     @DisplayName("listarTodosAsync: mapea todos los productos")
     void listarTodos() throws Exception {
         when(repository.listarTodos(NEGOCIO)).thenReturn(List.of(productoEnRepo(1), productoEnRepo(2)));
         List<ProductoResponseDTO> resultado = service.listarTodosAsync(NEGOCIO).get();
         assertEquals(2, resultado.size());
+    }
+
+    @Test
+    @DisplayName("listarActivosAsync: solo devuelve productos vendibles")
+    void listarActivos() throws Exception {
+        when(repository.listarActivos(NEGOCIO)).thenReturn(List.of(productoEnRepo(1)));
+        List<ProductoResponseDTO> resultado = service.listarActivosAsync(NEGOCIO).get();
+        assertEquals(1, resultado.size());
+        verify(repository).listarActivos(NEGOCIO);
+        verify(repository, never()).listarTodos(NEGOCIO);
     }
 
     @Test

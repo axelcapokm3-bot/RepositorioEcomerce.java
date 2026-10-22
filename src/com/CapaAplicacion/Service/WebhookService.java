@@ -10,25 +10,32 @@ import com.CapaDominio.Entidades.EstadoPago;
 import com.CapaDominio.Entidades.EstadoVenta;
 import com.CapaDominio.Entidades.Negocio;
 import com.CapaDominio.Entidades.Pago;
+import com.CapaDominio.Entidades.TipoDePago;
 import com.CapaDominio.Entidades.Venta;
 import com.CapaDominio.Entidades.VentasEventos;
+import com.CapaDominio.Excepciones.TransicionPagoInvalidaException;
+import com.CapaDominio.Excepciones.WebhookProcessingException;
 import com.CapaInfraestructura.Configuracion.ConfigLoader;
 import com.CapaInfraestructura.Configuracion.ConfiguracionMercadoPago;
 import com.CapaInfraestructura.Implementacion.RegistroExecutors;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.mercadopago.MercadoPagoConfig;
-import com.mercadopago.client.merchantorder.MerchantOrderClient;
 import com.mercadopago.client.order.OrderClient;
 import com.mercadopago.client.payment.PaymentClient;
+import com.mercadopago.core.MPRequestOptions;
 import com.mercadopago.exceptions.MPApiException;
 import com.mercadopago.exceptions.MPException;
 import com.mercadopago.resources.payment.Payment;
 import com.mercadopago.resources.order.Order;
+import com.mercadopago.resources.order.OrderPayment;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
@@ -50,6 +57,7 @@ public class WebhookService {
     private final PaymentClient paymentClient;
     private final OrderClient orderClient;
     private final PagoService pagoService;
+    private final Function<Long, ConfiguracionMercadoPago> configuracionFactory;
 
     public WebhookService(INegocioRepository negocioRepository, IPagoRepository pagoRepository,
                           IVentaRepository ventaRepository, EventBus eventBus) {
@@ -62,6 +70,37 @@ public class WebhookService {
                           IVentaRepository ventaRepository, EventBus eventBus,
                           IServiceExecutor executor, PaymentClient paymentClient,
                           OrderClient orderClient) {
+        this(negocioRepository, pagoRepository, ventaRepository, eventBus, executor,
+                paymentClient, orderClient,
+                idNegocio -> new ConfiguracionMercadoPago(negocioRepository, idNegocio));
+    }
+
+    public WebhookService(INegocioRepository negocioRepository, IPagoRepository pagoRepository,
+                          IVentaRepository ventaRepository, EventBus eventBus,
+                          PagoService pagoService) {
+        this(negocioRepository, pagoRepository, ventaRepository, eventBus,
+                RegistroExecutors.obtener(TipoServicio.NOTIFICACIONES),
+                new PaymentClient(), new OrderClient(),
+                idNegocio -> new ConfiguracionMercadoPago(negocioRepository, idNegocio),
+                pagoService);
+    }
+
+    WebhookService(INegocioRepository negocioRepository, IPagoRepository pagoRepository,
+                   IVentaRepository ventaRepository, EventBus eventBus,
+                   IServiceExecutor executor, PaymentClient paymentClient,
+                   OrderClient orderClient,
+                   Function<Long, ConfiguracionMercadoPago> configuracionFactory) {
+        this(negocioRepository, pagoRepository, ventaRepository, eventBus, executor,
+                paymentClient, orderClient, configuracionFactory,
+                new PagoService(pagoRepository, ventaRepository, eventBus));
+    }
+
+    WebhookService(INegocioRepository negocioRepository, IPagoRepository pagoRepository,
+                   IVentaRepository ventaRepository, EventBus eventBus,
+                   IServiceExecutor executor, PaymentClient paymentClient,
+                   OrderClient orderClient,
+                   Function<Long, ConfiguracionMercadoPago> configuracionFactory,
+                   PagoService pagoService) {
         this.negocioRepository = negocioRepository;
         this.pagoRepository = pagoRepository;
         this.ventaRepository = ventaRepository;
@@ -69,11 +108,18 @@ public class WebhookService {
         this.executor = executor;
         this.paymentClient = paymentClient;
         this.orderClient = orderClient;
-        this.pagoService = new PagoService(pagoRepository, ventaRepository, eventBus);
+        this.configuracionFactory = configuracionFactory;
+        this.pagoService = pagoService;
     }
 
     private ConfiguracionMercadoPago configuracionPara(long idNegocio) {
-        return new ConfiguracionMercadoPago(negocioRepository, idNegocio);
+        return configuracionFactory.apply(idNegocio);
+    }
+
+    private MPRequestOptions opcionesPara(String accessToken) {
+        return MPRequestOptions.builder()
+                .accessToken(accessToken)
+                .build();
     }
 
     public void procesarAsync(String paymentId) {
@@ -85,7 +131,11 @@ public class WebhookService {
     }
 
     public boolean haySecretoFirmaConfigurado() {
-        for (String secreto : secretosFirmaCandidatos()) {
+        return haySecretoFirmaConfigurado(null, null);
+    }
+
+    public boolean haySecretoFirmaConfigurado(String type, String id) {
+        for (String secreto : secretosFirmaCandidatos(type, id)) {
             if (secreto != null && !secreto.isBlank()) {
                 return true;
             }
@@ -95,7 +145,11 @@ public class WebhookService {
 
     /** Valida x-signature según el manifiesto HMAC-SHA256 de Mercado Pago. */
     public boolean validarFirma(String paymentId, String signatureHeader, String requestId) {
-        if (paymentId == null || signatureHeader == null || requestId == null || requestId.isBlank()) return false;
+        return validarFirma(null, paymentId, signatureHeader, requestId);
+    }
+
+    public boolean validarFirma(String type, String id, String signatureHeader, String requestId) {
+        if (id == null || signatureHeader == null || requestId == null || requestId.isBlank()) return false;
 
         String timestamp = null;
         String receivedHash = null;
@@ -107,14 +161,14 @@ public class WebhookService {
         }
         if (timestamp == null || receivedHash == null) return false;
 
-        String manifest = "id:" + paymentId + ";request-id:" + requestId + ";ts:" + timestamp + ";";
+        String manifest = "id:" + id + ";request-id:" + requestId + ";ts:" + timestamp + ";";
         byte[] actualHash;
         try {
             actualHash = HexFormat.of().parseHex(receivedHash);
         } catch (IllegalArgumentException e) {
             return false;
         }
-        for (String secreto : secretosFirmaCandidatos()) {
+        for (String secreto : secretosFirmaCandidatos(type, id)) {
             if (secreto == null || secreto.isBlank()) {
                 continue;
             }
@@ -132,8 +186,38 @@ public class WebhookService {
         return false;
     }
 
-    private java.util.List<String> secretosFirmaCandidatos() {
-        java.util.List<String> secretos = new java.util.ArrayList<>();
+    private List<String> secretosFirmaCandidatos(String type, String id) {
+        Long idNegocio = resolverNegocio(type, id);
+        if (idNegocio == null) {
+            return secretosFirmaCandidatos();
+        }
+        List<String> secretos = new ArrayList<>();
+        String global = ConfigLoader.getProperty("mercadopago.webhook-secret");
+        if (global != null && !global.isBlank()) {
+            secretos.add(global);
+        }
+        String secretoNegocio = configuracionPara(idNegocio).obtenerSecretoWebhook();
+        if (secretoNegocio != null && !secretoNegocio.isBlank() && !secretos.contains(secretoNegocio)) {
+            secretos.add(secretoNegocio);
+        }
+        return secretos;
+    }
+
+    private Long resolverNegocio(String type, String id) {
+        if (pagoRepository == null || id == null || id.isBlank()) {
+            return null;
+        }
+        Optional<Pago> pago = Optional.empty();
+        if (esTipoOrder(type)) {
+            pago = pagoRepository.buscarPorOrderId(id);
+        } else if (esTipoPayment(type)) {
+            pago = pagoRepository.buscarPorMpPaymentId(id).filter(this::esPagoMercadoPago);
+        }
+        return pago.map(Pago::getIdNegocio).orElse(null);
+    }
+
+    private List<String> secretosFirmaCandidatos() {
+        List<String> secretos = new ArrayList<>();
         String global = ConfigLoader.getProperty("mercadopago.webhook-secret");
         if (global != null && !global.isBlank()) {
             secretos.add(global);
@@ -154,104 +238,358 @@ public class WebhookService {
     }
 
     public void procesar(String type, String id) {
+        try {
+            procesarEvento(type, id);
+        } catch (WebhookProcessingException exception) {
+            LOGGER.log(Level.SEVERE, exception.getMessage(), exception);
+        }
+    }
+
+    public void procesarEvento(String type, String id) throws WebhookProcessingException {
         if (id == null || id.isBlank()) {
-            LOGGER.warning("Notificación de Mercado Pago ignorada: falta el ID.");
-            return;
+            throw new WebhookProcessingException(
+                    "No se puede procesar un webhook de Mercado Pago sin ID.", false);
         }
         try {
-            if ("order".equalsIgnoreCase(type) || "orders".equalsIgnoreCase(type)) {
+            if (esTipoOrder(type)) {
                 procesarOrderPorNegocio(id, null);
                 return;
             }
-            if ("payment".equalsIgnoreCase(type)) {
+            if (esTipoPayment(type)) {
                 if (!id.matches("\\d+")) {
-                    LOGGER.warning("Notificación de pago de Mercado Pago ignorada: ID inválido.");
-                    return;
+                    throw new WebhookProcessingException(
+                            "El ID de pago de Mercado Pago no es numérico.", false);
                 }
                 procesarPaymentMultiNegocio(id);
                 return;
             }
-            LOGGER.info("Notificación de Mercado Pago ignorada. Tipo no soportado: " + type);
-        } catch (MPApiException e) {
-            String content = e.getApiResponse() == null ? e.getMessage() : e.getApiResponse().getContent();
-            LOGGER.log(Level.SEVERE, "Mercado Pago rechazó la consulta del pago: " + content, e);
-        } catch (MPException | RuntimeException e) {
-            LOGGER.log(Level.SEVERE, "No se pudo procesar la notificación de Mercado Pago.", e);
+            throw new WebhookProcessingException(
+                    "Tipo de webhook de Mercado Pago no soportado: " + type, false);
+        } catch (WebhookProcessingException exception) {
+            throw exception;
+        } catch (MPApiException exception) {
+            String content = exception.getApiResponse() == null
+                    ? exception.getMessage()
+                    : exception.getApiResponse().getContent();
+            throw new WebhookProcessingException(
+                    "Mercado Pago rechazó la consulta del pago: " + content, true, exception);
+        } catch (MPException exception) {
+            throw new WebhookProcessingException(
+                    "No se pudo consultar Mercado Pago para procesar el webhook.", true, exception);
+        } catch (TransicionPagoInvalidaException exception) {
+            throw new WebhookProcessingException(exception.getMessage(), false, exception);
+        } catch (IllegalArgumentException exception) {
+            throw new WebhookProcessingException(exception.getMessage(), false, exception);
+        } catch (RuntimeException exception) {
+            throw new WebhookProcessingException(
+                    "No se pudo procesar la notificación de Mercado Pago.", true, exception);
         }
     }
 
     private void procesarOrderPorNegocio(String orderId, String paymentId) throws MPException, MPApiException {
-        Optional<Pago> pagoEncontrado = pagoRepository.buscarPorOrderId(orderId);
-        if (pagoEncontrado.isEmpty()) {
-            LOGGER.warning("No existe un pago persistido para Mercado Pago Order " + orderId);
+        Optional<Pago> pagoEncontrado = pagoRepository.buscarPorOrderId(orderId)
+                .filter(this::esPagoMercadoPago);
+        if (pagoEncontrado.isPresent()) {
+            Pago pago = pagoEncontrado.get();
+            String accessToken = configuracionPara(pago.getIdNegocio()).obtenerAccessToken();
+            if (accessToken == null || accessToken.isBlank()) {
+                throw new WebhookProcessingException(
+                        "No hay access token configurado para el negocio del pago de Mercado Pago Order "
+                                + orderId + ".", true);
+            }
+            procesarOrder(orderId, paymentId, opcionesPara(accessToken), pago);
             return;
+        }
+
+        String accessToken = tokenUnicoParaPrimeraOrder(orderId);
+        if (accessToken == null) {
+            throw new WebhookProcessingException(
+                    "No se pudo resolver un access token único para la primera notificación de Order "
+                            + orderId + ".", true);
+        }
+        MPRequestOptions options = opcionesPara(accessToken);
+        Order order = orderClient.get(orderId, options);
+        Optional<Pago> pagoPorReferencia = pagoDeOrder(order);
+        if (pagoPorReferencia.isEmpty()) {
+            throw new WebhookProcessingException(
+                    "No se pudo asociar la Order de Mercado Pago " + orderId
+                            + " con un pago local.", true);
+        }
+        Pago pago = pagoPorReferencia.get();
+        if (!tokenDelNegocioCoincide(pago, accessToken)) {
+            throw new WebhookProcessingException(
+                    "El token que leyó la Order de Mercado Pago no coincide con el negocio del pago.",
+                    false);
+        }
+        procesarOrderVerificado(order, paymentId, pago);
+    }
+
+    private String tokenUnicoParaPrimeraOrder(String orderId) {
+        if (negocioRepository == null) {
+            LOGGER.warning("No hay repositorio de negocios para resolver la primera notificación de Order " + orderId);
+            return null;
+        }
+        List<String> tokens = tokensAccesoDistintos();
+        if (tokens.isEmpty()) {
+            LOGGER.warning("No hay access token configurado para resolver la primera notificación de Order " + orderId);
+            return null;
+        }
+        if (tokens.size() > 1) {
+            LOGGER.warning("La primera notificación de Order " + orderId
+                    + " requiere un token único; el modo multi-cuenta queda pendiente.");
+            return null;
+        }
+        return tokens.get(0);
+    }
+
+    private void procesarPaymentMultiNegocio(String paymentId) throws MPException, MPApiException {
+        if (procesarPagoPersistido(paymentId)) {
+            return;
+        }
+        if (negocioRepository == null) {
+            throw new WebhookProcessingException(
+                    "No hay repositorio de negocios para resolver la notificación de Mercado Pago.",
+                    true);
+        }
+        for (String accessToken : tokensAccesoDistintos()) {
+            MPRequestOptions options = opcionesPara(accessToken);
+            Payment payment;
+            try {
+                payment = paymentClient.get(Long.valueOf(paymentId), options);
+            } catch (MPApiException | MPException e) {
+                LOGGER.log(Level.FINE, "La notificación no corresponde a un token de negocio configurado.", e);
+                continue;
+            }
+            Optional<Pago> pagoEncontrado = pagoDePayment(payment);
+            if (pagoEncontrado.isEmpty()) {
+                continue;
+            }
+            Pago pago = pagoEncontrado.get();
+            if (!tokenDelNegocioCoincide(pago, accessToken)) {
+                LOGGER.severe("El token que leyó el pago de Mercado Pago no coincide con el configurado para el negocio del pago.");
+                continue;
+            }
+            procesarPagoVerificado(paymentId, payment, pago, options);
+            return;
+        }
+        throw new WebhookProcessingException(
+                "No se pudo asociar la notificación de pago de Mercado Pago a ningún negocio configurado.",
+                true);
+    }
+
+    private boolean procesarPagoPersistido(String paymentId) throws MPException, MPApiException {
+        Optional<Pago> pagoEncontrado = pagoRepository.buscarPorMpPaymentId(paymentId)
+                .filter(this::esPagoMercadoPago);
+        if (pagoEncontrado.isEmpty()) {
+            return false;
         }
         Pago pago = pagoEncontrado.get();
         String accessToken = configuracionPara(pago.getIdNegocio()).obtenerAccessToken();
         if (accessToken == null || accessToken.isBlank()) {
-            LOGGER.severe("No hay access token configurado para el negocio del pago de Mercado Pago Order " + orderId);
-            return;
+            throw new WebhookProcessingException(
+                    "No hay access token configurado para el negocio del pago de Mercado Pago.",
+                    true);
         }
-        MercadoPagoConfig.setAccessToken(accessToken);
-        procesarOrder(orderId, paymentId);
+        MPRequestOptions options = opcionesPara(accessToken);
+        Payment payment;
+        try {
+            payment = paymentClient.get(Long.valueOf(paymentId), options);
+        } catch (MPApiException | MPException e) {
+            throw new WebhookProcessingException(
+                    "No se pudo confirmar el pago persistido con el token de su negocio.",
+                    true, e);
+        }
+        procesarPagoVerificado(paymentId, payment, pago, options);
+        return true;
     }
 
-    private void procesarPaymentMultiNegocio(String paymentId) {
-        if (negocioRepository == null) {
-            LOGGER.severe("No hay repositorio de negocios para resolver la notificación de Mercado Pago.");
-            return;
-        }
+    private List<String> tokensAccesoDistintos() {
+        LinkedHashSet<String> tokens = new LinkedHashSet<>();
         for (Negocio negocio : negocioRepository.listarActivos()) {
             String accessToken = configuracionPara(negocio.getId()).obtenerAccessToken();
-            if (accessToken == null || accessToken.isBlank()) {
-                continue;
-            }
-            try {
-                MercadoPagoConfig.setAccessToken(accessToken);
-                Payment payment = paymentClient.get(Long.valueOf(paymentId));
-                if (payment.getOrder() == null || payment.getOrder().getId() == null) {
-                    LOGGER.warning("El pago de Mercado Pago no está asociado a una Order.");
-                    return;
-                }
-                String orderId = String.valueOf(payment.getOrder().getId());
-                Optional<Pago> pagoEncontrado = pagoRepository.buscarPorOrderId(orderId);
-                if (pagoEncontrado.isEmpty()) {
-                    LOGGER.warning("No existe un pago local para Mercado Pago Order " + orderId);
-                    return;
-                }
-                if (pagoEncontrado.get().getIdNegocio() != negocio.getId()) {
-                    continue;
-                }
-                validarPago(payment, pagoEncontrado.get());
-                procesarOrder(orderId, paymentId);
-                return;
-            } catch (MPApiException | MPException e) {
-                LOGGER.log(Level.FINE, "La notificación no corresponde al negocio " + negocio.getId(), e);
+            if (accessToken != null && !accessToken.isBlank()) {
+                tokens.add(accessToken);
             }
         }
-        LOGGER.warning("No se pudo asociar la notificación de pago de Mercado Pago a ningún negocio configurado.");
+        return new ArrayList<>(tokens);
     }
 
-    private void procesarOrder(String orderId, String paymentId)
-            throws MPException, MPApiException {
-        Order order = orderClient.get(orderId);
-        Optional<Pago> pagoEncontrado = pagoRepository.buscarPorOrderId(orderId);
-        if (pagoEncontrado.isEmpty()) {
-            LOGGER.warning("No existe un pago persistido para Mercado Pago Order " + orderId);
-            return;
+    private Optional<Pago> pagoDePayment(Payment payment) {
+        if (payment.getOrder() == null || payment.getOrder().getId() == null) {
+            LOGGER.warning("El pago de Mercado Pago no está asociado a una Order.");
+            return Optional.empty();
         }
-        Pago pago = pagoEncontrado.get();
+        String orderId = String.valueOf(payment.getOrder().getId());
+        Optional<Pago> pagoEncontrado = pagoRepository.buscarPorOrderId(orderId)
+                .filter(this::esPagoMercadoPago);
+        if (pagoEncontrado.isPresent()) {
+            return pagoEncontrado;
+        }
+        String paymentId = payment.getId() == null ? null : String.valueOf(payment.getId());
+        return pagoPorReferenciaExterna(payment.getExternalReference(), orderId, paymentId);
+    }
+
+    private Optional<Pago> pagoDeOrder(Order order) {
+        if (order == null || order.getId() == null || order.getId().isBlank()) {
+            LOGGER.warning("La Order de Mercado Pago no tiene un identificador válido.");
+            return Optional.empty();
+        }
+        return pagoPorReferenciaExterna(order.getExternalReference(), order.getId(), null);
+    }
+
+    private Optional<Pago> pagoPorReferenciaExterna(String externalReference, String orderId, String paymentId) {
+        Integer idVenta = parsearIdVenta(externalReference);
+        if (idVenta == null) {
+            LOGGER.warning("La notificación de Mercado Pago no trae una referencia externa de venta válida.");
+            return Optional.empty();
+        }
+        List<Pago> candidatos = pagoRepository.buscarCandidatosMercadoPagoPorVenta(idVenta);
+        if (candidatos == null || candidatos.isEmpty()) {
+            LOGGER.warning("No existe un pago local candidato para la venta " + idVenta
+                    + " y la Order " + orderId + ".");
+            return Optional.empty();
+        }
+        List<Pago> validos = candidatos.stream()
+                .filter(this::esPagoMercadoPago)
+                .filter(this::ventaDelPagoExiste)
+                .toList();
+        if (validos.isEmpty()) {
+            LOGGER.warning("Ningún pago de la venta " + idVenta + " pertenece a su negocio.");
+            return Optional.empty();
+        }
+        if (validos.size() > 1) {
+            LOGGER.warning("La venta " + idVenta + " tiene " + validos.size()
+                    + " pagos candidatos; se requiere una asociación inequívoca.");
+            return Optional.empty();
+        }
+        Pago pago = validos.get(0);
+        if (tieneOrderId(pago) && !pago.getOrderId().equals(orderId)) {
+            LOGGER.warning("El Order ID de la notificación no coincide con el pago local de la venta " + idVenta + ".");
+            return Optional.empty();
+        }
+        if (paymentId != null && !paymentId.isBlank()
+                && pago.getMpPaymentId() != null && !pago.getMpPaymentId().isBlank()
+                && !pago.getMpPaymentId().equals(paymentId)) {
+            LOGGER.warning("El Payment ID de la notificación no coincide con el pago local de la venta " + idVenta + ".");
+            return Optional.empty();
+        }
+        return Optional.of(pago);
+    }
+
+    private Integer parsearIdVenta(String externalReference) {
+        if (externalReference == null) {
+            return null;
+        }
+        String valor = externalReference.trim();
+        if (!valor.matches("\\d+")) {
+            return null;
+        }
+        try {
+            int idVenta = Integer.parseInt(valor);
+            return idVenta > 0 ? idVenta : null;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private boolean ventaDelPagoExiste(Pago pago) {
+        if (pago == null || ventaRepository == null) {
+            return false;
+        }
+        Optional<Venta> venta = ventaRepository.buscarPorId(pago.getIdNegocio(), pago.getIdVenta());
+        return venta.filter(v -> v.getId() == pago.getIdVenta()
+                && v.getIdNegocio() == pago.getIdNegocio()).isPresent();
+    }
+
+    private boolean tieneOrderId(Pago pago) {
+        return pago != null && pago.getOrderId() != null && !pago.getOrderId().isBlank();
+    }
+
+    private boolean tokenDelNegocioCoincide(Pago pago, String accessToken) {
+        String tokenNegocio = configuracionPara(pago.getIdNegocio()).obtenerAccessToken();
+        return tokenNegocio != null && !tokenNegocio.isBlank()
+                && tokenNegocio.equals(accessToken);
+    }
+
+    private void procesarPagoVerificado(String paymentId, Payment payment, Pago pago,
+                                        MPRequestOptions options) throws MPException, MPApiException {
+        if (payment.getOrder() == null || payment.getOrder().getId() == null) {
+            throw new WebhookProcessingException(
+                    "El pago de Mercado Pago no está asociado a una Order.", false);
+        }
+        String orderId = String.valueOf(payment.getOrder().getId());
+        if (tieneOrderId(pago) && !pago.getOrderId().equals(orderId)) {
+            throw new WebhookProcessingException(
+                    "La Order del pago de Mercado Pago no coincide con el pago persistido.",
+                    false);
+        }
+        validarPago(payment, pago);
+        procesarOrder(orderId, paymentId, options, pago);
+    }
+
+    private void procesarOrder(String orderId, String paymentId, MPRequestOptions options, Pago pago)
+            throws MPException, MPApiException {
+        Order order = orderClient.get(orderId, options);
+        procesarOrderVerificado(order, paymentId, pago);
+    }
+
+    private void procesarOrderVerificado(Order order, String paymentId, Pago pago) {
+        if (order == null || order.getId() == null || order.getId().isBlank()) {
+            throw new WebhookProcessingException(
+                    "La Order de Mercado Pago no tiene un identificador válido.", false);
+        }
         validarOrder(order, pago);
         EstadoPago estado = mapearEstadoOrden(order, pago);
+        String paymentIdPersistido = (paymentId == null || paymentId.isBlank())
+                ? extraerPaymentId(order)
+                : paymentId;
+        if (pago.getMpPaymentId() != null && !pago.getMpPaymentId().isBlank()
+                && paymentIdPersistido != null && !paymentIdPersistido.isBlank()
+                && !pago.getMpPaymentId().equals(paymentIdPersistido)) {
+            throw new WebhookProcessingException(
+                    "El Payment ID de la Order no coincide con el pago persistido.", false);
+        }
         pagoService.aplicarEstadoDePasarela(
-                pago, estado, paymentId, orderId, serializar(order));
+                pago, estado, paymentIdPersistido, order.getId(), serializar(order));
+    }
+
+    private String extraerPaymentId(Order order) {
+        if (order == null || order.getTransactions() == null
+                || order.getTransactions().getPayments() == null) {
+            return null;
+        }
+        String ultimo = null;
+        for (OrderPayment pago : order.getTransactions().getPayments()) {
+            if (pago == null || pago.getId() == null || pago.getId().isBlank()) {
+                continue;
+            }
+            ultimo = pago.getId();
+            if ("approved".equalsIgnoreCase(pago.getStatus())
+                    || "processed".equalsIgnoreCase(pago.getStatus())) {
+                return pago.getId();
+            }
+        }
+        return ultimo;
+    }
+
+    private boolean esTipoOrder(String type) {
+        return "order".equalsIgnoreCase(type) || "orders".equalsIgnoreCase(type);
+    }
+
+    private boolean esTipoPayment(String type) {
+        return "payment".equalsIgnoreCase(type);
+    }
+
+    private boolean esPagoMercadoPago(Pago pago) {
+        return pago != null
+                && TipoDePago.MERCADO_PAGO.name().equalsIgnoreCase(pago.getPasarela());
     }
 
     private void validarOrder(Order order, Pago pago) {
         if (order == null || pago == null) {
             throw new IllegalArgumentException("No se puede validar una Order o un pago nulo.");
         }
-        if (!pago.getOrderId().equals(order.getId())) {
+        if (tieneOrderId(pago) && !pago.getOrderId().equals(order.getId())) {
             throw new IllegalArgumentException("El Order ID no coincide con el pago persistido.");
         }
         if (!String.valueOf(pago.getIdVenta()).equals(order.getExternalReference())) {

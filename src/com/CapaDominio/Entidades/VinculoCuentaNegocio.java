@@ -1,16 +1,16 @@
 package com.CapaDominio.Entidades;
 
-/** Vínculo entre una identidad global (cuenta), un negocio y su perfil de cliente. */
+/** Vínculo entre una identidad global (cuenta), un negocio y su perfil de cliente.
+ * La clave primaria real de `cuentas_negocio` es compuesta (id_cuenta, id_negocio):
+ * esta entidad no tiene ID propio. */
 public class VinculoCuentaNegocio {
-    private int id;
-    private int idCuenta;
+    private long idCuenta;
     private long idNegocio;
     private int idCliente;
     private RolUsuario rol;
     private EstadoCuenta estado;
 
-    public VinculoCuentaNegocio(int id, int idCuenta, long idNegocio, int idCliente, RolUsuario rol) {
-        setId(id);
+    public VinculoCuentaNegocio(long idCuenta, long idNegocio, int idCliente, RolUsuario rol) {
         setIdCuenta(idCuenta);
         setIdNegocio(idNegocio);
         setIdCliente(idCliente);
@@ -18,22 +18,11 @@ public class VinculoCuentaNegocio {
         this.estado = EstadoCuenta.ACTIVA;
     }
 
-    public int getId() {
-        return id;
-    }
-
-    public void setId(int id) {
-        if (id < 0) {
-            throw new IllegalArgumentException("El ID del vínculo no puede ser negativo.");
-        }
-        this.id = id;
-    }
-
-    public int getIdCuenta() {
+    public long getIdCuenta() {
         return idCuenta;
     }
 
-    public void setIdCuenta(int idCuenta) {
+    public void setIdCuenta(long idCuenta) {
         if (idCuenta <= 0) {
             throw new IllegalArgumentException("El vínculo debe referenciar una cuenta válida.");
         }

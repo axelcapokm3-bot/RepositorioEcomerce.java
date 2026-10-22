@@ -1,5 +1,36 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "default_agent": "coordinator",
-  "subagent_depth": 2
+  "subagent_depth": 2,
+  "mcp": {
+    "mysql_ecommerce": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@benborla29/mcp-server-mysql@2.0.9"
+      ],
+      "enabled": true,
+      "timeout": 60000,
+      "environment": {
+        "MYSQL_HOST": "localhost",
+        "MYSQL_PORT": "3306",
+        "MYSQL_USER": "mcp_ecommerce",
+        "MYSQL_PASS": "{file:~/.config/opencode/secrets/mysql-mcp-password}",
+        "MYSQL_DB": "ecommerce_db",
+        "MYSQL_POOL_SIZE": "5",
+        "MYSQL_QUERY_TIMEOUT": "30000",
+        "MYSQL_CONNECT_TIMEOUT": "10000",
+        "MYSQL_RATE_LIMIT": "60",
+        "MYSQL_MAX_QUERY_COMPLEXITY": "1000",
+        "MYSQL_CACHE_TTL": "60000",
+        "MYSQL_DISABLE_READ_ONLY_TRANSACTIONS": "false",
+        "MYSQL_ENABLE_LOGGING": "false",
+        "ALLOW_INSERT_OPERATION": "false",
+        "ALLOW_UPDATE_OPERATION": "false",
+        "ALLOW_DELETE_OPERATION": "false",
+        "ALLOW_DDL_OPERATION": "false"
+      }
+    }
+  }
 }

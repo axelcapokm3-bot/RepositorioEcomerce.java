@@ -65,6 +65,21 @@ private static final AtomicInteger siguienteId = new AtomicInteger(maximoId());
 }
 
     @Override
+    public Optional<Cliente> buscarPorDni(long idNegocio, String dni) {
+        if (dni == null) {
+            return Optional.empty();
+        }
+        String buscado = dni.trim();
+        for (int i = 0; i < clientes.size(); i++) {
+            Cliente clienteActual = clientes.get(i);
+            if (buscado.equals(clienteActual.getDni()) && clienteActual.getIdNegocio() == idNegocio) {
+                return Optional.of(clienteActual);
+            }
+        }
+        return Optional.empty();
+    }
+
+    @Override
     public void actualizar(long idNegocio, int id, Cliente cliente) {
         if (cliente == null) {
             throw new IllegalArgumentException("El cliente no puede ser nulo.");

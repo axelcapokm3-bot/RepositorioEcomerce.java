@@ -9,8 +9,11 @@ import com.CapaDominio.Entidades.ConfiguracionCatalogo;
 import com.CapaDominio.Entidades.EstadoPago;
 import com.CapaDominio.Entidades.Negocio;
 import com.CapaDominio.Entidades.Pago;
+import com.CapaDominio.Excepciones.TransicionPagoInvalidaException;
+import com.CapaDominio.Excepciones.WebhookProcessingException;
 import com.CapaInfraestructura.Configuracion.ConfigLoader;
 import com.CapaInfraestructura.Implementacion.RegistroExecutors;
+import com.stripe.exception.EventDataObjectDeserializationException;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Event;
 import com.stripe.model.StripeObject;
@@ -45,12 +48,28 @@ public class StripeWebhookService {
                                 IVentaRepository ventaRepository,
                                 com.CapaAplicacion.Interfaces.EventBus eventBus,
                                 IServiceExecutor executor) {
+        this(negocioRepository, pagoRepository, ventaRepository, eventBus, executor,
+                new PagoService(pagoRepository, ventaRepository, eventBus));
+    }
+
+    public StripeWebhookService(INegocioRepository negocioRepository, IPagoRepository pagoRepository,
+                                IVentaRepository ventaRepository,
+                                com.CapaAplicacion.Interfaces.EventBus eventBus,
+                                PagoService pagoService) {
+        this(negocioRepository, pagoRepository, ventaRepository, eventBus,
+                RegistroExecutors.obtener(TipoServicio.NOTIFICACIONES), pagoService);
+    }
+
+    public StripeWebhookService(INegocioRepository negocioRepository, IPagoRepository pagoRepository,
+                                IVentaRepository ventaRepository,
+                                com.CapaAplicacion.Interfaces.EventBus eventBus,
+                                IServiceExecutor executor, PagoService pagoService) {
         this.negocioRepository = negocioRepository;
         this.pagoRepository = pagoRepository;
         this.ventaRepository = ventaRepository;
         this.eventBus = eventBus;
         this.executor = executor;
-        this.pagoService = new PagoService(pagoRepository, ventaRepository, eventBus);
+        this.pagoService = pagoService;
     }
 
     public boolean haySecretoFirmaConfigurado() {
@@ -87,7 +106,17 @@ public class StripeWebhookService {
     }
 
     public void procesar(Event event) {
-        if (event == null) return;
+        try {
+            procesarEvento(event);
+        } catch (WebhookProcessingException exception) {
+            LOGGER.log(Level.SEVERE, exception.getMessage(), exception);
+        }
+    }
+
+    public void procesarEvento(Event event) throws WebhookProcessingException {
+        if (event == null) {
+            throw new WebhookProcessingException("El evento de Stripe es obligatorio.", false);
+        }
         String tipo = event.getType();
         if (!esEventoCheckout(tipo)) {
             return;
@@ -95,22 +124,36 @@ public class StripeWebhookService {
 
         try {
             StripeObject stripeObject = event.getDataObjectDeserializer().getObject().orElse(null);
+            if (!(stripeObject instanceof Session)) {
+                stripeObject = event.getDataObjectDeserializer().deserializeUnsafe();
+            }
             if (!(stripeObject instanceof Session session)) {
-                LOGGER.warning("Evento Stripe ignorado: no se pudo deserializar Checkout Session.");
-                return;
+                throw new WebhookProcessingException(
+                        "No se pudo deserializar la Checkout Session de Stripe.", false);
             }
             Optional<Pago> pagoOpt = pagoRepository.buscarPorMpPaymentId(session.getId());
             if (pagoOpt.isEmpty()) {
-                LOGGER.warning("No se encontró un intento persistido para Stripe Session " + session.getId());
-                return;
+                throw new WebhookProcessingException(
+                        "No se encontró un intento persistido para Stripe Session "
+                                + session.getId() + ".", true);
             }
             Pago pago = pagoOpt.get();
             validarSesion(session, pago);
             EstadoPago estado = mapearEstado(tipo, session);
             pagoService.aplicarEstadoDePasarela(
                     pago, estado, session.getId(), null, session.toJson());
-        } catch (RuntimeException e) {
-            LOGGER.log(Level.SEVERE, "No se pudo procesar el webhook de Stripe.", e);
+        } catch (WebhookProcessingException exception) {
+            throw exception;
+        } catch (EventDataObjectDeserializationException exception) {
+            throw new WebhookProcessingException(
+                    "No se pudo deserializar la Checkout Session de Stripe.", false, exception);
+        } catch (TransicionPagoInvalidaException exception) {
+            throw new WebhookProcessingException(exception.getMessage(), false, exception);
+        } catch (IllegalArgumentException exception) {
+            throw new WebhookProcessingException(exception.getMessage(), false, exception);
+        } catch (RuntimeException exception) {
+            throw new WebhookProcessingException(
+                    "No se pudo procesar el webhook de Stripe.", true, exception);
         }
     }
 

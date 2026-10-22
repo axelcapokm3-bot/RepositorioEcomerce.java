@@ -3,13 +3,13 @@ package com.CapaDominio.Entidades;
 /** Identidad global de autenticación. Sin negocio ni rol propios: el acceso por
  * negocio vive en VinculoCuentaNegocio. */
 public class Cuenta {
-    private int id;
+    private long id;
     private String nombreCuenta;
     private String correoElectronico;
     private String hashContrasenia;
     private EstadoCuenta estado;
 
-    public Cuenta(int id, String nombreCuenta, String correoElectronico,
+    public Cuenta(long id, String nombreCuenta, String correoElectronico,
                   String hashContrasenia) {
         setId(id);
         setNombreCuenta(nombreCuenta);
@@ -18,11 +18,11 @@ public class Cuenta {
         this.estado = EstadoCuenta.ACTIVA;
     }
 
-    public int getId() {
+    public long getId() {
         return id;
     }
 
-    public void setId(int id) {
+    public void setId(long id) {
         if (id < 0) {
             throw new IllegalArgumentException("El ID de cuenta no puede ser negativo.");
         }

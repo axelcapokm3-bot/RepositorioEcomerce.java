@@ -1,12 +1,15 @@
 package com.CapaPresentacion.Controllers;
 
+import com.CapaAplicacion.Service.WebhookEventoService;
 import com.CapaAplicacion.Service.WebhookService;
+import com.CapaDominio.Entidades.ProveedorWebhook;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.logging.Level;
 
 /** Endpoint para notificaciones de pago enviadas por Mercado Pago. */
 public class WebhookController extends BaseController {
@@ -14,10 +17,16 @@ public class WebhookController extends BaseController {
             java.util.logging.Logger.getLogger(WebhookController.class.getName());
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private final WebhookService webhookService;
+    private final WebhookEventoService eventoWebhookService;
 
     public WebhookController(WebhookService webhookService) {
+        this(webhookService, null);
+    }
+
+    public WebhookController(WebhookService webhookService, WebhookEventoService eventoWebhookService) {
         if (webhookService == null) throw new IllegalArgumentException("WebhookService es obligatorio.");
         this.webhookService = webhookService;
+        this.eventoWebhookService = eventoWebhookService;
     }
 
     @Override
@@ -27,15 +36,16 @@ public class WebhookController extends BaseController {
             sendResponse(exchange, 405, Map.of("error", "Método no permitido. Use POST."));
             return;
         }
-        if (excedeLimite(exchange, 60, "webhook-mp")) {
-            sendResponse(exchange, 429, Map.of("error", "Demasiadas solicitudes. Intente nuevamente en un minuto."));
+        if (limitarSolicitud(exchange, "webhook-mercado-pago", 600)) {
             return;
         }
 
         final String notificationId;
         final String notificationType;
+        final String cuerpoOriginal;
         try {
-            JsonNode body = OBJECT_MAPPER.readTree(leerCuerpoLimitado(exchange));
+            cuerpoOriginal = leerCuerpoLimitado(exchange);
+            JsonNode body = OBJECT_MAPPER.readTree(cuerpoOriginal);
             JsonNode idNode = body == null ? null : body.path("data").path("id");
             JsonNode typeNode = body == null ? null : (body.has("type") ? body.path("type") : body.path("topic"));
             
@@ -64,13 +74,13 @@ public class WebhookController extends BaseController {
         }
 
         try {
-            if (!webhookService.haySecretoFirmaConfigurado()) {
+            if (!webhookService.haySecretoFirmaConfigurado(notificationType, notificationId)) {
                 sendResponse(exchange, 503, Map.of("error", "La clave de firma del webhook no está configurada."));
                 return;
             }
             String signature = exchange.getRequestHeaders().getFirst("x-signature");
             String requestId = exchange.getRequestHeaders().getFirst("x-request-id");
-            if (!webhookService.validarFirma(notificationId, signature, requestId)) {
+            if (!webhookService.validarFirma(notificationType, notificationId, signature, requestId)) {
                 sendResponse(exchange, 401, Map.of("error", "Firma de Mercado Pago inválida."));
                 return;
             }
@@ -79,7 +89,30 @@ public class WebhookController extends BaseController {
             return;
         }
 
+        if (eventoWebhookService == null) {
+            sendResponse(exchange, 200, Map.of("status", "accepted"));
+            webhookService.procesarAsync(notificationType, notificationId);
+            return;
+        }
+
+        try {
+            eventoWebhookService.registrar(
+                    ProveedorWebhook.MERCADO_PAGO, notificationType, notificationId, cuerpoOriginal);
+        } catch (IllegalArgumentException exception) {
+            sendResponse(exchange, 400, Map.of("error", exception.getMessage()));
+            return;
+        } catch (RuntimeException exception) {
+            LOGGER.log(Level.SEVERE, "No se pudo persistir el webhook de Mercado Pago.", exception);
+            sendResponse(exchange, 500, Map.of("error", "No se pudo registrar el webhook."));
+            return;
+        }
+
         sendResponse(exchange, 200, Map.of("status", "accepted"));
-        webhookService.procesarAsync(notificationType, notificationId);
+        try {
+            eventoWebhookService.procesarPendientesAsync();
+        } catch (RuntimeException exception) {
+            LOGGER.log(Level.WARNING,
+                    "El webhook quedó registrado; el job lo procesará.", exception);
+        }
     }
 }

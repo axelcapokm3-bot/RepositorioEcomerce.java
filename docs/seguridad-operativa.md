@@ -10,6 +10,9 @@ cuentas y creación del primer administrador. No contiene valores reales.
 | `ECOMMERCE_DB_URL` | JDBC de MySQL | Sí |
 | `ECOMMERCE_DB_USERNAME` | Usuario MySQL | Sí |
 | `ECOMMERCE_DB_PASSWORD` | Contraseña MySQL | Sí |
+| `REDIS_HOST` / `REDIS_PORT` | Endpoint Redis del carrito | Sí en producción |
+| `REDIS_USERNAME` / `REDIS_PASSWORD` | Credenciales Redis (ACL) | Si Redis requiere auth |
+| `REDIS_SSL` | TLS hacia Redis (`true`/`false`) | Según el proveedor |
 | `MERCADOPAGO_ACCESS_TOKEN` | Pagos Mercado Pago | Sí (si se usa MP) |
 | `MERCADOPAGO_WEBHOOK_SECRET` | Firma webhook MP | Sí (si se usa MP) |
 | `MERCADOPAGO_PUBLIC_BASE_URL` | Retorno checkout MP | Sí (si se usa MP) |
@@ -52,18 +55,47 @@ estuvieron en un archivo versionado o en un artefacto compartido.
 - Rotarlo invalida todas las sesiones activas (los usuarios deben ingresar de
   nuevo). No hay lista de revocación: la expiración máxima es 72 h.
 
-## 4. Migración de cuentas
+## 4. Identidad global y `cuentas_negocio` (esquema real)
 
-Archivo: `migracion_cuentas_auth.sql` (raíz del proyecto).
+Estructura **ya aplicada** en `ecommerce_db` (verificada 2026-10-16 con
+`information_schema` y `SHOW CREATE TABLE`). No requiere DDL, migración ni
+respaldo: el código se adaptó a esta estructura.
 
-1. Respaldo previo: `mysqldump ecommerce_db > respaldo_YYYYMMDD.sql`.
-2. Verificar columnas si la tabla `cuentas` ya existía:
-   `SHOW COLUMNS FROM cuentas;`
-   Requeridas: `id`, `nombre_cuenta`, `correo_electronico` (UNIQUE),
-   `contrasenia`, `rol_usuario`, `id_cliente`.
-3. Ejecutar: `mysql ecommerce_db < migracion_cuentas_auth.sql`.
-   Es idempotente: si la tabla ya existe no modifica ni borra nada.
-4. No ejecutar contra producción sin ventana de mantenimiento ni respaldo.
+- `cuentas` — identidad global: `id` BIGINT autoincremental, `nombre_cuenta`,
+  `correo_electronico` (VARCHAR 254, UNIQUE `uq_cuentas_correo`), `contrasenia`
+  (hash PBKDF2), `activo` TINYINT(1), marcas de tiempo. Una cuenta no pertenece
+  a ningún negocio por sí sola.
+- `cuentas_negocio` — vínculo cuenta↔negocio sin ID propio (PK compuesta
+  `(id_cuenta, id_negocio)`): `id_cliente` NOT NULL con FK compuesta
+  `(id_cliente, id_negocio)` → `clientes(id, id_negocio)` (el perfil de cliente
+  se comparte con las tablas comerciales), `rol_usuario` (`ADMIN`/`CLIENTE`),
+  `activo` TINYINT(1). UNIQUE `(id_negocio, id_cliente)`: un perfil de cliente
+  pertenece a una sola cuenta por negocio.
+- Mapeo de estados: el esquema solo distingue `activo` 0/1. El dominio conserva
+  `EstadoCuenta`; `ACTIVA` ⇄ `1` y `BLOQUEADA`/`BAJA` ⇄ `0` (al leer, un `0` se
+  reporta como `BAJA`; la distinción `BLOQUEADA`/`BAJA` no se persiste).
+- Negocio activo de la sesión: el token firmado (5 campos:
+  `idCuenta:idCliente:idNegocio:rol:expiracion`) fija el negocio; se cambia con
+  `POST /api/auth/negocio-activo`, que reemite el token solo si existe vínculo
+  activo y el negocio está activo. En requests autenticados el tenant sale del
+  token y un header de negocio distinto responde 403, salvo en
+  `POST /api/auth/negocio-activo` y `POST /api/auth/vincular`: allí el negocio
+  objetivo se resuelve del subdominio (header/Host) porque la operación es
+  explícitamente cross-tenant; el JWT identifica la cuenta, el body no acepta
+  `idNegocio` y el servicio valida vínculo/identidad antes de emitir el token.
+- Verificación de compatibilidad (solo lectura, sin efectos):
+  `SHOW CREATE TABLE cuentas;` y `SHOW CREATE TABLE cuentas_negocio;` deben
+  mostrar lo descrito arriba, y
+  `SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA='ecommerce_db' AND TABLE_NAME='cuentas_negocio' AND REFERENCED_TABLE_NAME IS NOT NULL;`
+  debe devolver 4 filas de FK (cliente compuesta, cuenta, negocio).
+- El archivo `migracion_identidad_global.sql` quedó **obsoleto** (nunca se
+  ejecutó; contenía DDL de una versión previa del diseño). No usarlo.
+
+### Estados no representables (limitación conocida)
+
+Si en el futuro se necesita distinguir cuenta bloqueada de cuenta dada de baja,
+requiere una columna nueva en `cuentas`/`cuentas_negocio` con aprobación
+explícita; hoy ambas se persisten como `activo = 0`.
 
 ## 5. Primer administrador (bootstrap)
 
@@ -74,7 +106,10 @@ Archivo: `migracion_cuentas_auth.sql` (raíz del proyecto).
 3. Registrar el admin:
    `POST /api/auth/registro` con body
    `{"nombreCuenta":"...","correoElectronico":"...","contraseniaPlana":"...",
-   "idCliente":<id>,"rol":"ADMIN"}` y header `X-Setup-Token: <valor>`.
+   "dniCliente":"<dni>","rol":"ADMIN"}` y header `X-Setup-Token: <valor>`. Si el
+   DNI no existe en el negocio, agregar también `nombreCliente`,
+   `apellidoCliente`, `fechaNacimientoCliente`, `direccionCliente` y
+   `localidadCliente` para crear el perfil de cliente.
 4. Verificar ingreso en `POST /api/auth/ingreso` y acceso a una ruta ADMIN
    (p. ej. `GET /api/auditoria` con `Authorization: Bearer <token>`).
 5. **Eliminar `AUTH_BOOTSTRAP_TOKEN` del entorno y reiniciar.** Desde entonces,

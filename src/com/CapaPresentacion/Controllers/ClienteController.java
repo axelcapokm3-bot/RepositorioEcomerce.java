@@ -10,6 +10,8 @@ import com.sun.net.httpserver.HttpExchange;
 
 public class ClienteController extends BaseController {
 
+    private static final int LIMITE_POR_MINUTO = 120;
+
     private final IServiceCliente servicio;
     private final IProveedorTokenAcceso proveedor;
 
@@ -30,6 +32,10 @@ public class ClienteController extends BaseController {
         String path = exchange.getRequestURI().getPath();
 
         try {
+            Principal principalLimite = extraerPrincipal(exchange, proveedor).orElse(null);
+            if (limitarSolicitud(exchange, principalLimite, "clientes-admin", LIMITE_POR_MINUTO)) {
+                return;
+            }
             if (path.equals("/api/clientes") || path.equals("/api/clientes/")) {
                 if ("GET".equalsIgnoreCase(method)) {
                     Principal principal = exigirAutenticacion(exchange, proveedor);
