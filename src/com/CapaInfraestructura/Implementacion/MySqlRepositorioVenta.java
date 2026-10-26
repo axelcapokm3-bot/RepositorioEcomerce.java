@@ -199,13 +199,6 @@ public class MySqlRepositorioVenta implements IVentaRepository {
         try (PreparedStatement ventaStatement = connection.prepareStatement(
                 update ? updateVenta : insertVenta, Statement.RETURN_GENERATED_KEYS)) {
             bindVenta(ventaStatement, venta, update, id);
-            if (update) {
-                try (PreparedStatement delete = connection.prepareStatement("DELETE FROM " + DETALLE_TABLE + " WHERE id_venta = ? AND id_negocio = ?")) {
-                    delete.setInt(1, id);
-                    delete.setLong(2, venta.getIdNegocio());
-                    delete.executeUpdate();
-                }
-            }
             int filasActualizadas;
             try {
                 filasActualizadas = ventaStatement.executeUpdate();
@@ -216,10 +209,17 @@ public class MySqlRepositorioVenta implements IVentaRepository {
                 }
                 throw exception;
             }
-            if (update && filasActualizadas != 1) {
-                throw new SQLException("No se actualizó la venta esperada (id=" + id + ").");
+            if (update) {
+                ValidadorFilas.exigirFila(filasActualizadas, "Venta", id);
             }
-            if (!update) {
+            if (update) {
+                try (PreparedStatement delete = connection.prepareStatement(
+                        "DELETE FROM " + DETALLE_TABLE + " WHERE id_venta = ? AND id_negocio = ?")) {
+                    delete.setInt(1, id);
+                    delete.setLong(2, venta.getIdNegocio());
+                    delete.executeUpdate();
+                }
+            } else {
                 try (ResultSet keys = ventaStatement.getGeneratedKeys()) {
                     if (!keys.next()) throw new SQLException("MySQL no devolvió el ID de la venta.");
                     venta.setId(keys.getInt(1));

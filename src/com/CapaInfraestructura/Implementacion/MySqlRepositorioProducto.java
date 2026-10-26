@@ -152,11 +152,7 @@ public class MySqlRepositorioProducto implements IProductoRepository {
             statement.setString(7, producto.getCategoria().name());
             statement.setInt(8, id);
             statement.setLong(9, idNegocio);
-            int filasActualizadas = statement.executeUpdate();
-            if (filasActualizadas != 1) {
-                throw new SQLException("No se pudo actualizar el producto " + id + " del negocio "
-                        + idNegocio + " (filas afectadas: " + filasActualizadas + ").");
-            }
+            ValidadorFilas.exigirFila(statement.executeUpdate(), "Producto", id);
         }
     }
 
@@ -175,7 +171,7 @@ public class MySqlRepositorioProducto implements IProductoRepository {
         try (PreparedStatement statement = connection.prepareStatement("DELETE FROM productos WHERE id = ? AND id_negocio = ?")) {
             statement.setInt(1, id);
             statement.setLong(2, idNegocio);
-            statement.executeUpdate();
+            ValidadorFilas.exigirUnaFila(statement.executeUpdate(), "Producto", id);
         }
     }
 

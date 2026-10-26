@@ -13,6 +13,8 @@ public final class LimitadorTasa {
     private static final long LIMPIEZA_PREDETERMINADA_SEGUNDOS = 60L;
     private static final int MAX_CLAVES_PREDETERMINADO = 10_000;
     private static final Map<String, Ventana> VENTANAS = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Long> tiempoDeBloqueo = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, ContadorIntentos> intentosPorIp = new ConcurrentHashMap<>();
 
     private static ScheduledExecutorService limpieza;
 
@@ -48,6 +50,41 @@ public final class LimitadorTasa {
         return Resultado.permitido();
     }
 
+    public static Resultado evaluarIntento(String clave, int maxIntentos,
+                                           long ventanaSegundos, long bloqueoSegundos) {
+        if (clave == null || clave.isBlank() || maxIntentos <= 0) {
+            return Resultado.permitido();
+        }
+        long ventanaMs = Math.max(1L, ventanaSegundos) * 1000L;
+        long bloqueoMs = Math.max(1L, bloqueoSegundos) * 1000L;
+        long ahora = System.currentTimeMillis();
+
+        Long bloqueadoHasta = tiempoDeBloqueo.get(clave);
+        if (bloqueadoHasta != null) {
+            if (ahora < bloqueadoHasta) {
+                return new Resultado(true, segundosRestantes(bloqueadoHasta - ahora));
+            }
+            tiempoDeBloqueo.remove(clave);
+            intentosPorIp.remove(clave);
+        }
+
+        ContadorIntentos contador = intentosPorIp.compute(clave, (k, actual) -> {
+            if (actual == null || ahora - actual.inicio >= actual.ventanaMs) {
+                return new ContadorIntentos(1, ahora, ventanaMs);
+            }
+            return new ContadorIntentos(actual.intentos + 1, actual.inicio, actual.ventanaMs);
+        });
+
+        if (contador.intentos > maxIntentos) {
+            long hasta = tiempoDeBloqueo.merge(clave, ahora + bloqueoMs,
+                    (actual, nuevo) -> actual >= nuevo ? actual : nuevo);
+            mantenerCapacidadIntentos(ahora);
+            return new Resultado(true, segundosRestantes(hasta - ahora));
+        }
+        mantenerCapacidadIntentos(ahora);
+        return Resultado.permitido();
+    }
+
     public static boolean excede(String clave, int maxPorMinuto) {
         return evaluar(clave, maxPorMinuto, ventanaSegundos("global")).excedido();
     }
@@ -77,6 +114,13 @@ public final class LimitadorTasa {
         return segundos("rate-limit." + ambito + ".ventana-segundos", global);
     }
 
+    public static long bloqueoSegundos(String ambito, long predeterminado) {
+        if (ambito == null || ambito.isBlank()) {
+            return predeterminado;
+        }
+        return segundos("rate-limit." + ambito + ".bloqueo-segundos", predeterminado);
+    }
+
     public static synchronized void iniciar() {
         if (limpieza != null) {
             return;
@@ -98,14 +142,31 @@ public final class LimitadorTasa {
             limpieza = null;
         }
         VENTANAS.clear();
+        tiempoDeBloqueo.clear();
+        intentosPorIp.clear();
     }
 
     static void limpiar() {
         VENTANAS.clear();
+        tiempoDeBloqueo.clear();
+        intentosPorIp.clear();
     }
 
     static int cantidadClaves() {
         return VENTANAS.size();
+    }
+
+    static int cantidadBloqueos() {
+        return tiempoDeBloqueo.size();
+    }
+
+    static int cantidadIntentos() {
+        return intentosPorIp.size();
+    }
+
+    static boolean estaBloqueada(String clave) {
+        Long hasta = tiempoDeBloqueo.get(clave);
+        return hasta != null && System.currentTimeMillis() < hasta;
     }
 
     private static void mantenerCapacidad(long ahora) {
@@ -129,6 +190,28 @@ public final class LimitadorTasa {
         }
     }
 
+    private static void mantenerCapacidadIntentos(long ahora) {
+        int maximo = entero("rate-limit.max-claves", MAX_CLAVES_PREDETERMINADO);
+        if (maximo <= 0 || intentosPorIp.size() <= maximo) {
+            return;
+        }
+        limpiarExpiradas(ahora);
+        while (intentosPorIp.size() > maximo) {
+            String claveMasAntigua = null;
+            long inicioMasAntiguo = Long.MAX_VALUE;
+            for (Map.Entry<String, ContadorIntentos> entrada : intentosPorIp.entrySet()) {
+                if (entrada.getValue().inicio < inicioMasAntiguo) {
+                    inicioMasAntiguo = entrada.getValue().inicio;
+                    claveMasAntigua = entrada.getKey();
+                }
+            }
+            if (claveMasAntigua == null || intentosPorIp.remove(claveMasAntigua) == null) {
+                return;
+            }
+            tiempoDeBloqueo.remove(claveMasAntigua);
+        }
+    }
+
     private static void limpiarExpiradas() {
         limpiarExpiradas(System.currentTimeMillis());
     }
@@ -140,6 +223,22 @@ public final class LimitadorTasa {
                 VENTANAS.remove(entrada.getKey(), ventana);
             }
         }
+        for (Map.Entry<String, Long> entrada : tiempoDeBloqueo.entrySet()) {
+            if (ahora >= entrada.getValue()) {
+                tiempoDeBloqueo.remove(entrada.getKey(), entrada.getValue());
+                intentosPorIp.remove(entrada.getKey());
+            }
+        }
+        for (Map.Entry<String, ContadorIntentos> entrada : intentosPorIp.entrySet()) {
+            ContadorIntentos contador = entrada.getValue();
+            if (ahora - contador.inicio >= contador.ventanaMs) {
+                intentosPorIp.remove(entrada.getKey(), contador);
+            }
+        }
+    }
+
+    private static long segundosRestantes(long restanteMs) {
+        return Math.max(1L, (Math.max(1L, restanteMs) + 999L) / 1000L);
     }
 
     private static int entero(String clave, int predeterminado) {
@@ -178,5 +277,8 @@ public final class LimitadorTasa {
             this.usos = usos;
             this.ventanaMs = ventanaMs;
         }
+    }
+
+    private record ContadorIntentos(int intentos, long inicio, long ventanaMs) {
     }
 }

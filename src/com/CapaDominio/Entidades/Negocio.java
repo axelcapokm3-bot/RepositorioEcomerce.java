@@ -38,4 +38,15 @@ public class Negocio {
     public boolean estaOperativo() {
         return activo && fechaBaja == null;
     }
+
+    public void darDeBaja(LocalDateTime fechaBaja) {
+        if (!estaOperativo()) {
+            throw new IllegalStateException("El negocio ya se encuentra dado de baja.");
+        }
+        if (fechaBaja == null) {
+            throw new IllegalArgumentException("La fecha de baja es obligatoria.");
+        }
+        this.activo = false;
+        this.fechaBaja = fechaBaja;
+    }
 }

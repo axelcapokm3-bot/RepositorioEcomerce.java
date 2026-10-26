@@ -19,7 +19,6 @@ import com.CapaDominio.Entidades.ResultadoPago;
 import com.CapaDominio.Entidades.TipoDePago;
 import com.CapaDominio.Entidades.Venta;
 import com.CapaDominio.Entidades.VentasEventos;
-import com.CapaDominio.Excepciones.PasarelaNoDisponibleException;
 import com.CapaDominio.Excepciones.RecursoNoEncontradoException;
 import com.CapaDominio.Excepciones.ReglaNegocioException;
 import java.math.BigDecimal;
@@ -28,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -296,6 +296,53 @@ class VentaServiceTest {
     }
 
     @Test
+    @DisplayName("crearVentaConPagoAsync: inicia el checkout fuera de la transacción")
+    void crearVentaConPagoIniciaCheckoutFueraDeLaTransaccion() throws Exception {
+        String claveSolicitud = "solicitud-fuera-tx";
+        Carrito carrito = new Carrito(1);
+        carrito.agregarItem(new ItemCarrito(producto(1, 10, new BigDecimal("100")), 2));
+        AtomicBoolean enTransaccion = new AtomicBoolean(false);
+        ITransaccion transaccion = operacion -> {
+            enTransaccion.set(true);
+            try {
+                operacion.ejecutar(conexionTx);
+            } catch (RuntimeException runtimeException) {
+                throw runtimeException;
+            } catch (Exception exception) {
+                throw new RuntimeException(exception);
+            } finally {
+                enTransaccion.set(false);
+            }
+        };
+        VentaService servicioConTransaccion = new VentaService(
+                transaccion, ventaRepository, productoRepository, null, eventBus, null, pagoService);
+        ResultadoPago resultadoEsperado = ResultadoPago.pendiente(
+                "42",
+                new BigDecimal("200"),
+                "MERCADO_PAGO",
+                "https://checkout.example/42",
+                "order-42",
+                "{}");
+
+        when(ventaRepository.buscarPorClaveIdempotenciaSolicitud(NEGOCIO, claveSolicitud))
+                .thenReturn(Optional.empty());
+        when(productoRepository.buscarPorIdParaUpdate(eq(NEGOCIO), eq(1), any(Connection.class)))
+                .thenReturn(Optional.of(producto(1, 10, new BigDecimal("100"))));
+        when(pagoService.iniciarCheckout(any(Venta.class))).thenAnswer(invocacion -> {
+            assertFalse(enTransaccion.get(),
+                    "El checkout externo no debe ejecutarse dentro de la transacción.");
+            return resultadoEsperado;
+        });
+
+        ResultadoPago resultado = servicioConTransaccion.crearVentaConPagoAsync(
+                NEGOCIO, carrito, "MERCADO_PAGO", null, claveSolicitud).get();
+
+        assertSame(resultadoEsperado, resultado);
+        verify(ventaRepository).guardar(any(Venta.class), eq(conexionTx));
+        verify(pagoService).iniciarCheckout(any(Venta.class));
+    }
+
+    @Test
     @DisplayName("crearVentaConPagoAsync: rechaza clave existente con contenido diferente")
     void crearVentaConPagoRechazaContenidoDiferente() throws Exception {
         String claveSolicitud = "solicitud-venta-1";
@@ -339,25 +386,6 @@ class VentaServiceTest {
 
         verify(productoRepository, never()).actualizar(anyLong(), anyInt(), any(Producto.class));
         verify(ventaRepository, never()).guardar(any());
-        verify(pagoService, never()).iniciarCheckout(any());
-    }
-
-    @Test
-    @DisplayName("crearVentaConPagoAsync: valida la pasarela antes de guardar venta y descontar stock")
-    void crearVentaConPagoSinConfiguracionNoGuardaNiDescuentaStock() throws Exception {
-        Carrito carrito = carritoValido();
-        doThrow(new PasarelaNoDisponibleException("Falta configurar la pasarela."))
-                .when(pagoService).validarConfiguracionCheckout(NEGOCIO, TipoDePago.MERCADO_PAGO);
-        when(ventaRepository.buscarPorClaveIdempotenciaSolicitud(NEGOCIO, "solicitud-nueva"))
-                .thenReturn(Optional.empty());
-
-        assertThrows(ExecutionException.class,
-                () -> service.crearVentaConPagoAsync(
-                        NEGOCIO, carrito, "MERCADO_PAGO", null, "solicitud-nueva").get());
-
-        assertEquals(2, carrito.getItems().size());
-        verify(ventaRepository, never()).guardar(any(), any());
-        verify(productoRepository, never()).actualizar(anyLong(), anyInt(), any(Producto.class), any());
         verify(pagoService, never()).iniciarCheckout(any());
     }
 

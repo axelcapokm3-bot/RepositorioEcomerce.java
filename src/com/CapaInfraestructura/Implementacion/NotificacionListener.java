@@ -1,6 +1,7 @@
 package com.CapaInfraestructura.Implementacion;
 
 import com.CapaAplicacion.Interfaces.EventBus;
+import com.CapaInfraestructura.Configuracion.SanitizadorLog;
 import com.CapaAplicacion.Interfaces.INotificadorEmail;
 import com.CapaAplicacion.Interfaces.IServiceExecutor;
 import com.CapaAplicacion.Interfaces.TipoServicio;
@@ -51,8 +52,8 @@ public class NotificacionListener {
                 }
             } catch (Exception e) {
                 // TODO: contador de fallos para alertas
-                System.err.println("❌ Falló notificación para evento "
-                        + evento.getTipoOperacion() + ": " + e.getMessage());
+                System.err.println("Falló notificación para evento "
+                        + evento.getTipoOperacion() + ": " + SanitizadorLog.error(e));
             }
         });
     }

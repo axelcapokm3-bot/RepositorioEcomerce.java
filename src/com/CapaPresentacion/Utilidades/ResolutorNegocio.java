@@ -9,12 +9,15 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 /** Resuelve el negocio (tenant) de una solicitud HTTP. */
 public final class ResolutorNegocio {
     public static final String HEADER_NEGOCIO = "X-Negocio-Subdominio";
     private static final String CLAVE_TTL = "negocio.cache.ttl-segundos";
     private static final long TTL_PREDETERMINADO_SEGUNDOS = 60L;
+    private static final Pattern PATRON_SUBDOMINIO =
+            Pattern.compile("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$");
 
     private record EntradaCache(long idNegocio, long expiraEn) {
     }
@@ -37,19 +40,36 @@ public final class ResolutorNegocio {
         CACHE.remove(subdominio.trim().toLowerCase(Locale.ROOT));
     }
 
+    public static void invalidarPorId(long idNegocio) {
+        if (idNegocio <= 0) {
+            return;
+        }
+        CACHE.entrySet().removeIf(entrada -> entrada.getValue().idNegocio() == idNegocio);
+    }
+
     public static void invalidarTodo() {
         CACHE.clear();
     }
 
     public static Optional<Long> resolver(HttpExchange exchange) {
         String subdominio = exchange.getRequestHeaders().getFirst(HEADER_NEGOCIO);
-        if (subdominio == null || subdominio.isBlank()) {
-            subdominio = subdominioDeHost(exchange);
+        if (subdominio != null && !subdominio.isBlank()) {
+            return resolverSubdominio(normalizarSubdominio(subdominio));
         }
-        if (subdominio == null || subdominio.isBlank()) {
+        return resolverSubdominio(normalizarSubdominio(subdominioDeHost(exchange)));
+    }
+
+    /** Indica si la solicitud trae el encabezado explícito de negocio. */
+    public static boolean tieneIndicador(HttpExchange exchange) {
+        String subdominio = exchange.getRequestHeaders().getFirst(HEADER_NEGOCIO);
+        return subdominio != null && !subdominio.isBlank();
+    }
+
+    private static Optional<Long> resolverSubdominio(Optional<String> subdominio) {
+        if (subdominio.isEmpty()) {
             return Optional.empty();
         }
-        String clave = subdominio.trim().toLowerCase(Locale.ROOT);
+        String clave = subdominio.get();
         long ahora = System.currentTimeMillis();
         EntradaCache cached = CACHE.get(clave);
         if (cached != null && cached.expiraEn() > ahora) {
@@ -69,6 +89,17 @@ public final class ResolutorNegocio {
         CACHE.put(clave, new EntradaCache(
                 negocio.get().getId(), ahora + ttlMilisegundos()));
         return Optional.of(negocio.get().getId());
+    }
+
+    static Optional<String> normalizarSubdominio(String subdominio) {
+        if (subdominio == null || subdominio.isBlank()) {
+            return Optional.empty();
+        }
+        String normalizado = subdominio.trim().toLowerCase(Locale.ROOT);
+        if (normalizado.length() > 63 || !PATRON_SUBDOMINIO.matcher(normalizado).matches()) {
+            return Optional.empty();
+        }
+        return Optional.of(normalizado);
     }
 
     private static long ttlMilisegundos() {

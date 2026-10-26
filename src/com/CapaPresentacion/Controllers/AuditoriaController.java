@@ -60,7 +60,12 @@ public class AuditoriaController extends BaseController {
                                 "La acción recibida no existe en el catálogo permitido."
                         );
                     }
-                    handleAsync(exchange, servicio.registrarAuditoriaAsync(new Auditoria(accion, req.idEntidad(), req.descripcion())), 201);
+                    Auditoria auditoria = new Auditoria(accion, req.idEntidad(), req.descripcion());
+                    auditoria.setIdNegocio(idNegocio);
+                    auditoria.setUsuario(String.valueOf(principal.idCuenta()));
+                    auditoria.setIpOrigen(direccionCliente(exchange));
+                    auditoria.setUserAgent(exchange.getRequestHeaders().getFirst("User-Agent"));
+                    handleAsync(exchange, servicio.registrarAuditoriaAsync(auditoria), 201);
                 } else {
                     throw new ControllerException.Validacion("Método no permitido.", "La ruta no admite este método HTTP.");
                 }
@@ -94,13 +99,13 @@ public class AuditoriaController extends BaseController {
                 throw new ControllerException.NoEncontrado("Ruta no encontrada.", "No existe un recurso para la URL solicitada.");
             }
         } catch (ControllerException e) {
-            sendError(exchange, e.status(), e.respuesta());
+            manejarError(exchange, e);
         } catch (IOException e) {
             sendError(exchange, 503, new ControllerException.ServicioNoDisponible(
                     "No fue posible responder al cliente.", "Problema de red o comunicación."
             ).respuesta());
         } catch (Exception e) {
-            sendError(exchange, 500, "Código: ERROR_SERVIDOR | Mensaje: Error interno del servidor. | Causa: Fallo inesperado.");
+            manejarError(exchange, e);
         }
     }
 }

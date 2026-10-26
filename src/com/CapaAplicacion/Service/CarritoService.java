@@ -8,7 +8,6 @@ import com.CapaAplicacion.Interfaces.IServiceExecutor;
 import com.CapaAplicacion.Interfaces.TipoServicio;
 import com.CapaDominio.Entidades.Carrito;
 import com.CapaDominio.Entidades.ItemCarrito;
-import com.CapaDominio.Entidades.Negocio;
 import com.CapaDominio.Entidades.Producto;
 import com.CapaDominio.Excepciones.RecursoNoEncontradoException;
 import com.CapaInfraestructura.Implementacion.RegistroExecutors;
@@ -23,23 +22,30 @@ import java.util.concurrent.CompletableFuture;
 public class CarritoService {
     private final ICarritoRepository carritoRepository;
     private final IProductoRepository productoRepository;
-    private final INegocioRepository negocioRepository;
+    private final ValidadorNegocioService validadorNegocio;
     private final IServiceExecutor executor;
 
     public CarritoService(ICarritoRepository carritoRepository,
                           IProductoRepository productoRepository) {
-        this(carritoRepository, productoRepository, null);
+        this(carritoRepository, productoRepository, (ValidadorNegocioService) null);
     }
 
     public CarritoService(ICarritoRepository carritoRepository,
                           IProductoRepository productoRepository,
                           INegocioRepository negocioRepository) {
+        this(carritoRepository, productoRepository,
+                negocioRepository == null ? null : new ValidadorNegocioService(negocioRepository));
+    }
+
+    public CarritoService(ICarritoRepository carritoRepository,
+                          IProductoRepository productoRepository,
+                          ValidadorNegocioService validadorNegocio) {
         if (carritoRepository == null || productoRepository == null) {
             throw new IllegalArgumentException("El repositorio de carrito y el de productos son obligatorios.");
         }
         this.carritoRepository = carritoRepository;
         this.productoRepository = productoRepository;
-        this.negocioRepository = negocioRepository;
+        this.validadorNegocio = validadorNegocio;
         this.executor = RegistroExecutors.obtener(TipoServicio.VENTA);
     }
 
@@ -142,12 +148,8 @@ public class CarritoService {
         if (idNegocio <= 0 || idCliente <= 0) {
             throw new IllegalArgumentException("El negocio y el cliente deben ser positivos.");
         }
-        if (negocioRepository == null) {
-            return;
-        }
-        Optional<Negocio> negocio = negocioRepository.buscarPorId(idNegocio);
-        if (negocio.isEmpty() || !negocio.get().estaOperativo()) {
-            throw new RecursoNoEncontradoException("El negocio no está disponible.");
+        if (validadorNegocio != null) {
+            validadorNegocio.exigirOperativo(idNegocio);
         }
     }
 }

@@ -34,6 +34,16 @@ class AuditoriaTest {
     }
 
     @Test
+    @DisplayName("El log de auditoría neutraliza saltos de línea")
+    void logSinSaltosDeLinea() {
+        Auditoria a = new Auditoria(AccionAuditoria.CREAR, 3, "linea1\nlinea2\rlinea3");
+        String log = a.formatearParaLog();
+        assertFalse(log.contains("\n"));
+        assertFalse(log.contains("\r"));
+        assertTrue(log.contains("linea1\\nlinea2\\rlinea3"));
+    }
+
+    @Test
     @DisplayName("El ID del registro solo puede asignarse una vez")
     void setIdUnaSolaVez() {
         Auditoria a = new Auditoria(AccionAuditoria.CREAR, 1, "desc");

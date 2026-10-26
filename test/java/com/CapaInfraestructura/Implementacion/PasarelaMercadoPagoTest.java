@@ -1,5 +1,6 @@
 package com.CapaInfraestructura.Implementacion;
 
+import com.CapaAplicacion.puerto.ProveedorPago;
 import com.CapaDominio.Excepciones.PasarelaNoDisponibleException;
 import org.junit.jupiter.api.Test;
 
@@ -76,18 +77,17 @@ class PasarelaMercadoPagoTest {
 
     @Test
     void aceptaLaPropiedadCheckoutReturnUrlComoAlternativa() {
-        String accessTokenAnterior = System.getProperty("mercadopago.access-token");
         String urlAnterior = System.getProperty("mercadopago.checkout-return-url");
         try {
-            System.setProperty("mercadopago.access-token", "token-de-prueba");
             System.setProperty(
                     "mercadopago.checkout-return-url",
                     "https://checkout.example.com/src/index.html");
 
-            PasarelaMercadoPago pasarela = new PasarelaMercadoPago(1, null);
-            assertDoesNotThrow(pasarela::validarConfiguracion);
+            ConfiguracionCobro configuracion = new ConfiguracionCobro(null);
+            assertEquals(
+                    "https://checkout.example.com/src/index.html?payment_status=success",
+                    configuracion.urlRetorno(1L, ProveedorPago.MERCADO_PAGO));
         } finally {
-            restaurarPropiedad("mercadopago.access-token", accessTokenAnterior);
             restaurarPropiedad("mercadopago.checkout-return-url", urlAnterior);
         }
     }
@@ -97,16 +97,13 @@ class PasarelaMercadoPagoTest {
         String publicBaseUrl = System.getenv("MERCADOPAGO_PUBLIC_BASE_URL");
         assumeTrue(publicBaseUrl != null && !publicBaseUrl.isBlank());
 
-        String accessTokenAnterior = System.getProperty("mercadopago.access-token");
         String urlAnterior = System.getProperty("mercadopago.public-base-url");
         try {
-            System.setProperty("mercadopago.access-token", "token-de-prueba");
             System.clearProperty("mercadopago.public-base-url");
 
-            PasarelaMercadoPago pasarela = new PasarelaMercadoPago(1, null);
-            assertDoesNotThrow(pasarela::validarConfiguracion);
+            ConfiguracionCobro configuracion = new ConfiguracionCobro(null);
+            assertDoesNotThrow(() -> configuracion.urlRetorno(1L, ProveedorPago.MERCADO_PAGO));
         } finally {
-            restaurarPropiedad("mercadopago.access-token", accessTokenAnterior);
             restaurarPropiedad("mercadopago.public-base-url", urlAnterior);
         }
     }

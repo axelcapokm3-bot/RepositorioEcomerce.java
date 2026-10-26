@@ -1,11 +1,14 @@
 package com.CapaPresentacion.Controllers;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.CapaAplicacion.Interfaces.INegocioRepository;
 import com.CapaAplicacion.Interfaces.IProductoRepository;
@@ -18,6 +21,7 @@ import com.CapaDominio.Entidades.ConfiguracionCatalogo;
 import com.CapaDominio.Entidades.Negocio;
 import com.CapaDominio.Entidades.Producto;
 import com.CapaDominio.Entidades.RolUsuario;
+import com.CapaPresentacion.Utilidades.LimitadorTasa;
 import com.CapaPresentacion.Utilidades.ResolutorNegocio;
 import com.sun.net.httpserver.HttpServer;
 
@@ -30,6 +34,7 @@ import java.net.http.HttpResponse;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -68,7 +73,25 @@ class VentaControllerTenantTest {
         if (server != null) {
             server.stop(0);
         }
+        System.clearProperty("rate-limit.checkout.negocio");
         ResolutorNegocio.inicializar(null);
+    }
+
+    @Test
+    @DisplayName("crear venta limita el checkout por negocio")
+    void limitaCheckoutPorNegocio() throws Exception {
+        negocios.registrar(99L, true);
+        productos.registrar(true);
+        when(servicio.crearVentaConPagoAsync(anyLong(), any(), any(), any(), any()))
+                .thenReturn(CompletableFuture.completedFuture(null));
+        System.setProperty("rate-limit.checkout.negocio", "2");
+
+        assertNotEquals(429, enviar("crear", "token-cliente-99").statusCode());
+        assertNotEquals(429, enviar("crear", "token-cliente-99").statusCode());
+        HttpResponse<String> excedida = enviar("crear", "token-cliente-99");
+
+        assertEquals(429, excedida.statusCode());
+        assertTrue(excedida.headers().firstValue("Retry-After").isPresent());
     }
 
     @Test
@@ -79,7 +102,7 @@ class VentaControllerTenantTest {
 
         HttpResponse<String> respuesta = enviar("crear");
 
-        assertEquals(409, respuesta.statusCode());
+        assertEquals(403, respuesta.statusCode());
         verify(servicio, never()).crearVentaConPagoAsync(
                 anyLong(), any(), any(), any(), any());
     }
@@ -98,11 +121,15 @@ class VentaControllerTenantTest {
     }
 
     private HttpResponse<String> enviar(String ruta) throws Exception {
+        return enviar(ruta, "token-cliente");
+    }
+
+    private HttpResponse<String> enviar(String ruta, String token) throws Exception {
         String body = "{\"idCliente\":" + CLIENTE
                 + ",\"tipoPago\":\"MERCADO_PAGO\",\"items\":[{\"idProducto\":"
                 + PRODUCTO + ",\"cantidad\":1}]}";
         HttpRequest request = HttpRequest.newBuilder(URI.create(baseUrl + "/api/ventas/" + ruta))
-                .header("Authorization", "Bearer token-cliente")
+                .header("Authorization", "Bearer " + token)
                 .header("Idempotency-Key", "clave-1")
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body))
@@ -121,7 +148,14 @@ class VentaControllerTenantTest {
             if ("token-cliente".equals(token)) {
                 return Optional.of(new Principal(1L, CLIENTE, NEGOCIO, RolUsuario.CLIENTE));
             }
+            if ("token-cliente-99".equals(token)) {
+                return Optional.of(new Principal(1L, CLIENTE, 99L, RolUsuario.CLIENTE));
+            }
             return Optional.empty();
+        }
+
+        @Override
+        public void revocar(String token) {
         }
 
         @Override
@@ -134,7 +168,11 @@ class VentaControllerTenantTest {
         private Negocio negocio;
 
         void registrar(boolean activo) {
-            negocio = new Negocio(NEGOCIO, "Negocio", "negocio", "negocio@mail.com",
+            registrar(NEGOCIO, activo);
+        }
+
+        void registrar(long id, boolean activo) {
+            negocio = new Negocio(id, "Negocio", "negocio", "negocio@mail.com",
                     activo, null, null);
         }
 

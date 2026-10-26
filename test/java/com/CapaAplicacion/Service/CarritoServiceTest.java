@@ -20,6 +20,7 @@ import com.CapaDominio.Entidades.CategoriaProducto;
 import com.CapaDominio.Entidades.ItemCarrito;
 import com.CapaDominio.Entidades.Negocio;
 import com.CapaDominio.Entidades.Producto;
+import com.CapaDominio.Excepciones.NegocioInactivoException;
 import com.CapaDominio.Excepciones.RecursoNoEncontradoException;
 import com.CapaDominio.Excepciones.StockInsuficienteException;
 import java.math.BigDecimal;
@@ -178,7 +179,7 @@ class CarritoServiceTest {
         ExecutionException excepcion = assertThrows(ExecutionException.class,
                 () -> service.consultarAsync(NEGOCIO, CLIENTE).get(10, TimeUnit.SECONDS));
 
-        assertInstanceOf(RecursoNoEncontradoException.class, excepcion.getCause());
+        assertInstanceOf(NegocioInactivoException.class, excepcion.getCause());
         verify(carritoRepository, never()).obtener(NEGOCIO, CLIENTE);
     }
 

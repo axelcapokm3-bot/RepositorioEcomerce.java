@@ -21,6 +21,13 @@ import com.CapaAplicacion.Interfaces.IPagoRepository;
 import com.CapaAplicacion.Interfaces.ITransaccion;
 import com.CapaAplicacion.Interfaces.IVentaRepository;
 import com.CapaAplicacion.Interfaces.OperacionTransaccional;
+import com.CapaAplicacion.puerto.ConfiguracionCobro;
+import com.CapaAplicacion.puerto.EstadoPagoExterno;
+import com.CapaAplicacion.puerto.EventoWebhook;
+import com.CapaAplicacion.puerto.PasarelaPago;
+import com.CapaAplicacion.puerto.ProveedorPago;
+import com.CapaAplicacion.puerto.ResultadoInicio;
+import com.CapaAplicacion.puerto.SolicitudCobro;
 import com.CapaDominio.Entidades.Carrito;
 import com.CapaDominio.Entidades.CategoriaProducto;
 import com.CapaDominio.Entidades.EstadoPago;
@@ -32,9 +39,13 @@ import com.CapaDominio.Entidades.ResultadoPago;
 import com.CapaDominio.Entidades.TipoDePago;
 import com.CapaDominio.Entidades.Venta;
 import com.CapaDominio.Entidades.VentasEventos;
+import com.CapaDominio.Excepciones.MetodoPagoNoSoportadoException;
+import com.CapaDominio.Excepciones.PasarelaNoDisponibleException;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -90,7 +101,7 @@ class PagoServiceTest {
         when(pagoRepository.buscarPorClaveIdempotenciaPasarela(1L, claveIdempotenciaPasarela))
                 .thenReturn(Optional.of(pago));
 
-        PagoService service = new PagoService(pagoRepository, ventaRepository, eventBus);
+        PagoService service = nuevoServicio(null);
         ResultadoPago resultado = service.iniciarCheckout(venta);
 
         assertEquals("order-7", resultado.paymentId());
@@ -112,7 +123,7 @@ class PagoServiceTest {
         when(pagoRepository.buscarPorClaveIdempotenciaPasarela(1L, claveIdempotenciaPasarela))
                 .thenReturn(Optional.of(pago));
 
-        PagoService service = new PagoService(pagoRepository, ventaRepository, eventBus);
+        PagoService service = nuevoServicio(null);
 
         assertThrows(IllegalStateException.class, () -> service.iniciarCheckout(venta));
         verify(pagoRepository).buscarPorClaveIdempotenciaPasarela(1L, claveIdempotenciaPasarela);
@@ -122,7 +133,7 @@ class PagoServiceTest {
     @Test
     void rechazaRetrocesoDeEstadoTerminal() {
         Pago pago = pagoMercadoPago("5001", "order-7", EstadoPago.APROBADO);
-        PagoService service = new PagoService(pagoRepository, ventaRepository, eventBus);
+        PagoService service = nuevoServicio(null);
 
         assertThrows(com.CapaDominio.Excepciones.TransicionPagoInvalidaException.class,
                 () -> service.aplicarEstadoDePasarela(
@@ -133,7 +144,7 @@ class PagoServiceTest {
     @Test
     void persisteIdentificadorNuevoAunqueElEstadoNoCambie() {
         Pago pago = pagoMercadoPago(null, "order-7", EstadoPago.PENDIENTE);
-        PagoService service = new PagoService(pagoRepository, ventaRepository, eventBus);
+        PagoService service = nuevoServicio(null);
 
         service.aplicarEstadoDePasarela(
                 pago, EstadoPago.PENDIENTE, "5001", "order-7", "respuesta");
@@ -147,7 +158,7 @@ class PagoServiceTest {
     @Test
     void conservaIdentificadoresCuandoLaNotificacionNoLosTrae() {
         Pago pago = pagoMercadoPago("5001", "order-7", EstadoPago.PENDIENTE);
-        PagoService service = new PagoService(pagoRepository, ventaRepository, eventBus);
+        PagoService service = nuevoServicio(null);
 
         service.aplicarEstadoDePasarela(
                 pago, EstadoPago.RECHAZADO, null, " ", "respuesta");
@@ -161,7 +172,7 @@ class PagoServiceTest {
     @Test
     void noActualizaSiNoHayCambios() {
         Pago pago = pagoMercadoPago("5001", "order-7", EstadoPago.PENDIENTE);
-        PagoService service = new PagoService(pagoRepository, ventaRepository, eventBus);
+        PagoService service = nuevoServicio(null);
 
         service.aplicarEstadoDePasarela(
                 pago, EstadoPago.PENDIENTE, "5001", "order-7", "respuesta");
@@ -185,8 +196,7 @@ class PagoServiceTest {
             return null;
         }).when(transaccion).ejecutarTransaccion(any());
 
-        PagoService service = new PagoService(
-                pagoRepository, ventaRepository, eventBus, transaccion);
+        PagoService service = nuevoServicio(transaccion);
 
         service.aplicarEstadoDePasarela(
                 pago, EstadoPago.APROBADO, "5001", "order-7", "aprobado");
@@ -208,8 +218,7 @@ class PagoServiceTest {
         Connection conexion = mock(Connection.class);
         ITransaccion transaccion = transaccionCon(pago, venta, conexion);
 
-        PagoService service = new PagoService(
-                pagoRepository, ventaRepository, eventBus, transaccion);
+        PagoService service = nuevoServicio(transaccion);
 
         service.aplicarEstadoDePasarela(
                 pago, EstadoPago.APROBADO, "5001", "order-7", "aprobado");
@@ -231,8 +240,7 @@ class PagoServiceTest {
         Connection conexion = mock(Connection.class);
         ITransaccion transaccion = transaccionCon(pago, venta, conexion);
 
-        PagoService service = new PagoService(
-                pagoRepository, ventaRepository, eventBus, transaccion);
+        PagoService service = nuevoServicio(transaccion);
 
         service.aplicarEstadoDePasarela(
                 pago, EstadoPago.APROBADO, "5001", "order-7", "aprobado");
@@ -259,8 +267,7 @@ class PagoServiceTest {
                 .when(pagoRepository).actualizarWebhook(
                         anyInt(), any(), any(), any(), any(), any());
 
-        PagoService service = new PagoService(
-                pagoRepository, ventaRepository, eventBus, transaccion);
+        PagoService service = nuevoServicio(transaccion);
 
         assertThrows(RuntimeException.class, () -> service.aplicarEstadoDePasarela(
                 pago, EstadoPago.APROBADO, "5001", "order-7", "aprobado"));
@@ -274,7 +281,7 @@ class PagoServiceTest {
         Venta venta = ventaCancelada();
         when(ventaRepository.buscarPorId(1L, 7)).thenReturn(Optional.of(venta));
 
-        PagoService service = new PagoService(pagoRepository, ventaRepository, eventBus);
+        PagoService service = nuevoServicio(null);
         service.aplicarEstadoDePasarela(
                 pago, EstadoPago.APROBADO, "5001", "order-7", "aprobado");
 
@@ -284,6 +291,203 @@ class PagoServiceTest {
                 15, "5001", "order-7", EstadoPago.APROBADO, "aprobado");
         verify(ventaRepository, never()).marcarComoPagada(anyLong(), anyInt());
         verify(eventBus, never()).publicar(any());
+    }
+
+    @Test
+    void iniciaCobroConLaPasarelaDelMapaYConvierteElResultado() {
+        Venta venta = ventaConDetalleMercadoPago();
+        Pago pago = pagoMercadoPago(null, null, EstadoPago.PENDIENTE);
+        when(pagoRepository.buscarPorClaveIdempotenciaPasarela(1L, "venta-7-mercado_pago"))
+                .thenReturn(Optional.empty(), Optional.of(pago));
+        ResultadoInicio inicio = new ResultadoInicio(
+                "order-9",
+                "https://checkout.example/order-9",
+                EstadoPagoExterno.PENDIENTE,
+                "{\"id\":\"order-9\"}");
+        PagoService service = new PagoService(
+                pagoRepository, ventaRepository, eventBus, null,
+                Map.of(ProveedorPago.MERCADO_PAGO, pasarelaQueDevuelve(inicio)),
+                configuracionCobroFija());
+
+        ResultadoPago resultado = service.iniciarCheckout(venta);
+
+        assertEquals("order-9", resultado.paymentId());
+        assertEquals("https://checkout.example/order-9", resultado.urlPago());
+        assertEquals(EstadoPago.PENDIENTE, resultado.estado());
+        assertEquals("MERCADO_PAGO", resultado.pasarelaUsada());
+        verify(pagoRepository).actualizarCheckout(
+                15, null, "order-9", "https://checkout.example/order-9",
+                EstadoPago.PENDIENTE, "{\"id\":\"order-9\"}");
+    }
+
+    @Test
+    void rechazaMetodoDePagoNoSoportado() {
+        Venta venta = new Venta(1, TipoDePago.EFECTIVO);
+        venta.setIdNegocio(1L);
+        venta.setId(7);
+
+        PagoService service = nuevoServicio(null);
+
+        assertThrows(MetodoPagoNoSoportadoException.class, () -> service.iniciarCheckout(venta));
+        verifyNoInteractions(pagoRepository);
+    }
+
+    @Test
+    void rechazaProveedorSinPasarelaEnElMapa() {
+        Venta venta = ventaConDetalleMercadoPago();
+        Pago pago = pagoMercadoPago(null, null, EstadoPago.PENDIENTE);
+        when(pagoRepository.buscarPorClaveIdempotenciaPasarela(1L, "venta-7-mercado_pago"))
+                .thenReturn(Optional.empty(), Optional.of(pago));
+
+        PagoService service = nuevoServicio(null);
+
+        assertThrows(MetodoPagoNoSoportadoException.class, () -> service.iniciarCheckout(venta));
+        verify(pagoRepository, never()).actualizarCheckout(
+                anyInt(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void propagaFalloDeConfiguracionDeLaPasarela() {
+        Venta venta = ventaConDetalleMercadoPago();
+        Pago pago = pagoMercadoPago(null, null, EstadoPago.PENDIENTE);
+        when(pagoRepository.buscarPorClaveIdempotenciaPasarela(1L, "venta-7-mercado_pago"))
+                .thenReturn(Optional.empty(), Optional.of(pago));
+        PagoService service = new PagoService(
+                pagoRepository, ventaRepository, eventBus, null,
+                Map.of(ProveedorPago.MERCADO_PAGO,
+                        pasarelaQueFalla(new PasarelaNoDisponibleException("sin configuración"))),
+                configuracionCobroFija());
+
+        assertThrows(PasarelaNoDisponibleException.class, () -> service.iniciarCheckout(venta));
+        verify(pagoRepository, never()).actualizarCheckout(
+                anyInt(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void confirmaPagoManualSinTransaccionUsaConsultaSqlDePendiente() throws Exception {
+        Venta venta = new Venta(1, TipoDePago.EFECTIVO);
+        venta.setIdNegocio(1L);
+        venta.setId(7);
+        Pago pago = pagoEfectivoPendiente();
+        when(ventaRepository.buscarPorId(1L, 7)).thenReturn(Optional.of(venta));
+        when(pagoRepository.buscarPendientePorVentaParaUpdate(1L, 7, null))
+                .thenReturn(Optional.of(pago));
+        when(ventaRepository.marcarComoPagada(1L, 7)).thenReturn(true);
+
+        PagoService service = nuevoServicio(null);
+        service.confirmarPagoManual(1L, 7);
+
+        verify(pagoRepository).buscarPendientePorVentaParaUpdate(1L, 7, null);
+        verify(pagoRepository, never()).buscarPorVenta(anyLong(), anyInt());
+        verify(pagoRepository).actualizarEstado(15, EstadoPago.APROBADO, "{}");
+        verify(ventaRepository).marcarComoPagada(1L, 7);
+        verify(eventBus).publicar(any(VentasEventos.class));
+    }
+
+    private PagoService nuevoServicio(ITransaccion transaccion) {
+        return new PagoService(
+                pagoRepository, ventaRepository, eventBus, transaccion, Map.of(), null);
+    }
+
+    private Venta ventaConDetalleMercadoPago() {
+        Venta venta = new Venta(1, TipoDePago.MERCADO_PAGO, "clave-solicitud");
+        Carrito carrito = new Carrito(1);
+        Producto producto = new Producto(
+                "Producto",
+                new BigDecimal("100.00"),
+                10,
+                0,
+                1,
+                CategoriaProducto.ELECTRONICA);
+        carrito.agregarItem(new ItemCarrito(producto, 2));
+        venta.setIdNegocio(1L);
+        venta.cargarDetallesDesdeCarrito(carrito, null);
+        venta.setId(7);
+        return venta;
+    }
+
+    private Pago pagoEfectivoPendiente() {
+        Pago pago = new Pago(
+                15,
+                7,
+                TipoDePago.EFECTIVO.name(),
+                null,
+                null,
+                null,
+                EstadoPago.PENDIENTE,
+                new BigDecimal("200.00"),
+                "ARS",
+                null,
+                "{}",
+                "venta-7-efectivo",
+                LocalDateTime.now(),
+                null);
+        pago.setIdNegocio(1L);
+        return pago;
+    }
+
+    private PasarelaPago pasarelaQueDevuelve(ResultadoInicio resultado) {
+        return new PasarelaPago() {
+            @Override
+            public ResultadoInicio iniciarCobro(SolicitudCobro solicitud) {
+                return resultado;
+            }
+
+            @Override
+            public EstadoPagoExterno consultarEstado(String idExterno) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public EventoWebhook parsearWebhook(String payload, Map<String, String> headers,
+                                                String secreto) {
+                throw new UnsupportedOperationException();
+            }
+        };
+    }
+
+    private PasarelaPago pasarelaQueFalla(RuntimeException error) {
+        return new PasarelaPago() {
+            @Override
+            public ResultadoInicio iniciarCobro(SolicitudCobro solicitud) {
+                throw error;
+            }
+
+            @Override
+            public EstadoPagoExterno consultarEstado(String idExterno) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public EventoWebhook parsearWebhook(String payload, Map<String, String> headers,
+                                                String secreto) {
+                throw new UnsupportedOperationException();
+            }
+        };
+    }
+
+    private ConfiguracionCobro configuracionCobroFija() {
+        return new ConfiguracionCobro() {
+            @Override
+            public String urlRetorno(long idNegocio, ProveedorPago proveedor) {
+                return "https://shop.example.com/ok";
+            }
+
+            @Override
+            public String urlCancelacion(long idNegocio, ProveedorPago proveedor) {
+                return "https://shop.example.com/cancel";
+            }
+
+            @Override
+            public String urlPendiente(long idNegocio, ProveedorPago proveedor) {
+                return "https://shop.example.com/pending";
+            }
+
+            @Override
+            public String urlWebhook(long idNegocio, ProveedorPago proveedor) {
+                return "https://api.example.com/webhooks";
+            }
+        };
     }
 
     private Venta ventaPendiente() {

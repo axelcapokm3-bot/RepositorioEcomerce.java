@@ -10,14 +10,16 @@ import com.CapaAplicacion.Interfaces.IProductoRepository;
 import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
 import com.CapaAplicacion.Interfaces.IVentaRepository;
 import com.CapaAplicacion.Seguridad.Principal;
+import com.CapaAplicacion.Service.ValidadorNegocioService;
 import com.CapaAplicacion.Service.VentaService;
 import com.CapaDominio.Entidades.Carrito;
 import com.CapaDominio.Entidades.IDescuentos;
 import com.CapaDominio.Entidades.ItemCarrito;
-import com.CapaDominio.Entidades.Negocio;
 import com.CapaDominio.Entidades.PoliticaDescuento;
 import com.CapaDominio.Entidades.Producto;
 import com.CapaDominio.Entidades.Venta;
+import com.CapaDominio.Excepciones.NegocioInactivoException;
+import com.CapaPresentacion.Utilidades.LimitadorTasa;
 import com.sun.net.httpserver.HttpExchange;
 
 public class VentaController extends BaseController {
@@ -28,7 +30,7 @@ public class VentaController extends BaseController {
     private final IProductoRepository productoRepository;
     private final IVentaRepository ventaRepository;
     private final IProveedorTokenAcceso proveedor;
-    private final INegocioRepository negocioRepository;
+    private final ValidadorNegocioService validadorNegocio;
 
     public record CreateVentaRequest(
         int idCliente,
@@ -53,22 +55,24 @@ public class VentaController extends BaseController {
     ) {}
 
     public VentaController(VentaService servicio, IProductoRepository productoRepository,
-                           IVentaRepository ventaRepository, IProveedorTokenAcceso proveedor) {
-        this(servicio, productoRepository, ventaRepository, proveedor, null);
+                           IVentaRepository ventaRepository, IProveedorTokenAcceso proveedor,
+                           INegocioRepository negocioRepository) {
+        this(servicio, productoRepository, ventaRepository, proveedor,
+                new ValidadorNegocioService(negocioRepository));
     }
 
     public VentaController(VentaService servicio, IProductoRepository productoRepository,
                            IVentaRepository ventaRepository, IProveedorTokenAcceso proveedor,
-                           INegocioRepository negocioRepository) {
+                           ValidadorNegocioService validadorNegocio) {
         if (servicio == null || productoRepository == null
-                || ventaRepository == null || proveedor == null) {
+                || ventaRepository == null || proveedor == null || validadorNegocio == null) {
             throw new IllegalArgumentException("Las dependencias del controlador de ventas son obligatorias.");
         }
         this.servicio = servicio;
         this.productoRepository = productoRepository;
         this.ventaRepository = ventaRepository;
         this.proveedor = proveedor;
-        this.negocioRepository = negocioRepository;
+        this.validadorNegocio = validadorNegocio;
     }
 
     @Override
@@ -115,6 +119,22 @@ public class VentaController extends BaseController {
                 if ("POST".equalsIgnoreCase(method)) {
                     Principal principal = exigirAutenticacion(exchange, proveedor);
                     long idNegocio = negocioAutorizado(exchange, principal);
+                    int maxIntentosCheckout = LimitadorTasa.limiteConfigurado(
+                            "checkout", "max-intentos-ip", 20);
+                    long bloqueoCheckout = LimitadorTasa.bloqueoSegundos("checkout", 60L);
+                    if (limitarIntentosPorIp(
+                            exchange, "checkout", maxIntentosCheckout, bloqueoCheckout)) {
+                        return;
+                    }
+                    int limiteCheckout = LimitadorTasa.limiteConfigurado("checkout", "negocio", 10);
+                    long ventanaCheckout = LimitadorTasa.ventanaSegundos("checkout");
+                    if (limitarSolicitudPorClave(
+                            exchange,
+                            "checkout-negocio|" + idNegocio,
+                            limiteCheckout,
+                            ventanaCheckout)) {
+                        return;
+                    }
                     CreateVentaRequest req = parseRequestBody(exchange, CreateVentaRequest.class);
                     if (req == null) {
                         throw new ControllerException.Validacion(
@@ -178,13 +198,17 @@ public class VentaController extends BaseController {
                 throw new ControllerException.NoEncontrado("Ruta no encontrada.", "No existe un recurso para la URL solicitada.");
             }
         } catch (ControllerException e) {
-            sendError(exchange, e.status(), e.respuesta());
+            manejarError(exchange, e);
+        } catch (NegocioInactivoException e) {
+            sendError(exchange, 403, new ControllerException.Prohibido(
+                    "El negocio no está disponible.",
+                    "El negocio se encuentra inactivo o dado de baja.").respuesta());
         } catch (IOException e) {
             sendError(exchange, 503, new ControllerException.ServicioNoDisponible(
                     "No fue posible responder al cliente.", "Problema de red o comunicación."
             ).respuesta());
         } catch (Exception e) {
-            sendError(exchange, 500, "Código: ERROR_SERVIDOR | Mensaje: Error interno del servidor. | Causa: Fallo inesperado.");
+            manejarError(exchange, e);
         }
     }
 
@@ -207,7 +231,7 @@ public class VentaController extends BaseController {
                     "No se recibió una forma de pago válida."
             );
         }
-        exigirNegocioOperativo(idNegocio);
+        validadorNegocio.exigirOperativo(idNegocio);
 
         Carrito carrito = new Carrito(req.idCliente());
         for (ItemRequest itemReq : req.items()) {
@@ -233,19 +257,6 @@ public class VentaController extends BaseController {
             carrito.agregarItem(new ItemCarrito(prodOpt.get(), itemReq.cantidad()));
         }
         return carrito;
-    }
-
-    private void exigirNegocioOperativo(long idNegocio) {
-        if (negocioRepository == null) {
-            return;
-        }
-        Optional<Negocio> negocio = negocioRepository.buscarPorId(idNegocio);
-        if (negocio.isEmpty() || !negocio.get().estaOperativo()) {
-            throw new ControllerException.Conflicto(
-                    "El negocio no está disponible.",
-                    "El negocio se encuentra inactivo o dado de baja."
-            );
-        }
     }
 
     private void exigirPermisoSobreVenta(long idNegocio, Principal principal, int idVenta) {

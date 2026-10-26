@@ -1,14 +1,15 @@
 package com.CapaInfraestructura.Implementacion;
 
 import com.CapaAplicacion.Interfaces.INegocioRepository;
-import com.CapaAplicacion.Interfaces.IPasarelaPago;
+import com.CapaAplicacion.puerto.EstadoPagoExterno;
+import com.CapaAplicacion.puerto.EventoWebhook;
+import com.CapaAplicacion.puerto.PasarelaPago;
+import com.CapaAplicacion.puerto.ProveedorPago;
+import com.CapaAplicacion.puerto.ResultadoInicio;
+import com.CapaAplicacion.puerto.SolicitudCobro;
 import com.CapaInfraestructura.Configuracion.ConfigLoader;
 import com.CapaInfraestructura.Configuracion.ConfiguracionMercadoPago;
-import com.CapaDominio.Entidades.ConfiguracionCatalogo;
-import com.CapaDominio.Entidades.DetalleVenta;
-import com.CapaDominio.Entidades.ResultadoPago;
-import com.CapaDominio.Entidades.TipoDePago;
-import com.CapaDominio.Entidades.Venta;
+import com.CapaDominio.Excepciones.MetodoPagoNoSoportadoException;
 import com.CapaDominio.Excepciones.PagoRechazadoException;
 import com.CapaDominio.Excepciones.PasarelaNoDisponibleException;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -28,68 +29,44 @@ import java.net.InetAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /** Pasarela de Mercado Pago basada exclusivamente en Orders API. */
-public class PasarelaMercadoPago implements IPasarelaPago {
+public class PasarelaMercadoPago implements PasarelaPago {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final String RETORNO_AUTOMATICO_APROBADO = "approved";
 
-    private final long idNegocio;
     private final INegocioRepository negocioRepository;
     private final OrderClient orderClient;
-    private final ConfiguracionMercadoPago configuracionMercadoPago;
 
-    public PasarelaMercadoPago(long idNegocio, INegocioRepository negocioRepository) {
-        this(idNegocio, negocioRepository, new OrderClient());
+    public PasarelaMercadoPago(INegocioRepository negocioRepository) {
+        this(negocioRepository, new OrderClient());
     }
 
-    PasarelaMercadoPago(long idNegocio, INegocioRepository negocioRepository, OrderClient orderClient) {
-        this.idNegocio = idNegocio;
+    PasarelaMercadoPago(INegocioRepository negocioRepository, OrderClient orderClient) {
+        if (orderClient == null) {
+            throw new IllegalArgumentException("El cliente de Orders es obligatorio.");
+        }
         this.negocioRepository = negocioRepository;
         this.orderClient = orderClient;
-        this.configuracionMercadoPago =
-                new ConfiguracionMercadoPago(negocioRepository, idNegocio);
     }
 
     @Override
-    public void validarConfiguracion() {
-        String accessToken = buscarAccessToken();
+    public ResultadoInicio iniciarCobro(SolicitudCobro solicitud) {
+        validarSolicitud(solicitud);
+        String accessToken = new ConfiguracionMercadoPago(negocioRepository, solicitud.idNegocio())
+                .obtenerAccessToken();
         if (vacio(accessToken)) {
             throw new PasarelaNoDisponibleException(
                     "Mercado Pago no está configurado para este negocio.");
         }
-        obtenerConfiguracionRetorno();
-    }
 
-    @Override
-    public void validar(Venta venta) throws PagoRechazadoException {
-        if (venta == null || venta.calculoTotal().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new PagoRechazadoException("El monto a pagar debe ser mayor a cero.");
-        }
-        if (venta.getDetalles() == null || venta.getDetalles().isEmpty()) {
-            throw new PagoRechazadoException("La venta debe incluir al menos un producto.");
-        }
-        validarConfiguracion();
-    }
-
-    @Override
-    public ResultadoPago procesar(Venta venta, String claveIdempotenciaPasarela)
-            throws PagoRechazadoException, PasarelaNoDisponibleException {
-        validar(venta);
-        if (claveIdempotenciaPasarela == null || claveIdempotenciaPasarela.isBlank()) {
-            throw new PagoRechazadoException("La clave de idempotencia es obligatoria.");
-        }
-
-        String accessToken = buscarAccessToken();
-        ConfiguracionRetorno configuracion = obtenerConfiguracionRetorno();
         try {
-            OrderCreateRequest request = crearSolicitud(venta, configuracion);
+            OrderCreateRequest request = crearSolicitud(solicitud);
             Map<String, String> headers = new HashMap<>();
-            headers.put("X-Idempotency-Key", claveIdempotenciaPasarela);
+            headers.put("X-Idempotency-Key", solicitud.idempotencyKey());
             MPRequestOptions options = MPRequestOptions.builder()
                     .accessToken(accessToken)
                     .customHeaders(headers)
@@ -97,12 +74,10 @@ public class PasarelaMercadoPago implements IPasarelaPago {
 
             Order order = orderClient.create(request, options);
             validarRespuesta(order);
-            return ResultadoPago.pendiente(
-                    String.valueOf(venta.getId()),
-                    venta.calculoTotal(),
-                    "MERCADO_PAGO",
-                    order.getCheckoutUrl(),
+            return new ResultadoInicio(
                     order.getId(),
+                    order.getCheckoutUrl(),
+                    EstadoPagoExterno.PENDIENTE,
                     serializarRespuesta(order));
         } catch (MPApiException e) {
             String detalle = e.getApiResponse() == null ? e.getMessage() : e.getApiResponse().getContent();
@@ -112,75 +87,87 @@ public class PasarelaMercadoPago implements IPasarelaPago {
         }
     }
 
-    private OrderCreateRequest crearSolicitud(Venta venta, ConfiguracionRetorno retorno) {
+    @Override
+    public EstadoPagoExterno consultarEstado(String idExterno) {
+        throw new UnsupportedOperationException(
+                "La consulta de estado requiere el contexto del negocio.");
+    }
+
+    @Override
+    public EventoWebhook parsearWebhook(String payload, Map<String, String> headers, String secreto) {
+        throw new UnsupportedOperationException(
+                "El parseo de webhooks de Mercado Pago se habilita en el Paso 3.");
+    }
+
+    private void validarSolicitud(SolicitudCobro solicitud) {
+        if (solicitud == null) {
+            throw new IllegalArgumentException("La solicitud de cobro es obligatoria.");
+        }
+        if (solicitud.proveedor() != ProveedorPago.MERCADO_PAGO) {
+            throw new MetodoPagoNoSoportadoException(
+                    "La solicitud de cobro no corresponde a Mercado Pago.");
+        }
+        if (solicitud.monto() == null || solicitud.monto().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new PagoRechazadoException("El monto a pagar debe ser mayor a cero.");
+        }
+        if (solicitud.items() == null || solicitud.items().isEmpty()) {
+            throw new PagoRechazadoException("La venta debe incluir al menos un producto.");
+        }
+        if (vacio(solicitud.urlRetorno()) || vacio(solicitud.urlCancelacion())) {
+            throw new PasarelaNoDisponibleException(
+                    "Faltan las URLs de retorno de Mercado Pago.");
+        }
+    }
+
+    private OrderCreateRequest crearSolicitud(SolicitudCobro solicitud) {
         List<OrderItemRequest> items = new ArrayList<>();
-        for (DetalleVenta detalle : venta.getDetalles()) {
+        for (SolicitudCobro.ItemCobro itemCobro : solicitud.items()) {
             OrderItemRequest item = OrderItemRequest.builder()
-                    .title("Producto " + detalle.getIdProducto())
+                    .title("Producto " + itemCobro.idProducto())
                     .description("Producto del eCommerce")
-                    .externalCode(String.valueOf(detalle.getIdProducto()))
-                    .quantity(detalle.getCantidad())
-                    .unitPrice(detalle.getPrecioUnitario().toPlainString())
+                    .externalCode(String.valueOf(itemCobro.idProducto()))
+                    .quantity(itemCobro.cantidad())
+                    .unitPrice(itemCobro.precioUnitario().toPlainString())
                     .build();
             items.add(item);
         }
 
-        OrderOnlineConfig onlineConfig = OrderOnlineConfig.builder()
-                .successUrl(retorno.successUrl())
-                .failureUrl(retorno.failureUrl())
-                .pendingUrl(retorno.pendingUrl())
-                .autoReturn(retorno.autoReturn())
-                .build();
+        String urlPendiente = vacio(solicitud.urlPendiente())
+                ? solicitud.urlRetorno()
+                : solicitud.urlPendiente();
+        OrderOnlineConfig.OrderOnlineConfigBuilder onlineConfig = OrderOnlineConfig.builder()
+                .successUrl(solicitud.urlRetorno())
+                .failureUrl(solicitud.urlCancelacion())
+                .pendingUrl(urlPendiente)
+                .autoReturn(RETORNO_AUTOMATICO_APROBADO);
+        if (!vacio(solicitud.urlWebhook())) {
+            onlineConfig.callbackUrl(solicitud.urlWebhook());
+        }
         OrderConfigRequest config = OrderConfigRequest.builder()
-                .online(onlineConfig)
+                .online(onlineConfig.build())
                 .build();
 
+        String descripcion = vacio(solicitud.descripcion())
+                ? "Venta " + solicitud.idVenta()
+                : solicitud.descripcion();
         return OrderCreateRequest.builder()
                 .type("online")
                 .processingMode("manual")
-                .externalReference(String.valueOf(venta.getId()))
-                .totalAmount(venta.calculoTotal().toPlainString())
-                .currency("ARS")
-                .description("Venta " + venta.getId())
+                .externalReference(String.valueOf(solicitud.idVenta()))
+                .totalAmount(solicitud.monto().toPlainString())
+                .currency(solicitud.moneda())
+                .description(descripcion)
                 .items(items)
                 .config(config)
                 .build();
     }
 
-    private void validarRespuesta(Order order) throws PasarelaNoDisponibleException {
+    private void validarRespuesta(Order order) {
         if (order == null || order.getId() == null || order.getId().isBlank()
                 || order.getCheckoutUrl() == null || order.getCheckoutUrl().isBlank()) {
             throw new PasarelaNoDisponibleException(
                     "Mercado Pago no devolvió el identificador y la URL de checkout de la Order.");
         }
-    }
-
-    private String buscarAccessToken() {
-        return configuracionMercadoPago.obtenerAccessToken();
-    }
-
-    private ConfiguracionRetorno obtenerConfiguracionRetorno() {
-        String publicBaseUrl = buscarValor(
-                "mercadopago.public-base-url",
-                "mercadopago_public_base_url");
-        if (vacio(publicBaseUrl)) {
-            publicBaseUrl = ConfigLoader.getProperty("mercadopago.checkout-return-url");
-        }
-        String successUrl = buscarValor(
-                "mercadopago.back_url.success",
-                "mercadopago_back_url_success");
-        String failureUrl = buscarValor(
-                "mercadopago.back_url.failure",
-                "mercadopago_back_url_failure");
-        String pendingUrl = buscarValor(
-                "mercadopago.back_url.pending",
-                "mercadopago_back_url_pending");
-
-        return crearConfiguracionRetorno(
-                publicBaseUrl,
-                successUrl,
-                failureUrl,
-                pendingUrl);
     }
 
     static ConfiguracionRetorno crearConfiguracionRetorno(
@@ -271,43 +258,16 @@ public class PasarelaMercadoPago implements IPasarelaPago {
         }
     }
 
-    private String buscarValor(String clavePropiedad, String claveCatalogo) {
-        String valor = ConfigLoader.getProperty(clavePropiedad);
-        if (!vacio(valor)) {
-            return valor;
-        }
-        return buscarConfiguracion(claveCatalogo);
-    }
-
-    private String buscarConfiguracion(String clave) {
-        if (negocioRepository == null) {
-            return null;
-        }
-        Map<ConfiguracionCatalogo, String> configuraciones =
-                negocioRepository.listarConfiguracionesEfectivas(idNegocio);
-        for (Map.Entry<ConfiguracionCatalogo, String> entrada : configuraciones.entrySet()) {
-            if (clave.equalsIgnoreCase(entrada.getKey().getClave()) && !vacio(entrada.getValue())) {
-                return entrada.getValue();
-            }
-        }
-        return null;
-    }
-
     private static boolean vacio(String valor) {
         return valor == null || valor.isBlank();
     }
 
-    private String serializarRespuesta(Order order) throws PasarelaNoDisponibleException {
+    private String serializarRespuesta(Order order) {
         try {
             return OBJECT_MAPPER.writeValueAsString(order);
         } catch (JsonProcessingException e) {
             throw new PasarelaNoDisponibleException("No se pudo serializar la respuesta de la Order de Mercado Pago.");
         }
-    }
-
-    @Override
-    public TipoDePago getTipoSoportado() {
-        return TipoDePago.MERCADO_PAGO;
     }
 
     record ConfiguracionRetorno(

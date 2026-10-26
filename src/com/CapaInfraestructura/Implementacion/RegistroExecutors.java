@@ -2,6 +2,7 @@ package com.CapaInfraestructura.Implementacion;
 
 import com.CapaAplicacion.Interfaces.IServiceExecutor;
 import com.CapaAplicacion.Interfaces.TipoServicio;
+import com.CapaInfraestructura.Configuracion.ConfiguracionExecutor;
 
 import java.util.EnumMap;
 import java.util.Map;
@@ -12,6 +13,12 @@ public final class RegistroExecutors {
             new EnumMap<>(TipoServicio.class);
 
     private RegistroExecutors() {
+    }
+
+    public static void validarConfiguracion() {
+        for (TipoServicio tipo : TipoServicio.values()) {
+            ConfiguracionExecutor.para(tipo);
+        }
     }
 
     public static synchronized IServiceExecutor obtener(TipoServicio tipo) {

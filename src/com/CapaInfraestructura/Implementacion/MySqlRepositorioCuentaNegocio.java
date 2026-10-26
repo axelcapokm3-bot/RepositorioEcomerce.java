@@ -4,7 +4,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.SQLIntegrityConstraintViolationException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -13,6 +12,7 @@ import com.CapaAplicacion.Interfaces.ICuentaNegocioRepositorio;
 import com.CapaDominio.Entidades.EstadoCuenta;
 import com.CapaDominio.Entidades.RolUsuario;
 import com.CapaDominio.Entidades.VinculoCuentaNegocio;
+import com.CapaDominio.Excepciones.IdentidadDuplicadaException;
 
 public class MySqlRepositorioCuentaNegocio implements ICuentaNegocioRepositorio {
     private static final String COLUMNAS = "id_cuenta, id_negocio, id_cliente, rol_usuario, activo";
@@ -44,25 +44,23 @@ public class MySqlRepositorioCuentaNegocio implements ICuentaNegocioRepositorio 
                     buscarPorCuentaYNegocio(connection, vinculo.getIdCuenta(), vinculo.getIdNegocio());
             if (actual.isPresent()) {
                 if (actual.get().estaActivo()) {
-                    throw new IllegalStateException(MENSAJE_DUPLICADO);
+                    throw new IdentidadDuplicadaException(MENSAJE_DUPLICADO);
                 }
                 Optional<VinculoCuentaNegocio> porCliente = buscarPorNegocioYCliente(
                         connection, vinculo.getIdNegocio(), vinculo.getIdCliente());
                 if (porCliente.isPresent() && porCliente.get().getIdCuenta() != vinculo.getIdCuenta()) {
-                    throw new IllegalStateException(MENSAJE_DUPLICADO);
+                    throw new IdentidadDuplicadaException(MENSAJE_DUPLICADO);
                 }
                 reactivar(connection, vinculo);
                 return;
             }
             if (buscarPorNegocioYCliente(connection, vinculo.getIdNegocio(), vinculo.getIdCliente()).isPresent()) {
-                throw new IllegalStateException(MENSAJE_DUPLICADO);
+                throw new IdentidadDuplicadaException(MENSAJE_DUPLICADO);
             }
             insertar(connection, vinculo);
-        } catch (SQLIntegrityConstraintViolationException duplicado) {
-            throw new IllegalStateException(MENSAJE_DUPLICADO, duplicado);
         } catch (SQLException exception) {
             if (esViolacionUnica(exception)) {
-                throw new IllegalStateException(MENSAJE_DUPLICADO, exception);
+                throw new IdentidadDuplicadaException(MENSAJE_DUPLICADO, exception);
             }
             throw new IllegalStateException("Error al guardar el vínculo cuenta-negocio en MySQL.", exception);
         }
@@ -217,8 +215,7 @@ public class MySqlRepositorioCuentaNegocio implements ICuentaNegocioRepositorio 
     private boolean esViolacionUnica(SQLException exception) {
         SQLException actual = exception;
         while (actual != null) {
-            if (actual instanceof SQLIntegrityConstraintViolationException
-                    || ("23000".equals(actual.getSQLState()) && actual.getErrorCode() == 1062)) {
+            if (actual.getErrorCode() == 1062) {
                 return true;
             }
             actual = actual.getNextException();

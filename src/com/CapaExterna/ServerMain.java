@@ -2,6 +2,7 @@ package com.CapaExterna;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.util.Map;
 
 import com.CapaAplicacion.Interfaces.EventBus;
 import com.CapaAplicacion.Interfaces.INotificadorEmail;
@@ -19,6 +20,7 @@ import com.CapaAplicacion.Interfaces.IPagoRepository;
 import com.CapaAplicacion.Interfaces.IVentaRepository;
 import com.CapaAplicacion.Interfaces.ICarritoRepository;
 import com.CapaAplicacion.Interfaces.IEventoWebhookRepository;
+import com.CapaAplicacion.Interfaces.IInvalidadorCacheNegocio;
 import com.CapaAplicacion.Service.AuditoriaService;
 import com.CapaAplicacion.Service.AutenticacionService;
 import com.CapaAplicacion.Service.CarritoService;
@@ -30,9 +32,13 @@ import com.CapaAplicacion.Service.ProcesadorEventosWebhook;
 import com.CapaAplicacion.Service.RecomendacionService;
 import com.CapaAplicacion.Service.StockService;
 import com.CapaAplicacion.Service.StripeWebhookService;
+import com.CapaAplicacion.Service.ValidadorNegocioService;
 import com.CapaAplicacion.Service.VentaService;
 import com.CapaAplicacion.Service.WebhookEventoService;
 import com.CapaAplicacion.Service.WebhookService;
+import com.CapaAplicacion.puerto.ConfiguracionCobro;
+import com.CapaAplicacion.puerto.PasarelaPago;
+import com.CapaAplicacion.puerto.ProveedorPago;
 import com.CapaInfraestructura.Implementacion.AdaptadorContrasena;
 import com.CapaInfraestructura.Implementacion.InMemoryEventBus;
 import com.CapaInfraestructura.Implementacion.RegistroExecutors;
@@ -46,11 +52,14 @@ import com.CapaInfraestructura.Implementacion.MySqlRepositorioEventoWebhook;
 import com.CapaInfraestructura.Implementacion.JobWebhooks;
 import com.CapaInfraestructura.Implementacion.JobExpiracionVentas;
 import com.CapaInfraestructura.Implementacion.MySqlRepositorioAuditoria;
+import com.CapaInfraestructura.Implementacion.MySqlRepositorioTokenBootstrap;
 import com.CapaInfraestructura.Implementacion.MySqlNegocioRepository;
-import com.CapaInfraestructura.Implementacion.PasarelaFactory;
+import com.CapaInfraestructura.Implementacion.PasarelaMercadoPago;
+import com.CapaInfraestructura.Implementacion.PasarelaStripe;
 import com.CapaInfraestructura.Implementacion.ProveedorTokenAcceso;
 import com.CapaInfraestructura.Implementacion.RedisCarritoRepository;
 import com.CapaInfraestructura.Configuracion.ConfiguracionRedis;
+import com.CapaInfraestructura.Configuracion.DiagnosticoArranque;
 import com.CapaPresentacion.Controllers.AuditoriaController;
 import com.CapaPresentacion.Controllers.AuthController;
 import com.CapaPresentacion.Controllers.CarritoController;
@@ -70,6 +79,7 @@ public class ServerMain {
 
     public static void main(String[] args) {
         try {
+            RegistroExecutors.validarConfiguracion();
             LimitadorTasa.iniciar();
 
             System.out.println("==================================================");
@@ -94,17 +104,29 @@ public class ServerMain {
             INotificadorEmail notificador = new NotificadorEmailMock();
             new NotificacionListener(eventBus, notificador);
 
-            PasarelaFactory.inicializar(negocioRepo);
             ResolutorNegocio.inicializar(negocioRepo);
-            PagoService pagoService = new PagoService(pagoRepo, ventaRepo, eventBus, transaccion);
-            NegocioService negocioService = new NegocioService(negocioRepo);
+            IInvalidadorCacheNegocio invalidadorCache = new IInvalidadorCacheNegocio() {
+                @Override
+                public void invalidar(long idNegocio) {
+                    ResolutorNegocio.invalidarPorId(idNegocio);
+                }
+            };
+            ValidadorNegocioService validadorNegocio = new ValidadorNegocioService(negocioRepo);
+            ConfiguracionCobro configuracionCobro =
+                    new com.CapaInfraestructura.Implementacion.ConfiguracionCobro(negocioRepo);
+            Map<ProveedorPago, PasarelaPago> pasarelas = Map.of(
+                    ProveedorPago.MERCADO_PAGO, new PasarelaMercadoPago(negocioRepo),
+                    ProveedorPago.STRIPE, new PasarelaStripe(negocioRepo));
+            PagoService pagoService = new PagoService(
+                    pagoRepo, ventaRepo, eventBus, transaccion, pasarelas, configuracionCobro);
+            NegocioService negocioService = new NegocioService(negocioRepo, invalidadorCache);
 
           
             ProductoService productoService = new ProductoService(productoRepo, eventBus);
-            CarritoService carritoService = new CarritoService(carritoRepo, productoRepo, negocioRepo);
+            CarritoService carritoService = new CarritoService(carritoRepo, productoRepo, validadorNegocio);
             ClienteService clienteService = new ClienteService(clienteRepo);
             VentaService ventaService = new VentaService(transaccion, ventaRepo, productoRepo, clienteRepo,
-                    eventBus, carritoRepo, pagoService);
+                    eventBus, carritoRepo, pagoService, validadorNegocio);
             WebhookService mercadoPagoWebhookService =
                     new WebhookService(negocioRepo, pagoRepo, ventaRepo, eventBus, pagoService);
             StripeWebhookService stripeWebhookService =
@@ -141,12 +163,16 @@ public class ServerMain {
 
             AuditoriaService auditoriaService = new AuditoriaService(auditoriaRepo, eventBus);
             ProveedorTokenAcceso proveedorToken = new ProveedorTokenAcceso();
+            MySqlRepositorioTokenBootstrap tokenBootstrapRepo = new MySqlRepositorioTokenBootstrap();
             AutenticacionService autenticacionService = new AutenticacionService(
                     cuentaRepo, clienteRepo, vinculoRepo, negocioRepo, new AdaptadorContrasena(), proveedorToken,
                     transaccion,
                     RegistroExecutors.obtener(
                             com.CapaAplicacion.Interfaces.TipoServicio.AUTENTICACION),
-                    com.CapaInfraestructura.Configuracion.ConfigLoader.getProperty("auth.bootstrap-token"));
+                    com.CapaInfraestructura.Configuracion.ConfigLoader.getProperty("auth.bootstrap-token"),
+                    invalidadorCache,
+                    tokenBootstrapRepo);
+            autenticacionService.prepararTokenBootstrap();
             StockService stockService = new StockService();
             RecomendacionService recomendacionService = new RecomendacionService();
 
@@ -158,7 +184,7 @@ public class ServerMain {
             server.createContext("/api/clientes", new ClienteController(clienteService, proveedorToken));
             server.createContext("/api/auth", new AuthController(autenticacionService, proveedorToken));
             server.createContext("/api/ventas", new VentaController(
-                    ventaService, productoRepo, ventaRepo, proveedorToken, negocioRepo));
+                    ventaService, productoRepo, ventaRepo, proveedorToken, validadorNegocio));
             server.createContext("/api/carrito", new CarritoController(carritoService, proveedorToken));
             server.createContext("/api/webhooks/mercado-pago",
                     new WebhookController(mercadoPagoWebhookService, eventoWebhookService));
@@ -185,8 +211,15 @@ public class ServerMain {
             System.out.println("\nPresione Ctrl+C para detener el servidor.");
 
         } catch (IOException e) {
-            System.err.println("❌ Error al iniciar el servidor: " + e.getMessage());
-            e.printStackTrace();
+            DiagnosticoArranque.registrar("startup.fail", "ServerMain", e);
+            System.exit(DiagnosticoArranque.CODIGO_SALIDA_FALLO);
+        } catch (ExceptionInInitializerError e) {
+            DiagnosticoArranque.registrar("startup.fail", "ServerMain",
+                    e.getCause() == null ? e : e.getCause());
+            System.exit(DiagnosticoArranque.CODIGO_SALIDA_FALLO);
+        } catch (RuntimeException e) {
+            DiagnosticoArranque.registrar("startup.fail", "ServerMain", e);
+            System.exit(DiagnosticoArranque.CODIGO_SALIDA_FALLO);
         }
     }
 

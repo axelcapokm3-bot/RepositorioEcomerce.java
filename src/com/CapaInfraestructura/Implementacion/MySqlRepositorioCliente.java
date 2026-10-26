@@ -12,15 +12,33 @@ import java.util.Optional;
 
 import com.CapaAplicacion.Interfaces.IClienteRepositorio;
 import com.CapaDominio.Entidades.Cliente;
-import com.CapaDominio.Excepciones.RecursoNoEncontradoException;
+import com.CapaDominio.Excepciones.IdentidadDuplicadaException;
 
 public class MySqlRepositorioCliente implements IClienteRepositorio {
+    @FunctionalInterface
+    interface ProveedorConexion {
+        Connection obtener() throws SQLException;
+    }
+
     private static final String COLUMNS = "id, dni, cuit, nombre, apellido, direccion, "
             + "fecha_nacimiento, localidad, activo, motivo_baja, id_negocio";
 
+    private final ProveedorConexion proveedorConexion;
+
+    public MySqlRepositorioCliente() {
+        this(DatabaseConnection::getConnection);
+    }
+
+    MySqlRepositorioCliente(ProveedorConexion proveedorConexion) {
+        if (proveedorConexion == null) {
+            throw new IllegalArgumentException("El proveedor de conexiones es obligatorio.");
+        }
+        this.proveedorConexion = proveedorConexion;
+    }
+
     @Override
     public void guardar(Cliente cliente) {
-        try (Connection connection = DatabaseConnection.getConnection()) {
+        try (Connection connection = proveedorConexion.obtener()) {
             guardar(connection, cliente);
         } catch (SQLException exception) {
             throw databaseError("guardar cliente", exception);
@@ -50,6 +68,10 @@ public class MySqlRepositorioCliente implements IClienteRepositorio {
                 }
             }
         } catch (SQLException exception) {
+            if (esViolacionUnica(exception)) {
+                throw new IdentidadDuplicadaException(
+                        "Ya existe un cliente con el DNI indicado en este negocio.", exception);
+            }
             throw databaseError("guardar cliente", exception);
         }
     }
@@ -58,7 +80,7 @@ public class MySqlRepositorioCliente implements IClienteRepositorio {
     public Optional<Cliente> buscarPorId(long idNegocio, int id) {
         if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
         if (id <= 0) throw new IllegalArgumentException("El ID debe ser mayor a cero.");
-        try (Connection connection = DatabaseConnection.getConnection();
+        try (Connection connection = proveedorConexion.obtener();
              PreparedStatement statement = connection.prepareStatement("SELECT " + COLUMNS + " FROM clientes WHERE id = ? AND id_negocio = ?")) {
             statement.setInt(1, id);
             statement.setLong(2, idNegocio);
@@ -74,7 +96,7 @@ public class MySqlRepositorioCliente implements IClienteRepositorio {
     public Optional<Cliente> buscarPorDni(long idNegocio, String dni) {
         if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
         if (dni == null || dni.isBlank()) throw new IllegalArgumentException("El DNI es obligatorio.");
-        try (Connection connection = DatabaseConnection.getConnection();
+        try (Connection connection = proveedorConexion.obtener();
              PreparedStatement statement = connection.prepareStatement("SELECT " + COLUMNS + " FROM clientes WHERE dni = ? AND id_negocio = ?")) {
             statement.setString(1, dni.trim());
             statement.setLong(2, idNegocio);
@@ -109,7 +131,7 @@ public class MySqlRepositorioCliente implements IClienteRepositorio {
     public List<Cliente> listarTodos(long idNegocio) {
         if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
         List<Cliente> clientes = new ArrayList<>();
-        try (Connection connection = DatabaseConnection.getConnection();
+        try (Connection connection = proveedorConexion.obtener();
              PreparedStatement statement = connection.prepareStatement("SELECT " + COLUMNS + " FROM clientes WHERE id_negocio = ? ORDER BY id")) {
             statement.setLong(1, idNegocio);
             try (ResultSet result = statement.executeQuery()) {
@@ -128,14 +150,12 @@ public class MySqlRepositorioCliente implements IClienteRepositorio {
         if (id <= 0) throw new IllegalArgumentException("El ID debe ser mayor a cero.");
         String sql = "UPDATE clientes SET dni = ?, cuit = ?, nombre = ?, apellido = ?, direccion = ?, "
                 + "fecha_nacimiento = ?, localidad = ?, activo = ?, motivo_baja = ? WHERE id = ? AND id_negocio = ?";
-        try (Connection connection = DatabaseConnection.getConnection();
+        try (Connection connection = proveedorConexion.obtener();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             bind(statement, 1, cliente);
             statement.setInt(10, id);
             statement.setLong(11, idNegocio);
-            if (statement.executeUpdate() != 1) {
-                throw new RecursoNoEncontradoException("Cliente no encontrado.");
-            }
+            ValidadorFilas.exigirFila(statement.executeUpdate(), "Cliente", id);
         } catch (SQLException exception) {
             throw databaseError("actualizar cliente", exception);
         }
@@ -146,15 +166,13 @@ public class MySqlRepositorioCliente implements IClienteRepositorio {
         if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
         if (id <= 0) throw new IllegalArgumentException("El ID debe ser mayor a cero.");
         String sql = "UPDATE clientes SET activo = ?, motivo_baja = ? WHERE id = ? AND id_negocio = ?";
-        try (Connection connection = DatabaseConnection.getConnection();
+        try (Connection connection = proveedorConexion.obtener();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setBoolean(1, false);
             statement.setString(2, "Eliminado por el sistema");
             statement.setInt(3, id);
             statement.setLong(4, idNegocio);
-            if (statement.executeUpdate() != 1) {
-                throw new RecursoNoEncontradoException("Cliente no encontrado.");
-            }
+            ValidadorFilas.exigirUnaFila(statement.executeUpdate(), "Cliente", id);
         } catch (SQLException exception) {
             throw databaseError("dar de baja cliente", exception);
         }
@@ -186,6 +204,17 @@ public class MySqlRepositorioCliente implements IClienteRepositorio {
     private static void requireCliente(Cliente cliente) {
         if (cliente == null) throw new IllegalArgumentException("El cliente no puede ser nulo.");
         if (cliente.getIdNegocio() <= 0) throw new IllegalArgumentException("El cliente debe pertenecer a un negocio válido.");
+    }
+
+    private static boolean esViolacionUnica(SQLException exception) {
+        SQLException actual = exception;
+        while (actual != null) {
+            if (actual.getErrorCode() == 1062) {
+                return true;
+            }
+            actual = actual.getNextException();
+        }
+        return false;
     }
 
     private static IllegalStateException databaseError(String operation, SQLException exception) {

@@ -18,3 +18,4 @@ config.properties
 # Cachés y temporales locales
 .m2/
 opencode-tmp/
+classpath.txt

@@ -46,6 +46,7 @@ public class VentaService implements IVentasService {
     private final EventBus eventBus;
     private final ICarritoRepository carritoRepository;
     private final PagoService pagoService;
+    private final ValidadorNegocioService validadorNegocio;
     private final IServiceExecutor executor;
 
     public VentaService(ITransaccion transaccion,
@@ -65,6 +66,18 @@ public class VentaService implements IVentasService {
                         EventBus eventBus,
                         ICarritoRepository carritoRepository,
                         PagoService pagoService) {
+        this(transaccion, ventaRepository, productoRepository, clienteRepository,
+                eventBus, carritoRepository, pagoService, null);
+    }
+
+    public VentaService(ITransaccion transaccion,
+                        IVentaRepository ventaRepository,
+                        IProductoRepository productoRepository,
+                        IClienteRepositorio clienteRepository,
+                        EventBus eventBus,
+                        ICarritoRepository carritoRepository,
+                        PagoService pagoService,
+                        ValidadorNegocioService validadorNegocio) {
         this.transaccion = transaccion;
         this.ventaRepository = ventaRepository;
         this.productoRepository = productoRepository;
@@ -72,6 +85,7 @@ public class VentaService implements IVentasService {
         this.eventBus = eventBus;
         this.carritoRepository = carritoRepository;
         this.pagoService = pagoService;
+        this.validadorNegocio = validadorNegocio;
         this.executor = RegistroExecutors.obtener(TipoServicio.VENTA);
     }
 
@@ -108,6 +122,7 @@ public class VentaService implements IVentasService {
                 if (carrito == null) {
                     throw new ReglaNegocioException("El carrito es obligatorio para crear la venta.");
                 }
+                validarNegocioOperativo(idNegocio);
                 persistirVentaAtomica(idNegocio, carrito, tipoPago, descuento);
                 if (carritoRepository != null) {
                     carritoRepository.eliminar(idNegocio, carrito.getIdCliente());
@@ -126,6 +141,7 @@ public class VentaService implements IVentasService {
                 if (carritoRepository == null) {
                     throw new ReglaNegocioException("El repositorio de carritos no está configurado.");
                 }
+                validarNegocioOperativo(idNegocio);
 
                 Carrito carrito = obtenerCarrito(idNegocio, idCliente);
                 persistirVentaAtomica(idNegocio, carrito, tipoPago, descuento);
@@ -188,6 +204,12 @@ public class VentaService implements IVentasService {
         eventBus.publicar(new VentasEventos("CREADA", nuevaVenta));
     }
 
+    private void validarNegocioOperativo(long idNegocio) {
+        if (validadorNegocio != null) {
+            validadorNegocio.exigirOperativo(idNegocio);
+        }
+    }
+
     private void validarClienteDeNegocio(long idNegocio, int idCliente) {
         if (idNegocio <= 0) {
             throw new ReglaNegocioException("El negocio de la venta no es válido.");
@@ -221,6 +243,7 @@ public class VentaService implements IVentasService {
                             "El encabezado Idempotency-Key no puede superar 255 caracteres.");
                 }
 
+                validarNegocioOperativo(idNegocio);
                 validarCarrito(carrito);
                 validarClienteDeNegocio(idNegocio, carrito.getIdCliente());
                 TipoDePago tipoDePago = convertirTipoPago(tipoPago);
@@ -239,8 +262,6 @@ public class VentaService implements IVentasService {
                     validarMismaSolicitud(ventaExistente.get(), ventaSolicitada);
                     return pagoService.iniciarCheckout(ventaExistente.get());
                 }
-
-                pagoService.validarConfiguracionCheckout(idNegocio, tipoDePago);
 
                 try {
                     guardarVentaDeCheckout(ventaSolicitada, carrito);

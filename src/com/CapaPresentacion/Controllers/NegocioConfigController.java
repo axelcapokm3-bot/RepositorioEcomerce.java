@@ -6,7 +6,6 @@ import com.CapaAplicacion.Interfaces.INegocioService;
 import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
 import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaDominio.Entidades.Negocio;
-import com.CapaPresentacion.Utilidades.ResolutorNegocio;
 import com.sun.net.httpserver.HttpExchange;
 
 import java.io.IOException;
@@ -56,7 +55,6 @@ public class NegocioConfigController extends BaseController {
                         throw new ControllerException.Validacion("Datos incompletos.", "La clave y el valor son obligatorios.");
                     }
                     negocioService.actualizarConfiguracion(subdominio, dto.getClave(), dto.getValor());
-                    ResolutorNegocio.invalidar(subdominio);
                     sendResponse(exchange, 200, "{\"mensaje\": \"Configuración actualizada correctamente\"}");
                 } else {
                     throw new ControllerException.Validacion("Método no permitido.", "La ruta no admite este método HTTP.");
@@ -65,7 +63,7 @@ public class NegocioConfigController extends BaseController {
                 throw new ControllerException.NoEncontrado("Ruta no encontrada.", "La ruta solicitada no existe.");
             }
         } catch (ControllerException e) {
-            sendError(exchange, e.status(), e.respuesta());
+            manejarError(exchange, e);
         } catch (IllegalArgumentException | com.CapaDominio.Excepciones.ReglaNegocioException e) {
             sendError(exchange, 400, new ControllerException.Validacion(
                     "Los datos de configuración no son válidos.",
@@ -79,7 +77,7 @@ public class NegocioConfigController extends BaseController {
                     "No fue posible responder al cliente.", "Problema de red o comunicación."
             ).respuesta());
         } catch (Exception e) {
-            sendError(exchange, 500, "Código: ERROR_SERVIDOR | Mensaje: Error interno del servidor. | Causa: Fallo inesperado.");
+            manejarError(exchange, e);
         }
     }
 

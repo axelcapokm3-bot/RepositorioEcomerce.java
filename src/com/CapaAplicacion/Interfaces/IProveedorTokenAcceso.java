@@ -9,5 +9,7 @@ public interface IProveedorTokenAcceso {
 
     Optional<Principal> validar(String token);
 
+    void revocar(String token);
+
     long segundosDeVida();
 }

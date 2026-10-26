@@ -10,6 +10,7 @@ import com.CapaAplicacion.DTOsalida.SesionResponseDTO;
 import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
 import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaAplicacion.Service.AutenticacionService;
+import com.CapaPresentacion.Utilidades.LimitadorTasa;
 import com.CapaPresentacion.Utilidades.ResolutorNegocio;
 import com.sun.net.httpserver.HttpExchange;
 
@@ -19,6 +20,8 @@ import java.util.concurrent.CompletableFuture;
 public class AuthController extends BaseController {
     private static final int LIMITE_POR_MINUTO = 20;
     private static final int LIMITE_LOGIN_POR_MINUTO = 10;
+    private static final int LIMITE_REGISTRO_POR_CORREO = 5;
+    private static final long VENTANA_REGISTRO_POR_CORREO_SEGUNDOS = 900L;
 
     public record VincularNegocioRequest(String dniCliente, String nombreCliente,
                                          String apellidoCliente, LocalDate fechaNacimientoCliente,
@@ -64,11 +67,32 @@ public class AuthController extends BaseController {
                 handleAsync(exchange, servicio.listarNegociosAsync(principal), 200);
                 return;
             }
+            if (path.equals("/api/auth/salida") || path.equals("/api/auth/salida/")) {
+                if (!"POST".equalsIgnoreCase(method)) {
+                    throw new ControllerException.Validacion("Método no permitido.", "La ruta solo admite POST.");
+                }
+                Principal principalLimite = extraerPrincipal(exchange, proveedor).orElse(null);
+                if (limitarSolicitud(exchange, principalLimite, "auth-salida", LIMITE_POR_MINUTO)) {
+                    return;
+                }
+                exigirAutenticacion(exchange, proveedor);
+                String token = extraerToken(exchange).orElseThrow(() -> new ControllerException.NoAutenticado(
+                        "Se requiere autenticación.",
+                        "Debe enviar un token válido en el encabezado Authorization."));
+                proveedor.revocar(token);
+                sendResponse(exchange, 200, Map.of("mensaje", "Sesión cerrada."));
+                return;
+            }
             if (!"POST".equalsIgnoreCase(method)) {
                 throw new ControllerException.Validacion("Método no permitido.", "La ruta solo admite POST.");
             }
             Principal principalLimite = extraerPrincipal(exchange, proveedor).orElse(null);
             if (path.equals("/api/auth/ingreso") || path.equals("/api/auth/ingreso/")) {
+                int maxIntentosLogin = LimitadorTasa.limiteConfigurado("auth-login", "max-intentos", 5);
+                long bloqueoLogin = LimitadorTasa.bloqueoSegundos("auth-login", 60L);
+                if (limitarIntentosPorIp(exchange, "auth-login", maxIntentosLogin, bloqueoLogin)) {
+                    return;
+                }
                 if (limitarSolicitud(exchange, null, "auth-login", LIMITE_LOGIN_POR_MINUTO)) {
                     return;
                 }
@@ -81,6 +105,11 @@ public class AuthController extends BaseController {
             }
             if (path.equals("/api/auth/registro") || path.equals("/api/auth/registro/")) {
                 CuentaRegistroDTO dto = parseRequestBody(exchange, CuentaRegistroDTO.class);
+                String correoNormalizado = dto.correoElectronico().trim().toLowerCase(java.util.Locale.ROOT);
+                if (limitarSolicitudPorClave(exchange, "registro-email|" + correoNormalizado,
+                        LIMITE_REGISTRO_POR_CORREO, VENTANA_REGISTRO_POR_CORREO_SEGUNDOS)) {
+                    return;
+                }
                 long idNegocio = exigirNegocio(exchange);
                 Optional<Principal> solicitante = extraerPrincipal(exchange, proveedor);
                 String tokenSetup = exchange.getRequestHeaders().getFirst("X-Setup-Token");
@@ -117,13 +146,13 @@ public class AuthController extends BaseController {
                 throw new ControllerException.NoEncontrado("Ruta no encontrada.", "No existe un recurso para la URL solicitada.");
             }
         } catch (ControllerException e) {
-            sendError(exchange, e.status(), e.respuesta());
+            manejarError(exchange, e);
         } catch (IOException e) {
             sendError(exchange, 503, new ControllerException.ServicioNoDisponible(
                     "No fue posible responder al cliente.", "Problema de red o comunicación."
             ).respuesta());
         } catch (Exception e) {
-            sendError(exchange, 500, "Código: ERROR_SERVIDOR | Mensaje: Error interno del servidor. | Causa: Fallo inesperado.");
+            manejarError(exchange, e);
         }
     }
 

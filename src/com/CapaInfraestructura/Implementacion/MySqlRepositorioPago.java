@@ -125,17 +125,29 @@ public class MySqlRepositorioPago implements IPagoRepository {
                                                             Connection connection) throws SQLException {
         if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
         if (idVenta <= 0) throw new IllegalArgumentException("El ID de venta debe ser mayor a cero.");
-        if (connection == null) throw new IllegalArgumentException("La conexión es obligatoria.");
         String sql = "SELECT " + COLUMNAS + " FROM pagos "
                 + "WHERE id_venta = ? AND id_negocio = ? AND estado = ? "
-                + "ORDER BY fecha_creacion, id LIMIT 1 FOR UPDATE";
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setInt(1, idVenta);
-            statement.setLong(2, idNegocio);
-            statement.setString(3, EstadoPago.PENDIENTE.name());
-            try (ResultSet result = statement.executeQuery()) {
-                if (result.next()) return Optional.of(mapPago(result));
+                + "ORDER BY fecha_creacion, id LIMIT 1"
+                + (connection == null ? "" : " FOR UPDATE");
+        if (connection == null) {
+            try (Connection conexion = connectionProvider.get();
+                 PreparedStatement statement = conexion.prepareStatement(sql)) {
+                return ejecutarBusquedaPendiente(statement, idNegocio, idVenta);
             }
+        }
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            return ejecutarBusquedaPendiente(statement, idNegocio, idVenta);
+        }
+    }
+
+    private Optional<Pago> ejecutarBusquedaPendiente(PreparedStatement statement,
+                                                     long idNegocio, int idVenta)
+            throws SQLException {
+        statement.setInt(1, idVenta);
+        statement.setLong(2, idNegocio);
+        statement.setString(3, EstadoPago.PENDIENTE.name());
+        try (ResultSet result = statement.executeQuery()) {
+            if (result.next()) return Optional.of(mapPago(result));
         }
         return Optional.empty();
     }
@@ -245,7 +257,7 @@ public class MySqlRepositorioPago implements IPagoRepository {
             statement.setString(5, rawResponse);
             statement.setTimestamp(6, Timestamp.valueOf(LocalDateTime.now()));
             statement.setInt(7, id);
-            verificarActualizacion(statement.executeUpdate(), id);
+            ValidadorFilas.exigirFila(statement.executeUpdate(), "Pago", id);
         } catch (SQLException e) {
             throw new RuntimeException("Error al guardar los datos del checkout: " + e.getMessage(), e);
         }
@@ -269,7 +281,7 @@ public class MySqlRepositorioPago implements IPagoRepository {
             statement.setString(2, rawResponse);
             statement.setTimestamp(3, Timestamp.valueOf(LocalDateTime.now()));
             statement.setInt(4, id);
-            verificarActualizacion(statement.executeUpdate(), id);
+            ValidadorFilas.exigirFila(statement.executeUpdate(), "Pago", id);
         }
     }
 
@@ -296,13 +308,7 @@ public class MySqlRepositorioPago implements IPagoRepository {
             statement.setString(4, rawResponse);
             statement.setTimestamp(5, Timestamp.valueOf(LocalDateTime.now()));
             statement.setInt(6, id);
-            verificarActualizacion(statement.executeUpdate(), id);
-        }
-    }
-
-    private void verificarActualizacion(int filasActualizadas, int idPago) {
-        if (filasActualizadas != 1) {
-            throw new IllegalStateException("No existe un pago con ID " + idPago + " para actualizar.");
+            ValidadorFilas.exigirFila(statement.executeUpdate(), "Pago", id);
         }
     }
 

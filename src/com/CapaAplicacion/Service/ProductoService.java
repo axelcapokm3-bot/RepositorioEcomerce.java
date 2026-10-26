@@ -7,6 +7,7 @@ import com.CapaAplicacion.Interfaces.*;
 import com.CapaAplicacion.Mapper.ProductoMapper;
 import com.CapaInfraestructura.Implementacion.RegistroExecutors;
 import com.CapaDominio.Entidades.*;
+import com.CapaDominio.Excepciones.RecursoNoEncontradoException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -96,12 +97,12 @@ public class ProductoService implements RepositorioProductoService {
             @Override
             public void run() {
                 Producto producto = repository.buscarPorId(idNegocio, id)
-                        .orElseThrow(() -> new RuntimeException("Producto no encontrado"));
-                
+                        .orElseThrow(() -> new RecursoNoEncontradoException("Producto no encontrado."));
+
                 producto.setNombre(dto.nombre());
                 producto.actualizarPrecio(dto.precio());
                 producto.setStock(dto.stock());
-                
+
                 repository.actualizar(idNegocio, id, producto);
             }
         });
@@ -112,6 +113,8 @@ public class ProductoService implements RepositorioProductoService {
         return executor.ejecutar(new Runnable() {
             @Override
             public void run() {
+                repository.buscarPorId(idNegocio, id)
+                        .orElseThrow(() -> new RecursoNoEncontradoException("Producto no encontrado."));
                 repository.eliminar(idNegocio, id);
             }
         });

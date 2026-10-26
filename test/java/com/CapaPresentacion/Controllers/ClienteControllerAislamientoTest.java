@@ -152,6 +152,10 @@ class ClienteControllerAislamientoTest {
         }
 
         @Override
+        public void revocar(String token) {
+        }
+
+        @Override
         public long segundosDeVida() {
             return 3600L;
         }

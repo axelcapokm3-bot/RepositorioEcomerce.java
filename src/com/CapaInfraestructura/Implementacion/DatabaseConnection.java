@@ -8,6 +8,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Properties;
 
+import com.CapaInfraestructura.Configuracion.DiagnosticoArranque;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 
@@ -37,9 +38,8 @@ private static HikariDataSource createDataSource() {
 
         return new HikariDataSource(config);
     } catch (Exception e) {
-        System.err.println("❌ ERROR CRÍTICO AL INITIALIZAR HIKARICP:");
-        e.printStackTrace();
-        throw new ExceptionInInitializerError("Fallo la conexión con la Base de Datos: " + e.getMessage());
+        DiagnosticoArranque.registrar("startup.fail", "DatabaseConnection", e);
+        throw new ExceptionInInitializerError(e);
     }
 }
     private static Properties loadProperties() {

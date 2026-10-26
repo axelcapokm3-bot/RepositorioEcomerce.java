@@ -40,6 +40,14 @@ function obtenerClaveIdempotenciaCheckout(payload) {
 
 document.addEventListener('DOMContentLoaded', () => {
     mostrarResultadoCheckout();
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async (event) => {
+            event.preventDefault();
+            await api.auth.salir();
+            window.location.href = 'login.html';
+        });
+    }
     const navLinks = document.querySelectorAll('.nav-link, .mobile-nav-link');
     const appView = document.getElementById('app-view');
     const globalSearchInput = document.getElementById('global-search');
@@ -335,10 +343,10 @@ async function renderDashboard(container) {
                                         log.accion === 'CREACION' ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30' :
                                         log.accion === 'ELIMINACION' ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30' :
                                         'bg-orange-500/15 text-orange-400 border border-orange-500/30'
-                                    }">${log.accion}</span>
-                                    <span class="text-slate-200 truncate font-medium">${log.descripcion}</span>
+                                    }">${escaparHtml(log.accion)}</span>
+                                    <span class="text-slate-200 truncate font-medium">${escaparHtml(log.descripcion)}</span>
                                 </div>
-                                <span class="text-[11px] text-slate-500 font-mono shrink-0">${log.fecha || 'Reciente'}</span>
+                                <span class="text-[11px] text-slate-500 font-mono shrink-0">${escaparHtml(log.fecha || 'Reciente')}</span>
                             </div>
                         `).join('')}
                     </div>

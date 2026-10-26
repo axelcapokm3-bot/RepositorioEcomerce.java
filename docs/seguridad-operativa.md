@@ -18,14 +18,26 @@ cuentas y creación del primer administrador. No contiene valores reales.
 | `MERCADOPAGO_PUBLIC_BASE_URL` | Retorno checkout MP | Sí (si se usa MP) |
 | `STRIPE_SECRET_KEY` | Pagos Stripe | Sí (si se usa Stripe) |
 | `STRIPE_WEBHOOK_SECRET` | Firma webhook Stripe | Sí (si se usa Stripe) |
+| `STRIPE_ALLOWED_RETURN_ORIGINS` | Orígenes HTTPS de retorno de Stripe separados por coma | Sí (Stripe; si falta se usa `APP_FRONTEND_URL`) |
+| `STRIPE_CONNECT_TIMEOUT_MS` / `STRIPE_READ_TIMEOUT_MS` | Timeouts de conexión/lectura con Stripe | No (5000/5000 por defecto) |
 | `AUTH_TOKEN_SECRET` | Firma de tokens de sesión (≥ 32 caracteres) | Sí, siempre |
-| `AUTH_BOOTSTRAP_TOKEN` | Alta del primer ADMIN (temporal) | Solo durante bootstrap |
+| `AUTH_BOOTSTRAP_TOKEN` | Alta del primer ADMIN (un solo uso) | Solo durante bootstrap |
+| `AUTH_BOOTSTRAP_TOKEN_EXPIRA_HORAS` | Vigencia del token de bootstrap (1–720 h) | No (24 h por defecto) |
 | `APP_PERFIL` | `dev` o `prod` | `prod` en producción |
 | `APP_CORS_ALLOWED_ORIGINS` | Orígenes frontend separados por coma | Sí (sin `*`) |
+| `APP_TRUSTED_PROXIES` | IPs de proxies que pueden enviar `X-Forwarded-For`/`X-Real-IP` | Sí detrás de proxy |
+| `WEBHOOK_FIRMA_TOLERANCIA_SEGUNDOS` | Ventana del `ts` firmado por Mercado Pago | No (300 s por defecto) |
+| `RATE_LIMIT_AUTH_LOGIN_MAX_INTENTOS` | Intentos por IP antes de bloquear el ingreso | No (5 por defecto) |
+| `RATE_LIMIT_AUTH_LOGIN_BLOQUEO_SEGUNDOS` | Duración del bloqueo por IP en ingreso | No (60 s por defecto) |
+| `RATE_LIMIT_CHECKOUT_MAX_INTENTOS_IP` | Intentos de checkout por IP antes de bloquear | No (20 por defecto) |
+| `RATE_LIMIT_CHECKOUT_BLOQUEO_SEGUNDOS` | Duración del bloqueo por IP en checkout | No (60 s por defecto) |
 
 Precedencia de configuración: propiedad del sistema Java → `config.properties`
 local (solo desarrollo, ignorado por git, nunca se empaqueta en el `.jar`) →
-variable de entorno.
+variable de entorno. Los secretos de pago (`STRIPE_SECRET_KEY`,
+`STRIPE_WEBHOOK_SECRET`) usan `ConfigLoader.getSecretProperty`: propiedad del
+sistema → variable de entorno → archivo, para que el entorno prevalezca en
+producción.
 
 ## 2. Rotación de secretos de pago
 
@@ -99,8 +111,12 @@ explícita; hoy ambas se persisten como `activo = 0`.
 
 ## 5. Primer administrador (bootstrap)
 
-1. Definir `AUTH_BOOTSTRAP_TOKEN` con un valor temporal y aleatorio. Solo el
-   operador debe conocerlo.
+1. Aplicar `migracion_token_bootstrap.sql` y definir
+   `AUTH_BOOTSTRAP_TOKEN` con un valor temporal y aleatorio. Solo el operador
+   debe conocerlo. El token se guarda como huella SHA-256, se consume una sola
+   vez dentro de la transacción de registro y vence según
+   `AUTH_BOOTSTRAP_TOKEN_EXPIRA_HORAS` (24 h por defecto). Sin MySQL disponible
+   solo existe un fallback en memoria, no apto para producción.
 2. Crear el cliente dueño en `POST /api/clientes` (requiere ADMIN… si aún no
    hay ADMIN, crearlo directo en la tabla `clientes` con SQL).
 3. Registrar el admin:
@@ -112,8 +128,10 @@ explícita; hoy ambas se persisten como `activo = 0`.
    `localidadCliente` para crear el perfil de cliente.
 4. Verificar ingreso en `POST /api/auth/ingreso` y acceso a una ruta ADMIN
    (p. ej. `GET /api/auditoria` con `Authorization: Bearer <token>`).
-5. **Eliminar `AUTH_BOOTSTRAP_TOKEN` del entorno y reiniciar.** Desde entonces,
-   solo un ADMIN autenticado puede crear más ADMINs.
+5. **Eliminar `AUTH_BOOTSTRAP_TOKEN` del entorno y reiniciar.** El token ya
+   quedó marcado como usado; desde entonces solo un ADMIN autenticado puede
+   crear más ADMINs. Para emitir otro, borrar la fila de `tokens_bootstrap` y
+   reiniciar con el nuevo valor.
 6. Intentos posteriores con `rol: ADMIN` sin token ADMIN responden `409`.
 
 ## 6. Notas del frontend
@@ -125,3 +143,68 @@ explícita; hoy ambas se persisten como `activo = 0`.
   credenciales + protección CSRF. Queda como mejora futura.
 - Ante `401` el frontend limpia la sesión y vuelve a `login.html`; ante `403`
   muestra falta de permisos sin reintentar.
+
+## 7. Escaneo de secretos antes de commit
+
+Ejecutar desde la raíz del repositorio:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\scan-secrets.ps1
+```
+
+El script solo revisa archivos trackeados por Git e ignora `.git`, `target`,
+`node_modules`, `bin`, `build`, `dist`, `out`, `coverage` y binarios/archivos
+comprimidos. Devuelve `0` si no hay hallazgos, `1` si encuentra posibles
+secretos y `2` si no puede resolver el repositorio. Nunca imprime el valor
+detectado: solo ruta, línea y tipo. Ejecutarlo antes de cada commit y en CI.
+Si hay un falso positivo, documentarlo en la revisión; no desactivar el
+escaneo global.
+
+## 8. Parámetros de hash de contraseñas (BA-03)
+
+Decisión de hardening (2026-10-26): se mantiene **PBKDF2-HMAC-SHA256 con
+210.000 iteraciones**, sal de 16 bytes y hash de 256 bits. No se trata de un
+defecto corregible en este bloque: el costo es aceptable para el volumen actual
+y los parámetros están fijados en `AdaptadorContrasena`, con regresión en
+`AdaptadorContrasenaTest`.
+
+Alternativas evaluadas y no adoptadas ahora:
+
+- **Argon2id**: requiere una dependencia nueva y un cambio de formato de hash.
+- **Subir a ≥ 600.000 iteraciones**: duplica el costo de cada login sin
+  evidencia de necesidad operativa.
+- **Tope de iteraciones leídas de la base**: un hash manipulado requeriría
+  acceso de escritura a MySQL; el tope podría romper una migración futura. Se
+  mantiene como riesgo residual aceptado y revisable.
+
+Cualquier cambio de parámetros debe registrarse como decisión nueva y migrar el
+hash de forma transparente al iniciar sesión.
+
+## 9. Arranque fail-fast y diagnóstico (BA-02)
+
+La inicialización de HikariCP sigue siendo fail-fast: si falta configuración o
+la base no está disponible, la aplicación no arranca. El fallo se emite en una
+sola línea saneada con el formato:
+
+```text
+event=startup.fail component=<componente> error=<tipo>: <mensaje>
+```
+
+`DiagnosticoArranque` centraliza el formato y `SanitizadorLog` elimina
+credenciales y saltos de línea. `DatabaseConnection` conserva la causa original
+dentro de `ExceptionInInitializerError` y `ServerMain` registra el evento antes
+de terminar con código de salida `1`. No se agrega health check ni reintento en
+este bloque.
+
+## 10. Higiene local y artefactos (BA-06)
+
+- `config.properties` en la raíz, `src/main/resources` y `bin/` está ignorado
+  por Git y excluido del artefacto Maven; no se versiona ni se comparte.
+- `classpath.txt`, los archivos vacíos trackeados y `app.jfr` ya no forman
+  parte del repositorio. `*.jfr` y `classpath.txt` están en `.gitignore`.
+- Escaneo de secretos del 2026-10-26: sin hallazgos en 537 archivos trackeados.
+- Los archivos locales de configuración contienen valores no-placeholder. No se
+  imprimieron ni se modificaron en este bloque. **Hay duda razonable sobre su
+  origen**: si alguna vez fueron credenciales reales, rotarlas según las
+  secciones 2 y 3 antes de reutilizarlas. La rotación externa queda a cargo del
+  operador; no se realiza desde el repositorio.

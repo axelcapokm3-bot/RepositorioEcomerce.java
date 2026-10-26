@@ -26,9 +26,7 @@ public abstract class ControllerException extends RuntimeException {
     }
 
     public String respuesta() {
-        return "Código: " + codigo
-                + " | Mensaje: " + getMessage()
-                + " | Causa: " + causa;
+        return getMessage();
     }
 
     public static final class Validacion extends ControllerException {

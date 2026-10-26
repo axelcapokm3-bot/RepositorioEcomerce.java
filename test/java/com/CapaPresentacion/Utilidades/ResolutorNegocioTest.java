@@ -59,6 +59,22 @@ class ResolutorNegocioTest {
     }
 
     @Test
+    @DisplayName("invalidarPorId elimina solo las entradas del negocio indicado")
+    void invalidaPorId() {
+        HttpExchange exchange = exchangeConSubdominio(SUBDOMINIO);
+
+        assertEquals(Optional.of(10L), ResolutorNegocio.resolver(exchange));
+        repositorio.registrar(new Negocio(
+                10L, "Tienda", SUBDOMINIO, "tienda@mail.com", false, null, null));
+
+        ResolutorNegocio.invalidarPorId(99L);
+        assertEquals(Optional.of(10L), ResolutorNegocio.resolver(exchange));
+
+        ResolutorNegocio.invalidarPorId(10L);
+        assertTrue(ResolutorNegocio.resolver(exchange).isEmpty());
+    }
+
+    @Test
     @DisplayName("el TTL obliga a releer el estado del negocio")
     void expiraPorTtl() throws InterruptedException {
         System.setProperty(CLAVE_TTL, "1");
@@ -82,6 +98,26 @@ class ResolutorNegocioTest {
         assertTrue(ResolutorNegocio.resolver(exchange).isEmpty());
         assertTrue(ResolutorNegocio.resolver(exchange).isEmpty());
         assertEquals(2, repositorio.busquedas);
+    }
+
+    @Test
+    @DisplayName("un encabezado inválido no cae al subdominio del host")
+    void encabezadoInvalidoNoUsaHost() {
+        HttpExchange exchange = exchangeConSubdominio("../tienda");
+        Headers headers = exchange.getRequestHeaders();
+        headers.set("Host", "tienda.example.com");
+
+        assertTrue(ResolutorNegocio.tieneIndicador(exchange));
+        assertTrue(ResolutorNegocio.resolver(exchange).isEmpty());
+    }
+
+    @Test
+    @DisplayName("valida el formato del subdominio")
+    void validaFormatoSubdominio() {
+        assertTrue(ResolutorNegocio.normalizarSubdominio("Tienda-1").isPresent());
+        assertTrue(ResolutorNegocio.normalizarSubdominio("-tienda").isEmpty());
+        assertTrue(ResolutorNegocio.normalizarSubdominio("tienda_1").isEmpty());
+        assertTrue(ResolutorNegocio.normalizarSubdominio("a".repeat(64)).isEmpty());
     }
 
     private HttpExchange exchangeConSubdominio(String subdominio) {

@@ -1,6 +1,7 @@
 package com.CapaPresentacion.Controllers;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -26,9 +27,11 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -42,6 +45,7 @@ class AuthControllerTenantTest {
     private static final long TENANT_B = 2L;
 
     private AutenticacionService servicio;
+    private ProveedorTokenFalso proveedor;
     private HttpServer server;
     private String baseUrl;
     private final HttpClient clienteHttp = HttpClient.newHttpClient();
@@ -55,8 +59,9 @@ class AuthControllerTenantTest {
                 anyString(), anyString(), any(LocalDate.class), anyString()))
                 .thenReturn(CompletableFuture.completedFuture(sesion(TENANT_A)));
         ResolutorNegocio.inicializar(new NegocioRepositorioFalso());
+        proveedor = new ProveedorTokenFalso();
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/api/auth", new AuthController(servicio, new ProveedorTokenFalso()));
+        server.createContext("/api/auth", new AuthController(servicio, proveedor));
         server.start();
         baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
     }
@@ -132,6 +137,17 @@ class AuthControllerTenantTest {
                 anyString(), anyString(), anyString(), any(LocalDate.class), anyString());
     }
 
+    @Test
+    @DisplayName("salida revoca el token y la sesion deja de ser valida")
+    void salidaRevocaToken() throws Exception {
+        HttpResponse<String> salida = enviar("POST", "/api/auth/salida", null, null);
+        assertEquals(200, salida.statusCode());
+        assertTrue(proveedor.revocados.contains("admin-a"));
+
+        HttpResponse<String> sesion = enviar("GET", "/api/auth/sesion", null, null);
+        assertEquals(401, sesion.statusCode());
+    }
+
     private long capturarNegocioCambiado() {
         ArgumentCaptor<Long> captor = ArgumentCaptor.forClass(Long.class);
         verify(servicio).cambiarNegocioAsync(any(Principal.class), captor.capture());
@@ -157,6 +173,8 @@ class AuthControllerTenantTest {
     }
 
     private static final class ProveedorTokenFalso implements IProveedorTokenAcceso {
+        private final Set<String> revocados = new HashSet<>();
+
         @Override
         public String emitir(long idCuenta, int idCliente, long idNegocio, String rol) {
             throw new UnsupportedOperationException();
@@ -164,10 +182,15 @@ class AuthControllerTenantTest {
 
         @Override
         public Optional<Principal> validar(String token) {
-            if ("admin-a".equals(token)) {
+            if (!revocados.contains(token) && "admin-a".equals(token)) {
                 return Optional.of(new Principal(1L, 10, TENANT_A, RolUsuario.ADMIN));
             }
             return Optional.empty();
+        }
+
+        @Override
+        public void revocar(String token) {
+            revocados.add(token);
         }
 
         @Override

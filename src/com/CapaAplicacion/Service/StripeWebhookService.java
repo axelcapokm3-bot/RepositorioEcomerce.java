@@ -12,6 +12,7 @@ import com.CapaDominio.Entidades.Pago;
 import com.CapaDominio.Excepciones.TransicionPagoInvalidaException;
 import com.CapaDominio.Excepciones.WebhookProcessingException;
 import com.CapaInfraestructura.Configuracion.ConfigLoader;
+import com.CapaInfraestructura.Configuracion.SanitizadorLog;
 import com.CapaInfraestructura.Implementacion.RegistroExecutors;
 import com.stripe.exception.EventDataObjectDeserializationException;
 import com.stripe.exception.SignatureVerificationException;
@@ -23,7 +24,6 @@ import com.stripe.net.Webhook;
 import java.util.Map;
 import java.util.Optional;
 import java.math.BigDecimal;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /** Valida eventos Stripe y actualiza el pago/venta en segundo plano. */
@@ -49,7 +49,7 @@ public class StripeWebhookService {
                                 com.CapaAplicacion.Interfaces.EventBus eventBus,
                                 IServiceExecutor executor) {
         this(negocioRepository, pagoRepository, ventaRepository, eventBus, executor,
-                new PagoService(pagoRepository, ventaRepository, eventBus));
+                new PagoService(pagoRepository, ventaRepository, eventBus, null, Map.of(), null));
     }
 
     public StripeWebhookService(INegocioRepository negocioRepository, IPagoRepository pagoRepository,
@@ -109,7 +109,8 @@ public class StripeWebhookService {
         try {
             procesarEvento(event);
         } catch (WebhookProcessingException exception) {
-            LOGGER.log(Level.SEVERE, exception.getMessage(), exception);
+            LOGGER.severe("No se pudo procesar el webhook de Stripe: "
+                    + SanitizadorLog.error(exception));
         }
     }
 
@@ -212,7 +213,7 @@ public class StripeWebhookService {
 
     private java.util.List<String> buscarSecretos() {
         java.util.List<String> secretos = new java.util.ArrayList<>();
-        String secreto = ConfigLoader.getProperty("stripe.webhook-secret");
+        String secreto = ConfigLoader.getSecretProperty("stripe.webhook-secret");
         if (secreto != null && !secreto.isBlank()) {
             secretos.add(secreto);
         }

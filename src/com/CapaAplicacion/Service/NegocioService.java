@@ -1,6 +1,7 @@
 package com.CapaAplicacion.Service;
 
 import com.CapaAplicacion.DTOsalida.ConfiguracionResponseDTO;
+import com.CapaAplicacion.Interfaces.IInvalidadorCacheNegocio;
 import com.CapaAplicacion.Interfaces.INegocioRepository;
 import com.CapaAplicacion.Interfaces.INegocioService;
 import com.CapaDominio.Entidades.ConfiguracionCatalogo;
@@ -8,6 +9,7 @@ import com.CapaDominio.Entidades.Negocio;
 import com.CapaDominio.Excepciones.RecursoNoEncontradoException;
 import com.CapaDominio.Excepciones.ReglaNegocioException;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -15,9 +17,25 @@ import java.util.Optional;
 
 public class NegocioService implements INegocioService {
     private final INegocioRepository negocioRepository;
+    private final IInvalidadorCacheNegocio invalidadorCache;
 
     public NegocioService(INegocioRepository negocioRepository) {
+        this(negocioRepository, null);
+    }
+
+    public NegocioService(INegocioRepository negocioRepository,
+                          IInvalidadorCacheNegocio invalidadorCache) {
+        if (negocioRepository == null) {
+            throw new IllegalArgumentException("El repositorio de negocios es obligatorio.");
+        }
         this.negocioRepository = negocioRepository;
+        this.invalidadorCache = invalidadorCache == null
+                ? new IInvalidadorCacheNegocio() {
+                    @Override
+                    public void invalidar(long idNegocio) {
+                    }
+                }
+                : invalidadorCache;
     }
 
     @Override
@@ -56,6 +74,23 @@ public class NegocioService implements INegocioService {
             .orElseThrow(() -> new RecursoNoEncontradoException("La clave de configuración '" + clave + "' no existe en el catálogo."));
 
         negocioRepository.guardarOActualizarValorConfiguracion(negocio.getId(), configCatalogo.getId(), valor);
+        invalidadorCache.invalidar(negocio.getId());
+    }
+
+    @Override
+    public void darDeBaja(long idNegocio) {
+        if (idNegocio <= 0) {
+            throw new IllegalArgumentException("El negocio a dar de baja no es válido.");
+        }
+        Negocio negocio = negocioRepository.buscarPorId(idNegocio)
+                .orElseThrow(() -> new RecursoNoEncontradoException(
+                        "No existe el negocio solicitado."));
+        if (!negocio.estaOperativo()) {
+            throw new ReglaNegocioException("El negocio ya se encuentra dado de baja.");
+        }
+        negocio.darDeBaja(LocalDateTime.now());
+        negocioRepository.actualizarEstado(negocio);
+        invalidadorCache.invalidar(idNegocio);
     }
 
     private Negocio validarYObtenerNegocioActivo(String subdominio) {
@@ -65,7 +100,7 @@ public class NegocioService implements INegocioService {
         Negocio negocio = negocioRepository.buscarPorSubdominio(subdominio)
             .orElseThrow(() -> new RecursoNoEncontradoException("No se encontró un negocio con el subdominio: " + subdominio));
 
-        if (!negocio.isActivo() || negocio.getFechaBaja() != null) {
+        if (!negocio.estaOperativo()) {
             throw new ReglaNegocioException("El negocio con subdominio '" + subdominio + "' se encuentra inactivo.");
         }
         return negocio;

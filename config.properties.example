@@ -1,5 +1,6 @@
-# Copiar este archivo como src/main/resources/config.properties y completar
-# los valores con credenciales propias. No guardar secretos reales aquí.
+# Copiar este archivo como config.properties en la raíz del proyecto (o en
+# src/main/resources) y completar con credenciales propias. No versionar el
+# archivo resultante ni guardar secretos reales en este ejemplo.
 db.url=jdbc:mysql://localhost:3306/ecommerce_db?serverTimezone=UTC&useSSL=false
 db.username=root
 db.password=CAMBIAR_POR_TU_PASSWORD
@@ -20,10 +21,21 @@ stripe.public-key=pk_test_REEMPLAZAR_POR_TU_PUBLIC_KEY
 stripe.webhook-secret=whsec_REEMPLAZAR_POR_TU_SECRETO_WEBHOOK
 stripe.success-url=http://localhost:5500/index.html?view=checkout-return&session_id={CHECKOUT_SESSION_ID}
 stripe.cancel-url=http://localhost:5500/index.html?view=checkout-return&resultado=failure
+# Orígenes autorizados para las URLs de retorno (separados por coma). En producción
+# es obligatorio y debe contener solo HTTPS públicos. Sin esta propiedad se usa
+# app.frontend.url como origen permitido.
+stripe.allowed-return-origins=http://localhost:5500
+# Tiempos máximos de conexión/lectura con la API de Stripe, en milisegundos.
+stripe.connect-timeout-ms=5000
+stripe.read-timeout-ms=5000
 
 # URLs del sistema
 app.frontend.url=http://localhost:5500
 app.backend.url=http://localhost:8080
+# IPs de proxies de confianza separadas por coma (Caddy local por defecto).
+# Solo estos proxies pueden aportar X-Forwarded-For/X-Real-IP; si está vacío,
+# se usa la IP del socket. No incluir redes abiertas.
+app.trusted-proxies=127.0.0.1,::1
 
 # CORS: orígenes permitidos separados por coma. No usar '*'.
 app.cors.allowed-origins=http://localhost:5500,http://localhost:8080
@@ -42,6 +54,29 @@ redis.pool.max-total=16
 redis.pool.max-idle=8
 redis.pool.min-idle=1
 
+# Executors por tipo de servicio. Si se omite una clave se usa el valor
+# predeterminado. Se valida al arrancar: core >= 0, max >= 1, core <= max,
+# cola >= 1. También se pueden definir como variables de entorno
+# EXECUTOR_<TIPO>_<CLAVE>, por ejemplo EXECUTOR_VENTA_CORE.
+executor.venta.core=5
+executor.venta.max=10
+executor.venta.cola=100
+executor.producto.core=2
+executor.producto.max=5
+executor.producto.cola=50
+executor.cliente.core=2
+executor.cliente.max=2
+executor.cliente.cola=30
+executor.auditoria.core=1
+executor.auditoria.max=2
+executor.auditoria.cola=20
+executor.notificaciones.core=1
+executor.notificaciones.max=1
+executor.notificaciones.cola=50
+executor.autenticacion.core=1
+executor.autenticacion.max=2
+executor.autenticacion.cola=50
+
 # Rate limiting. Los valores son solicitudes por ventana. Un ámbito puede definir
 # límites distintos para ip/cuenta/negocio; si no, se usa <ambito>.limite y luego
 # el valor predeterminado del controlador.
@@ -49,6 +84,9 @@ rate-limit.ventana-segundos=60
 rate-limit.limpieza-segundos=60
 rate-limit.max-claves=10000
 rate-limit.auth-login.ip=10
+# Bloqueo por IP tras superar intentos en /api/auth/ingreso.
+rate-limit.auth-login.max-intentos=5
+rate-limit.auth-login.bloqueo-segundos=60
 rate-limit.auth-registro.limite=20
 rate-limit.auth-cuenta.limite=120
 rate-limit.productos-admin.limite=120
@@ -56,6 +94,11 @@ rate-limit.clientes-admin.limite=120
 rate-limit.ventas-crear.limite=30
 rate-limit.ventas-previsualizar.limite=60
 rate-limit.ventas-consulta.limite=120
+rate-limit.checkout.negocio=10
+rate-limit.checkout.ventana-segundos=60
+# Bloqueo por IP en /api/ventas/crear.
+rate-limit.checkout.max-intentos-ip=20
+rate-limit.checkout.bloqueo-segundos=60
 rate-limit.carrito-consulta.ip=240
 rate-limit.carrito-consulta.cuenta=240
 rate-limit.carrito-consulta.negocio=600
@@ -78,6 +121,8 @@ rate-limit.webhook-stripe.limite=600
 # Token de uso único para crear el primer ADMIN vía POST /api/auth/registro
 # (header X-Setup-Token). Definirlo solo durante el bootstrap y eliminarlo después.
 # auth.bootstrap-token=REEMPLAZAR_POR_TOKEN_TEMPORAL
+# Vigencia del token de bootstrap en horas (1 a 720). Por defecto 24.
+# auth.bootstrap-token-expira-horas=24
 
 # TTL del caché que resuelve subdominio -> negocio. Se invalida al actualizar
 # la configuración; este valor acota cambios de estado externos.
@@ -89,6 +134,8 @@ webhook.outbox.max-intentos=10
 webhook.outbox.lote=50
 webhook.outbox.intervalo-segundos=30
 webhook.outbox.recuperacion-minutos=5
+# Tolerancia del timestamp en la firma de webhooks de Mercado Pago (segundos).
+webhook.firma-tolerancia-segundos=300
 ventas.expiracion.minutos=30
 ventas.expiracion.lote=50
 ventas.expiracion.intervalo-segundos=60

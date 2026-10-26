@@ -48,6 +48,22 @@ public final class ConfigLoader {
         return environmentName == null ? null : System.getenv(environmentName);
     }
 
+    /**
+     * Resuelve secretos con prioridad para variables de entorno.
+     * Las system properties se mantienen primero para permitir tests aislados.
+     */
+    public static String getSecretProperty(String key) {
+        String value = valorNoVacio(System.getProperty(key));
+        if (value != null) {
+            return value;
+        }
+        value = obtenerVariableEntorno(key);
+        if (value != null) {
+            return value;
+        }
+        return obtenerPropiedadArchivo(key);
+    }
+
     static String obtenerPropiedadJava(String key) {
         return valorNoVacio(System.getProperty(key));
     }
@@ -61,7 +77,7 @@ public final class ConfigLoader {
         return valorNoVacio(properties.getProperty(key));
     }
 
-    private static String obtenerNombreVariableEntorno(String key) {
+    static String obtenerNombreVariableEntorno(String key) {
         String explicit = switch (key) {
             case "db.url" -> "ECOMMERCE_DB_URL";
             case "db.username" -> "ECOMMERCE_DB_USERNAME";
@@ -77,13 +93,23 @@ public final class ConfigLoader {
             case "stripe.webhook-secret" -> "STRIPE_WEBHOOK_SECRET";
             case "auth.token-secret" -> "AUTH_TOKEN_SECRET";
             case "auth.bootstrap-token" -> "AUTH_BOOTSTRAP_TOKEN";
+            case "auth.bootstrap-token-expira-horas" -> "AUTH_BOOTSTRAP_TOKEN_EXPIRA_HORAS";
             case "auth.expiracion-horas" -> "AUTH_EXPIRACION_HORAS";
             case "app.perfil" -> "APP_PERFIL";
+            case "app.frontend.url" -> "APP_FRONTEND_URL";
+            case "app.backend.url" -> "APP_BACKEND_URL";
             case "app.cors.allowed-origins" -> "APP_CORS_ALLOWED_ORIGINS";
+            case "app.trusted-proxies" -> "APP_TRUSTED_PROXIES";
+            case "stripe.allowed-return-origins" -> "STRIPE_ALLOWED_RETURN_ORIGINS";
+            case "stripe.connect-timeout-ms" -> "STRIPE_CONNECT_TIMEOUT_MS";
+            case "stripe.read-timeout-ms" -> "STRIPE_READ_TIMEOUT_MS";
             default -> null;
         };
         if (explicit != null) {
             return explicit;
+        }
+        if (key.startsWith("executor.")) {
+            return "EXECUTOR_" + normalizarVariable(key.substring("executor.".length()));
         }
         if (key.startsWith("rate-limit.")) {
             return "RATE_LIMIT_" + normalizarVariable(key.substring("rate-limit.".length()));

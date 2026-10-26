@@ -159,7 +159,14 @@ export const api = {
             negocio.fijar(subdominio);
             return datos;
         },
-        salir: () => {
+        salir: async () => {
+            if (sesion.token()) {
+                try {
+                    await request('/auth/salida', { method: 'POST' }, false);
+                } catch {
+                    // La sesión local se cierra aunque el servidor no responda.
+                }
+            }
             sesion.limpiar();
         }
     },

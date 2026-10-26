@@ -8,6 +8,7 @@ import com.CapaAplicacion.Interfaces.EventBus;
 import com.CapaAplicacion.Interfaces.IPagoRepository;
 import com.CapaAplicacion.Interfaces.IVentaRepository;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.HexFormat;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -40,7 +41,7 @@ class WebhookServiceTest {
         System.setProperty(CLAVE_WEBHOOK_SECRET, SECRETO_PRUEBA);
         String paymentId = "123456789";
         String requestId = "request-prueba";
-        String timestamp = "1728576000";
+        String timestamp = String.valueOf(Instant.now().getEpochSecond());
         String signature = crearFirma(SECRETO_PRUEBA, paymentId, requestId, timestamp);
 
         assertTrue(webhookService.haySecretoFirmaConfigurado());
@@ -50,13 +51,23 @@ class WebhookServiceTest {
     @Test
     void rechazaFirmaIncorrectaYSecretoAusente() throws Exception {
         System.setProperty(CLAVE_WEBHOOK_SECRET, SECRETO_PRUEBA);
-        String signature = crearFirma(SECRETO_PRUEBA, "123456789", "request-prueba", "1728576000");
+        String signature = crearFirma(SECRETO_PRUEBA, "123456789", "request-prueba",
+                String.valueOf(Instant.now().getEpochSecond()));
 
         assertFalse(webhookService.validarFirma("123456789", signature, "request-distinto"));
         assertFalse(webhookService.validarFirma("123456789", "ts=1,v1=00", "request-prueba"));
 
         System.clearProperty(CLAVE_WEBHOOK_SECRET);
         assertFalse(webhookService.haySecretoFirmaConfigurado());
+        assertFalse(webhookService.validarFirma("123456789", signature, "request-prueba"));
+    }
+
+    @Test
+    void rechazaFirmaConTimestampVencido() throws Exception {
+        System.setProperty(CLAVE_WEBHOOK_SECRET, SECRETO_PRUEBA);
+        String vencido = String.valueOf(Instant.now().getEpochSecond() - 3600);
+        String signature = crearFirma(SECRETO_PRUEBA, "123456789", "request-prueba", vencido);
+
         assertFalse(webhookService.validarFirma("123456789", signature, "request-prueba"));
     }
 

@@ -129,17 +129,31 @@ class ProductoServiceTest {
     }
 
     @Test
-    @DisplayName("actualizarAsync: lanza error si el producto no existe")
+    @DisplayName("actualizarAsync: lanza error de recurso no encontrado si el producto no existe")
     void actualizarInexistente() {
         when(repository.buscarPorId(NEGOCIO, 99)).thenReturn(Optional.empty());
-        assertThrows(ExecutionException.class,
+        ExecutionException error = assertThrows(ExecutionException.class,
                 () -> service.actualizarAsync(NEGOCIO, 99, dtoValido()).get());
+        assertInstanceOf(com.CapaDominio.Excepciones.RecursoNoEncontradoException.class,
+                error.getCause());
     }
 
     @Test
-    @DisplayName("eliminarAsync: delega en el repositorio")
+    @DisplayName("eliminarAsync: delega en el repositorio si existe")
     void eliminar() throws Exception {
+        when(repository.buscarPorId(NEGOCIO, 2)).thenReturn(Optional.of(productoEnRepo(2)));
         service.eliminarAsync(NEGOCIO, 2).get();
         verify(repository).eliminar(NEGOCIO, 2);
+    }
+
+    @Test
+    @DisplayName("eliminarAsync: no elimina un producto inexistente")
+    void eliminarInexistente() {
+        when(repository.buscarPorId(NEGOCIO, 99)).thenReturn(Optional.empty());
+        ExecutionException error = assertThrows(ExecutionException.class,
+                () -> service.eliminarAsync(NEGOCIO, 99).get());
+        assertInstanceOf(com.CapaDominio.Excepciones.RecursoNoEncontradoException.class,
+                error.getCause());
+        verify(repository, never()).eliminar(anyLong(), anyInt());
     }
 }

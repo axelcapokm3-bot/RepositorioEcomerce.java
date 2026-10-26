@@ -148,3 +148,35 @@ Estas respuestas cambian la explotación y la prioridad, no la existencia de los
 | D-08 | pendiente | — | — | — |
 | D-09 | pendiente | — | — | — |
 | D-10 | pendiente | — | — | — |
+
+---
+
+## Cierre final — Bloque 7
+
+**Fecha:** 2026-10-24
+**Veredicto:** **APROBADO** para el alcance de remediación P3 (BA-01, BA-03, BA-04, BA-05 y BA-06).
+
+### Evidencia
+
+- `mvn test`: **345 tests, 0 fallos, 0 errores, 1 omitido**; `BUILD SUCCESS`.
+- Línea base: 216 tests; delta: +129 tests.
+- BA-01: el fallo de `rollback()` se agrega como `Suppressed` a la excepción original.
+- BA-03: PBKDF2 se mantiene en 210.000 iteraciones con comentario de hardening.
+- BA-04: el resumen del Dashboard escapa acción, descripción y fecha con `escaparHtml`.
+- BA-05: clientes y `Producto.eliminar` verifican filas afectadas y lanzan 404.
+- BA-06: `classpath.txt` dejó de estar trackeado y fue ignorado; se eliminaron archivos vacíos y `app.jfr`.
+- No se modificaron claves, secretos ni variables de entorno.
+- Log detallado: `docs/auditoria/13-cierre-p3.md`.
+- Roadmap: `posibles_mejores_futuro.md`.
+
+### Condiciones operativas no bloqueantes
+
+- No se ejecutó E2E real de Stripe/Mercado Pago; la cobertura sigue siendo con mocks o clientes falsos.
+- Aplicar `migracion_auditoria_negocio.sql` en entornos donde `auditoria` todavía no tenga `id_negocio`.
+- BA-02 se mantiene como fail-fast aceptado; agregar health check y logging estructurado en una iteración futura.
+
+La línea de “no desplegar en producción” de la sección anterior corresponde al estado original auditado; este cierre documenta el estado posterior a P3.
+
+**Actualización 2026-10-26:** la evidencia final con tests unitarios de
+BA-01 a BA-06 y el escaneo de secretos está en
+`docs/auditoria/15-cierre-bloque6-p3.md`.

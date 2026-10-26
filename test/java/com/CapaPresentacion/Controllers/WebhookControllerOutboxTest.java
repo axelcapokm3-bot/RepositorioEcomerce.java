@@ -35,7 +35,7 @@ class WebhookControllerOutboxTest {
     private static final String CLAVE_WEBHOOK_SECRET = "mercadopago.webhook-secret";
     private static final String SECRETO_PRUEBA = "secreto-local-de-prueba";
     private static final String REQUEST_ID = "request-outbox";
-    private static final String TIMESTAMP = "1728576000";
+    private static final String TIMESTAMP = String.valueOf(java.time.Instant.now().getEpochSecond());
     private static final String ORDER_ID = "order-outbox-123";
     private static final String CUERPO =
             "{\"type\":\"order\",\"data\":{\"id\":\"" + ORDER_ID + "\"}}";

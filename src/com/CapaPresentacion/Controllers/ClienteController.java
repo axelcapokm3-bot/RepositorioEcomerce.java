@@ -78,13 +78,13 @@ public class ClienteController extends BaseController {
                 }
             }
         } catch (ControllerException e) {
-            sendError(exchange, e.status(), e.respuesta());
+            manejarError(exchange, e);
         } catch (IOException e) {
             sendError(exchange, 503, new ControllerException.ServicioNoDisponible(
                     "No fue posible responder al cliente.", "Problema de red o comunicación."
             ).respuesta());
         } catch (Exception e) {
-            sendError(exchange, 500, "Código: ERROR_SERVIDOR | Mensaje: Error interno del servidor. | Causa: Fallo inesperado.");
+            manejarError(exchange, e);
         }
     }
 }

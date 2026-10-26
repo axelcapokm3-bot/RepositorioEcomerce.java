@@ -2,12 +2,14 @@ package com.CapaInfraestructura.Implementacion;
 
 import com.CapaAplicacion.Interfaces.IServiceExecutor;
 import com.CapaAplicacion.Interfaces.TipoServicio;
+import com.CapaInfraestructura.Configuracion.ConfiguracionExecutor;
+import com.CapaInfraestructura.Configuracion.SanitizadorLog;
 
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
-// Executor que se configura leyendo la constante TipoServicio
+// Executor que se configura leyendo la configuración de TipoServicio
 public class ServiceExecutor implements IServiceExecutor {
 
     private final TipoServicio tipo;
@@ -15,12 +17,13 @@ public class ServiceExecutor implements IServiceExecutor {
 
     public ServiceExecutor(TipoServicio tipo) {
         this.tipo = tipo;
+        ConfiguracionExecutor configuracion = ConfiguracionExecutor.para(tipo);
 
         this.executor = new ThreadPoolExecutor(
-            tipo.getTamanoCore(),
-            tipo.getTamanoMax(),
+            configuracion.tamanoCore(),
+            configuracion.tamanoMax(),
             60L, TimeUnit.SECONDS,
-            new LinkedBlockingQueue<>(tipo.getCapacidadCola()),
+            new LinkedBlockingQueue<>(configuracion.capacidadCola()),
             crearFabricaDeHilos(tipo.getPrefijoHilo()),
             new ThreadPoolExecutor.CallerRunsPolicy() // Backpressure natural si se satura la cola
         );
@@ -42,7 +45,8 @@ public class ServiceExecutor implements IServiceExecutor {
                 hilo.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
                     @Override
                     public void uncaughtException(Thread h, Throwable e) {
-                        System.err.println("❌ Error no capturado en " + h.getName() + ": " + e.getMessage());
+                        System.err.println("Error no capturado en " + h.getName() + ": "
+                                + SanitizadorLog.error(e));
                     }
                 });
                 return hilo;

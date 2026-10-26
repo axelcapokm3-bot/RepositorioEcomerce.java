@@ -3,6 +3,7 @@ package com.CapaInfraestructura.Implementacion;
 import com.CapaAplicacion.Interfaces.IAuditoriaRepository;
 import com.CapaDominio.Entidades.AccionAuditoria;
 import com.CapaDominio.Entidades.Auditoria;
+import com.CapaInfraestructura.Configuracion.SanitizadorLog;
 
 import java.sql.*;
 import java.time.LocalDateTime;
@@ -16,21 +17,21 @@ import java.util.List;
 public class MySqlRepositorioAuditoria implements IAuditoriaRepository {
 
     private static final String INSERT = "INSERT INTO auditoria "
-            + "(accion, entidad, id_entidad, usuario, ip_origen, user_agent, resultado, descripcion, detalle) "
-            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            + "(id_negocio, accion, entidad, id_entidad, usuario, ip_origen, user_agent, resultado, descripcion, detalle) "
+            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-    private static final String SELECT_BASE = "SELECT a.id, a.accion, a.entidad, a.id_entidad, a.usuario, a.ip_origen, "
-            + "a.user_agent, a.resultado, a.descripcion, a.detalle, a.fecha FROM auditoria a ";
+    private static final String SELECT_BASE = "SELECT a.id, a.id_negocio, a.accion, a.entidad, a.id_entidad, "
+            + "a.usuario, a.ip_origen, a.user_agent, a.resultado, a.descripcion, a.detalle, a.fecha FROM auditoria a ";
 
-    private static final String FILTRO_NEGOCIO =
-            "((a.entidad = 'Venta' AND EXISTS (SELECT 1 FROM ventas v WHERE v.id = a.id_entidad AND v.id_negocio = ?)) "
-            + "OR (a.entidad = 'Producto' AND EXISTS (SELECT 1 FROM productos p WHERE p.id = a.id_entidad AND p.id_negocio = ?)) "
-            + "OR (a.entidad = 'Cliente' AND EXISTS (SELECT 1 FROM clientes c WHERE c.id = a.id_entidad AND c.id_negocio = ?)) "
-            + "OR (a.entidad = 'Pago' AND EXISTS (SELECT 1 FROM pagos pg WHERE pg.id = a.id_entidad AND pg.id_negocio = ?)))";
+    private static final String FILTRO_NEGOCIO = "a.id_negocio = ?";
 
     private static void bindNegocio(PreparedStatement statement, int start, long idNegocio) throws SQLException {
-        for (int i = 0; i < 4; i++) {
-            statement.setLong(start + i, idNegocio);
+        statement.setLong(start, idNegocio);
+    }
+
+    private static void exigirNegocio(long idNegocio) {
+        if (idNegocio <= 0) {
+            throw new IllegalArgumentException("El ID de negocio es obligatorio para consultar auditoría.");
         }
     }
 
@@ -42,15 +43,20 @@ public class MySqlRepositorioAuditoria implements IAuditoriaRepository {
         try (Connection connection = DatabaseConnection.getConnection();
              PreparedStatement statement = connection.prepareStatement(INSERT, Statement.RETURN_GENERATED_KEYS)) {
             
-            statement.setString(1, auditoria.getAccion() != null ? auditoria.getAccion().name() : AccionAuditoria.CREAR.name());
-            statement.setString(2, auditoria.getEntidad() != null ? auditoria.getEntidad() : "Venta");
-            statement.setInt(3, auditoria.getIdEntidad());
-            statement.setString(4, auditoria.getUsuario());
-            statement.setString(5, auditoria.getIpOrigen());
-            statement.setString(6, auditoria.getUserAgent());
-            statement.setString(7, auditoria.getResultado() != null ? auditoria.getResultado() : "OK");
-            statement.setString(8, auditoria.getDescripcion() != null ? auditoria.getDescripcion() : "");
-            statement.setString(9, auditoria.getDetalle());
+            if (auditoria.getIdNegocio() > 0) {
+                statement.setLong(1, auditoria.getIdNegocio());
+            } else {
+                statement.setNull(1, java.sql.Types.BIGINT);
+            }
+            statement.setString(2, auditoria.getAccion() != null ? auditoria.getAccion().name() : AccionAuditoria.CREAR.name());
+            statement.setString(3, auditoria.getEntidad() != null ? auditoria.getEntidad() : "Venta");
+            statement.setInt(4, auditoria.getIdEntidad());
+            statement.setString(5, auditoria.getUsuario());
+            statement.setString(6, auditoria.getIpOrigen());
+            statement.setString(7, auditoria.getUserAgent());
+            statement.setString(8, auditoria.getResultado() != null ? auditoria.getResultado() : "OK");
+            statement.setString(9, auditoria.getDescripcion() != null ? auditoria.getDescripcion() : "");
+            statement.setString(10, auditoria.getDetalle());
 
             statement.executeUpdate();
 
@@ -60,13 +66,14 @@ public class MySqlRepositorioAuditoria implements IAuditoriaRepository {
                 }
             }
         } catch (SQLException exception) {
-            System.err.println("❌ Error al guardar auditoría en MySQL: " + exception.getMessage());
+            System.err.println("Error al guardar auditoría en MySQL: " + SanitizadorLog.error(exception));
             throw exception;
         }
     }
 
     @Override
     public List<Auditoria> buscarPorEntidad(long idNegocio, String entidad, int idEntidad) {
+        exigirNegocio(idNegocio);
         List<Auditoria> lista = new ArrayList<>();
         String filtro = filtroEntidad(entidad);
         if (filtro == null) {
@@ -85,29 +92,24 @@ public class MySqlRepositorioAuditoria implements IAuditoriaRepository {
                 }
             }
         } catch (SQLException exception) {
-            System.err.println("❌ Error al buscar auditoría por entidad: " + exception.getMessage());
+            System.err.println("Error al buscar auditoría por entidad: " + SanitizadorLog.error(exception));
         }
         return lista;
     }
 
     private static String filtroEntidad(String entidad) {
-        if ("Venta".equalsIgnoreCase(entidad)) {
-            return "EXISTS (SELECT 1 FROM ventas v WHERE v.id = a.id_entidad AND v.id_negocio = ?)";
-        }
-        if ("Producto".equalsIgnoreCase(entidad)) {
-            return "EXISTS (SELECT 1 FROM productos p WHERE p.id = a.id_entidad AND p.id_negocio = ?)";
-        }
-        if ("Cliente".equalsIgnoreCase(entidad)) {
-            return "EXISTS (SELECT 1 FROM clientes c WHERE c.id = a.id_entidad AND c.id_negocio = ?)";
-        }
-        if ("Pago".equalsIgnoreCase(entidad)) {
-            return "EXISTS (SELECT 1 FROM pagos pg WHERE pg.id = a.id_entidad AND pg.id_negocio = ?)";
+        if ("Venta".equalsIgnoreCase(entidad)
+                || "Producto".equalsIgnoreCase(entidad)
+                || "Cliente".equalsIgnoreCase(entidad)
+                || "Pago".equalsIgnoreCase(entidad)) {
+            return "a.id_negocio = ?";
         }
         return null;
     }
 
     @Override
     public List<Auditoria> buscarPorUsuario(long idNegocio, String usuario) {
+        exigirNegocio(idNegocio);
         List<Auditoria> lista = new ArrayList<>();
         String sql = SELECT_BASE + "WHERE a.usuario = ? AND " + FILTRO_NEGOCIO + " ORDER BY a.fecha DESC LIMIT 500";
         try (Connection connection = DatabaseConnection.getConnection();
@@ -120,13 +122,14 @@ public class MySqlRepositorioAuditoria implements IAuditoriaRepository {
                 }
             }
         } catch (SQLException exception) {
-            System.err.println("❌ Error al buscar auditoría por usuario: " + exception.getMessage());
+            System.err.println("Error al buscar auditoría por usuario: " + SanitizadorLog.error(exception));
         }
         return lista;
     }
 
     @Override
     public List<Auditoria> buscarPorAccion(long idNegocio, AccionAuditoria accion) {
+        exigirNegocio(idNegocio);
         List<Auditoria> lista = new ArrayList<>();
         String sql = SELECT_BASE + "WHERE a.accion = ? AND " + FILTRO_NEGOCIO + " ORDER BY a.fecha DESC LIMIT 500";
         try (Connection connection = DatabaseConnection.getConnection();
@@ -139,13 +142,14 @@ public class MySqlRepositorioAuditoria implements IAuditoriaRepository {
                 }
             }
         } catch (SQLException exception) {
-            System.err.println("❌ Error al buscar auditoría por acción: " + exception.getMessage());
+            System.err.println("Error al buscar auditoría por acción: " + SanitizadorLog.error(exception));
         }
         return lista;
     }
 
     @Override
     public List<Auditoria> buscarPorRangoFecha(long idNegocio, LocalDateTime desde, LocalDateTime hasta) {
+        exigirNegocio(idNegocio);
         List<Auditoria> lista = new ArrayList<>();
         String sql = SELECT_BASE + "WHERE a.fecha BETWEEN ? AND ? AND " + FILTRO_NEGOCIO + " ORDER BY a.fecha DESC LIMIT 1000";
         try (Connection connection = DatabaseConnection.getConnection();
@@ -159,13 +163,14 @@ public class MySqlRepositorioAuditoria implements IAuditoriaRepository {
                 }
             }
         } catch (SQLException exception) {
-            System.err.println("❌ Error al buscar auditoría por rango de fecha: " + exception.getMessage());
+            System.err.println("Error al buscar auditoría por rango de fecha: " + SanitizadorLog.error(exception));
         }
         return lista;
     }
 
     @Override
     public List<Auditoria> listarTodas(long idNegocio) {
+        exigirNegocio(idNegocio);
         List<Auditoria> lista = new ArrayList<>();
         String sql = SELECT_BASE + "WHERE " + FILTRO_NEGOCIO + " ORDER BY a.fecha DESC LIMIT 1000";
         try (Connection connection = DatabaseConnection.getConnection();
@@ -177,13 +182,14 @@ public class MySqlRepositorioAuditoria implements IAuditoriaRepository {
                 }
             }
         } catch (SQLException exception) {
-            System.err.println("❌ Error al listar todas las auditorías: " + exception.getMessage());
+            System.err.println("Error al listar todas las auditorías: " + SanitizadorLog.error(exception));
         }
         return lista;
     }
 
     private Auditoria mapear(ResultSet rs) throws SQLException {
         long id = rs.getLong("id");
+        long idNegocio = rs.getLong("id_negocio");
         String accionStr = rs.getString("accion");
         AccionAuditoria accion = AccionAuditoria.CREAR;
         try {
@@ -206,6 +212,9 @@ public class MySqlRepositorioAuditoria implements IAuditoriaRepository {
         Timestamp timestamp = rs.getTimestamp("fecha");
         LocalDateTime fecha = timestamp != null ? timestamp.toLocalDateTime() : LocalDateTime.now();
 
-        return new Auditoria(id, accion, entidad, idEntidad, usuario, ipOrigen, userAgent, resultado, descripcion, detalle, fecha);
+        Auditoria auditoria = new Auditoria(id, accion, entidad, idEntidad, usuario, ipOrigen,
+                userAgent, resultado, descripcion, detalle, fecha);
+        auditoria.setIdNegocio(idNegocio);
+        return auditoria;
     }
 }

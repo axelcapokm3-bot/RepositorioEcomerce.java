@@ -3,13 +3,13 @@ package com.CapaPresentacion.Controllers;
 import com.CapaAplicacion.Service.StripeWebhookService;
 import com.CapaAplicacion.Service.WebhookEventoService;
 import com.CapaDominio.Entidades.ProveedorWebhook;
+import com.CapaInfraestructura.Configuracion.SanitizadorLog;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Event;
 import com.sun.net.httpserver.HttpExchange;
 
 import java.io.IOException;
 import java.util.Map;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /** Endpoint para eventos firmados de Stripe. */
@@ -34,7 +34,7 @@ public class StripeWebhookController extends BaseController {
     public void handle(HttpExchange exchange) throws IOException {
         if (handlePreflight(exchange)) return;
         if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-            sendResponse(exchange, 405, Map.of("error", "Método no permitido. Use POST."));
+            sendError(exchange, 405, "Método no permitido. Use POST.");
             return;
         }
         if (limitarSolicitud(exchange, "webhook-stripe", 600)) {
@@ -44,7 +44,7 @@ public class StripeWebhookController extends BaseController {
         String payload = leerCuerpoLimitado(exchange);
         try {
             if (!webhookService.haySecretoFirmaConfigurado()) {
-                sendResponse(exchange, 503, Map.of("error", "El secreto del webhook de Stripe no está configurado."));
+                sendError(exchange, 503, "El secreto del webhook de Stripe no está configurado.");
                 return;
             }
             String signature = exchange.getRequestHeaders().getFirst("Stripe-Signature");
@@ -60,11 +60,12 @@ public class StripeWebhookController extends BaseController {
                 eventoWebhookService.registrar(
                         ProveedorWebhook.STRIPE, event.getType(), event.getId(), payload);
             } catch (IllegalArgumentException exception) {
-                sendResponse(exchange, 400, Map.of("error", exception.getMessage()));
+                sendError(exchange, 400, exception.getMessage());
                 return;
             } catch (RuntimeException exception) {
-                LOGGER.log(Level.SEVERE, "No se pudo persistir el webhook de Stripe.", exception);
-                sendResponse(exchange, 500, Map.of("error", "No se pudo registrar el webhook."));
+                LOGGER.severe("No se pudo persistir el webhook de Stripe: "
+                        + SanitizadorLog.error(exception));
+                sendError(exchange, 500, "No se pudo registrar el webhook.");
                 return;
             }
 
@@ -72,15 +73,15 @@ public class StripeWebhookController extends BaseController {
             try {
                 eventoWebhookService.procesarPendientesAsync();
             } catch (RuntimeException exception) {
-                LOGGER.log(Level.WARNING,
-                        "El webhook quedó registrado; el job lo procesará.", exception);
+                LOGGER.warning("El webhook quedó registrado; el job lo procesará: "
+                        + SanitizadorLog.error(exception));
             }
         } catch (SignatureVerificationException e) {
-            sendResponse(exchange, 400, Map.of("error", "Firma de Stripe inválida."));
+            sendError(exchange, 400, "Firma de Stripe inválida.");
         } catch (IllegalStateException e) {
-            sendResponse(exchange, 503, Map.of("error", "El secreto del webhook de Stripe no está configurado."));
+            sendError(exchange, 503, "El secreto del webhook de Stripe no está configurado.");
         } catch (RuntimeException e) {
-            sendResponse(exchange, 503, Map.of("error", "No se pudo validar la configuración del webhook de Stripe."));
+            sendError(exchange, 503, "No se pudo validar la configuración del webhook de Stripe.");
         }
     }
 }

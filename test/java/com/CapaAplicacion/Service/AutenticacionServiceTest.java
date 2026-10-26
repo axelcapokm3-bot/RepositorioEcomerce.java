@@ -12,6 +12,7 @@ import com.CapaAplicacion.Interfaces.IClienteRepositorio;
 import com.CapaAplicacion.Interfaces.ICuentaNegocioRepositorio;
 import com.CapaAplicacion.Interfaces.ICuentaRepositorio;
 import com.CapaAplicacion.Interfaces.INegocioRepository;
+import com.CapaAplicacion.Interfaces.IRepositorioTokenBootstrap;
 import com.CapaAplicacion.Interfaces.IServiceExecutor;
 import com.CapaAplicacion.Interfaces.ITransaccion;
 import com.CapaAplicacion.Interfaces.OperacionTransaccional;
@@ -114,6 +115,48 @@ class AutenticacionServiceTest {
                                                      String contrasenia, String rol) {
         return new CuentaRegistroDTO(nombreCuenta, correo, contrasenia, "30666666", rol,
                 "Lucia", "Sosa", LocalDate.of(1995, 6, 20), "Calle 321", "Rosario");
+    }
+
+    private AutenticacionService servicioConInvalidacion(List<Long> invalidados) {
+        return new AutenticacionService(cuentas, clientes, vinculos, negocios,
+                new AdaptadorContrasena(), new ProveedorTokenAcceso(),
+                new TransaccionFalsa(cuentas, clientes, vinculos), new EjecutorDirecto(),
+                "token-setup-prueba", id -> invalidados.add(id));
+    }
+
+    private AutenticacionService servicioConBootstrap(IRepositorioTokenBootstrap repositorio) {
+        return new AutenticacionService(cuentas, clientes, vinculos, negocios,
+                new AdaptadorContrasena(), new ProveedorTokenAcceso(),
+                new TransaccionFalsa(cuentas, clientes, vinculos), new EjecutorDirecto(),
+                "token-setup-prueba", null, repositorio);
+    }
+
+    @Test
+    void invalidaCacheAlRegistrarEnNegocioInactivo() {
+        List<Long> invalidados = new ArrayList<>();
+        AutenticacionService servicioConCache = servicioConInvalidacion(invalidados);
+        negocios.desactivar(2L);
+        CuentaRegistroDTO registro = dtoConCliente("Cuenta Cache", "cache.registro@mail.com",
+                "ClaveSegura123", "30777777", "Nombre", "Apellido",
+                LocalDate.of(1990, 1, 1), "Calle 1", "Ciudad");
+
+        assertThrows(IllegalStateException.class,
+                () -> servicioConCache.registrar(2L, registro, null, null));
+
+        assertEquals(List.of(2L), invalidados);
+    }
+
+    @Test
+    void invalidaCacheAlIngresarANegocioInactivo() {
+        List<Long> invalidados = new ArrayList<>();
+        AutenticacionService servicioConCache = servicioConInvalidacion(invalidados);
+        negocios.desactivar(2L);
+
+        assertThrows(IllegalStateException.class,
+                () -> servicioConCache.ingresar(2L,
+                        new CuentaIngresoDTO("cache.ingreso@mail.com", "ClaveSegura123")));
+
+        assertEquals(List.of(2L), invalidados);
     }
 
     @Test
@@ -547,6 +590,43 @@ class AutenticacionServiceTest {
         assertEquals(13, sesion.idCliente());
     }
 
+    @Test
+    void elTokenBootstrapDeConfiguracionSoloSeUsaUnaVez() throws Exception {
+        CuentaRegistroDTO primerAdmin = dtoPerfilCarlos("jefe", "jefe@mail.com", "Segura123", "ADMIN");
+        SesionResponseDTO bootstrap = servicio.registrarAsync(1L, primerAdmin, null, "token-setup-prueba").get();
+        assertEquals("ADMIN", bootstrap.rol());
+
+        CuentaRegistroDTO segundoAdmin = dtoPerfilLucia("jefe2", "jefe2@mail.com", "Segura123", "ADMIN");
+        assertThrows(Exception.class, new org.junit.jupiter.api.function.Executable() {
+            @Override
+            public void execute() throws Throwable {
+                servicio.registrarAsync(1L, segundoAdmin, null, "token-setup-prueba").get();
+            }
+        });
+    }
+
+    @Test
+    void elTokenBootstrapPersistidoNoSeReutilizaEntreInstancias() throws Exception {
+        TokenBootstrapRepositorioFalso repositorio = new TokenBootstrapRepositorioFalso();
+        AutenticacionService primero = servicioConBootstrap(repositorio);
+        primero.prepararTokenBootstrap();
+        SesionResponseDTO bootstrap = primero.registrarAsync(1L,
+                dtoPerfilCarlos("jefe", "jefe@mail.com", "Segura123", "ADMIN"),
+                null, "token-setup-prueba").get();
+        assertEquals("ADMIN", bootstrap.rol());
+
+        AutenticacionService segundo = servicioConBootstrap(repositorio);
+        segundo.prepararTokenBootstrap();
+        assertThrows(Exception.class, new org.junit.jupiter.api.function.Executable() {
+            @Override
+            public void execute() throws Throwable {
+                segundo.registrarAsync(1L,
+                        dtoPerfilLucia("jefe2", "jefe2@mail.com", "Segura123", "ADMIN"),
+                        null, "token-setup-prueba").get();
+            }
+        });
+    }
+
     private static final class CuentaRepositorioFalso implements ICuentaRepositorio {
         private final Map<String, Cuenta> porCorreo = new HashMap<>();
         private int secuencia = 1;
@@ -842,6 +922,28 @@ class AutenticacionServiceTest {
         @Override
         public void eliminar(long idNegocio, int id) {
             clientes.remove(id);
+        }
+    }
+
+    private static final class TokenBootstrapRepositorioFalso implements IRepositorioTokenBootstrap {
+        private String huella;
+        private boolean usado;
+
+        @Override
+        public void sembrarSiAusente(String huella, java.time.LocalDateTime expiraEn) {
+            if (this.huella == null) {
+                this.huella = huella;
+            }
+        }
+
+        @Override
+        public boolean reclamar(Connection conexion, String huella) {
+            if (usado || this.huella == null
+                    || !this.huella.equals(huella)) {
+                return false;
+            }
+            usado = true;
+            return true;
         }
     }
 

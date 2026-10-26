@@ -203,14 +203,45 @@ TABLA auditoria
 -------------------------------------------------------------------------------
   Columna             Tipo SQL        Restriccion                     Descripcion
   ------------------- --------------- ------------------------------- -----------------------------
-  id                  INT             PK, AUTO_INCREMENT              Identificador
-  id_accion           INT             FK -> accion_auditoria(id)      Accion realizada
+  id                  BIGINT          PK, AUTO_INCREMENT              Identificador
+  id_negocio          BIGINT          NULL, FK -> negocios(id)        Negocio dueno del evento
+  accion              VARCHAR(50)     NOT NULL                        CREAR, ACTUALIZAR, ELIMINAR,
+                                                                      REGISTRAR_VENTA, CANCELAR_VENTA
+  entidad             VARCHAR(50)     NOT NULL                        Producto, Venta, Cliente, Pago
   id_entidad          INT             NOT NULL                        ID de la entidad afectada
+  usuario             VARCHAR(100)    NULL                            Cuenta que ejecuto la accion
+  ip_origen           VARCHAR(45)     NULL                            IP real resuelta del cliente
+  user_agent          VARCHAR(500)    NULL                            Agente HTTP de la solicitud
+  resultado           VARCHAR(30)     NULL                            OK, ERROR, etc.
+  descripcion         VARCHAR(500)    NULL                            Detalle del evento
+  detalle             TEXT            NULL                            Contexto adicional
   fecha               DATETIME        NOT NULL                        Momento del registro
-  descripcion         VARCHAR(500)    NOT NULL                        Detalle del evento
 
-  Origen en Java: int id, AccionAuditoria accion, int idEntidad,
-  LocalDateTime fecha, String descripcion.
+  Origen en Java: long id, long idNegocio, AccionAuditoria accion, String entidad,
+  int idEntidad, String usuario, String ipOrigen, String userAgent, String resultado,
+  String descripcion, String detalle, LocalDateTime fecha.
+
+  Migracion: migracion_auditoria_negocio.sql agrega id_negocio e
+  idx_auditoria_negocio_fecha (id_negocio, fecha). Las filas historicas se
+  completan desde ventas, productos, clientes y pagos; las no resolubles
+  quedan en NULL y no se devuelven en consultas por negocio.
+
+
+TABLA tokens_bootstrap (infraestructura de autenticacion)
+-------------------------------------------------------------------------------
+  Columna             Tipo SQL        Restriccion                     Descripcion
+  ------------------- --------------- ------------------------------- -----------------------------
+  id                  TINYINT         PK, CHECK (id = 1)              Fila unica global
+  huella              CHAR(64)        NOT NULL                        SHA-256 del token en claro
+  expira_en           DATETIME        NOT NULL                        Vencimiento del token
+  usado               BOOLEAN         NOT NULL DEFAULT FALSE          Consumido una sola vez
+  usado_en            DATETIME        NULL                            Momento del consumo
+  usado_por           VARCHAR(100)    NULL                            Cuenta que lo consumio
+  creado_en           TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP
+
+  El token en claro se configura con AUTH_BOOTSTRAP_TOKEN y nunca se persiste.
+  Migracion: migracion_token_bootstrap.sql. Para emitir uno nuevo, borrar la
+  fila y reiniciar el servidor con la nueva configuracion.
 
 
 TABLA accion_auditoria (catalogo)

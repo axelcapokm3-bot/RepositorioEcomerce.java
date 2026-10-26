@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 
 public class Auditoria {
     private long id;
+    private long idNegocio;
     private AccionAuditoria accion;
     private String entidad;
     private int idEntidad;
@@ -67,7 +68,18 @@ public class Auditoria {
 
     public String formatearParaLog() {
         return String.format("📜 [%s] | Acción: %s | Entidad: %s | Entidad ID: %d | Detalle: %s",
-                fecha != null ? fecha.toString() : "N/A", accion, entidad, idEntidad, descripcion);
+                fecha != null ? fecha.toString() : "N/A", accion, entidad, idEntidad,
+                neutralizarSaltosLinea(descripcion));
+    }
+
+    private static String neutralizarSaltosLinea(String valor) {
+        if (valor == null || valor.isEmpty()) {
+            return valor;
+        }
+        return valor.replace("\r", "\\r")
+                .replace("\n", "\\n")
+                .replace("\u2028", "\\u2028")
+                .replace("\u2029", "\\u2029");
     }
 
     // Getters y Setters
@@ -78,6 +90,9 @@ public class Auditoria {
         }
         this.id = id;
     }
+
+    public long getIdNegocio() { return idNegocio; }
+    public void setIdNegocio(long idNegocio) { this.idNegocio = idNegocio; }
 
     // Compatibilidad por si algún código antiguo usa int para id
     public void setId(int id) {

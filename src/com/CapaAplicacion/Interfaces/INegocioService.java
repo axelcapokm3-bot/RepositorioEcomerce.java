@@ -10,4 +10,5 @@ public interface INegocioService {
     Optional<Negocio> buscarNegocioPorSubdominio(String subdominio);
     List<ConfiguracionResponseDTO> listarConfiguraciones(String subdominio);
     void actualizarConfiguracion(String subdominio, String clave, String valor);
+    void darDeBaja(long idNegocio);
 }

@@ -13,6 +13,7 @@ import javax.crypto.spec.PBEKeySpec;
 
 public class AdaptadorContrasena implements IServicioContrasena {
     private static final String PREFIJO = "pbkdf2";
+    // Decisión de hardening: 210.000 iteraciones de PBKDF2-HMAC-SHA256; no reducir sin revisar el costo.
     private static final int ITERACIONES = 210000;
     private static final int BYTES_SAL = 16;
     private static final int BITS_HASH = 256;

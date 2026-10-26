@@ -8,36 +8,45 @@ import com.CapaAplicacion.DTOsalida.VinculoResponseDTO;
 import com.CapaAplicacion.Interfaces.IClienteRepositorio;
 import com.CapaAplicacion.Interfaces.ICuentaNegocioRepositorio;
 import com.CapaAplicacion.Interfaces.ICuentaRepositorio;
+import com.CapaAplicacion.Interfaces.IInvalidadorCacheNegocio;
 import com.CapaAplicacion.Interfaces.INegocioRepository;
 import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
+import com.CapaAplicacion.Interfaces.IRepositorioTokenBootstrap;
 import com.CapaAplicacion.Interfaces.IServiceExecutor;
 import com.CapaAplicacion.Interfaces.IServicioContrasena;
 import com.CapaAplicacion.Interfaces.ITransaccion;
 import com.CapaAplicacion.Interfaces.OperacionTransaccional;
 import com.CapaAplicacion.Interfaces.TipoServicio;
 import com.CapaAplicacion.Mapper.ClienteMapper;
+import com.CapaAplicacion.Seguridad.HuellaTokenBootstrap;
 import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaDominio.Entidades.Cliente;
 import com.CapaDominio.Entidades.Cuenta;
 import com.CapaDominio.Entidades.Negocio;
 import com.CapaDominio.Entidades.RolUsuario;
 import com.CapaDominio.Entidades.VinculoCuentaNegocio;
+import com.CapaDominio.Excepciones.NegocioInactivoException;
+import com.CapaInfraestructura.Configuracion.ConfigLoader;
 import com.CapaInfraestructura.Implementacion.RegistroExecutors;
 
 import java.sql.Connection;
 import java.text.Normalizer;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class AutenticacionService {
     private static final String HASH_FALSO_PARA_MEDICION_CONSTANTE =
             "pbkdf2$210000$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    private static final long HORAS_BOOTSTRAP_PREDETERMINADAS = 24L;
+    private static final int MAXIMO_CARACTERES_TOKEN_BOOTSTRAP = 512;
 
     private final ICuentaRepositorio cuentaRepositorio;
     private final IClienteRepositorio clienteRepositorio;
@@ -48,6 +57,11 @@ public class AutenticacionService {
     private final ITransaccion transaccion;
     private final IServiceExecutor executor;
     private final String tokenBootstrap;
+    private final String huellaTokenBootstrap;
+    private final AtomicBoolean tokenBootstrapConsumido = new AtomicBoolean(false);
+    private final IInvalidadorCacheNegocio invalidadorCache;
+    private final ValidadorNegocioService validadorNegocio;
+    private final IRepositorioTokenBootstrap repositorioTokenBootstrap;
 
     public AutenticacionService(ICuentaRepositorio cuentaRepositorio,
                                 IClienteRepositorio clienteRepositorio,
@@ -70,7 +84,7 @@ public class AutenticacionService {
                                 ITransaccion transaccion,
                                 IServiceExecutor executor) {
         this(cuentaRepositorio, clienteRepositorio, vinculoRepositorio, negocioRepositorio,
-                servicioContrasena, proveedorToken, transaccion, executor, null);
+                servicioContrasena, proveedorToken, transaccion, executor, null, null);
     }
 
     public AutenticacionService(ICuentaRepositorio cuentaRepositorio,
@@ -82,6 +96,36 @@ public class AutenticacionService {
                                 ITransaccion transaccion,
                                 IServiceExecutor executor,
                                 String tokenBootstrap) {
+        this(cuentaRepositorio, clienteRepositorio, vinculoRepositorio, negocioRepositorio,
+                servicioContrasena, proveedorToken, transaccion, executor, tokenBootstrap, null);
+    }
+
+    public AutenticacionService(ICuentaRepositorio cuentaRepositorio,
+                                IClienteRepositorio clienteRepositorio,
+                                ICuentaNegocioRepositorio vinculoRepositorio,
+                                INegocioRepository negocioRepositorio,
+                                IServicioContrasena servicioContrasena,
+                                IProveedorTokenAcceso proveedorToken,
+                                ITransaccion transaccion,
+                                IServiceExecutor executor,
+                                String tokenBootstrap,
+                                IInvalidadorCacheNegocio invalidadorCache) {
+        this(cuentaRepositorio, clienteRepositorio, vinculoRepositorio, negocioRepositorio,
+                servicioContrasena, proveedorToken, transaccion, executor, tokenBootstrap,
+                invalidadorCache, null);
+    }
+
+    public AutenticacionService(ICuentaRepositorio cuentaRepositorio,
+                                IClienteRepositorio clienteRepositorio,
+                                ICuentaNegocioRepositorio vinculoRepositorio,
+                                INegocioRepository negocioRepositorio,
+                                IServicioContrasena servicioContrasena,
+                                IProveedorTokenAcceso proveedorToken,
+                                ITransaccion transaccion,
+                                IServiceExecutor executor,
+                                String tokenBootstrap,
+                                IInvalidadorCacheNegocio invalidadorCache,
+                                IRepositorioTokenBootstrap repositorioTokenBootstrap) {
         if (cuentaRepositorio == null || clienteRepositorio == null || vinculoRepositorio == null
                 || negocioRepositorio == null
                 || servicioContrasena == null || proveedorToken == null
@@ -97,6 +141,42 @@ public class AutenticacionService {
         this.transaccion = transaccion;
         this.executor = executor;
         this.tokenBootstrap = tokenBootstrap == null || tokenBootstrap.isBlank() ? null : tokenBootstrap;
+        this.huellaTokenBootstrap = this.tokenBootstrap == null
+                ? null : HuellaTokenBootstrap.calcular(this.tokenBootstrap);
+        this.invalidadorCache = invalidadorCache == null ? new IInvalidadorCacheNegocio() {
+            @Override
+            public void invalidar(long idNegocio) {
+            }
+        } : invalidadorCache;
+        this.validadorNegocio = new ValidadorNegocioService(negocioRepositorio);
+        this.repositorioTokenBootstrap = repositorioTokenBootstrap;
+    }
+
+    /**
+     * Persiste la huella del token configurado la primera vez que se inicia el
+     * servidor. Si la fila ya existe (usada o vencida), no la reemplaza.
+     */
+    public void prepararTokenBootstrap() {
+        if (repositorioTokenBootstrap == null || huellaTokenBootstrap == null) {
+            return;
+        }
+        repositorioTokenBootstrap.sembrarSiAusente(huellaTokenBootstrap,
+                LocalDateTime.now().plusHours(horasTokenBootstrap()));
+    }
+
+    private long horasTokenBootstrap() {
+        String configurado = ConfigLoader.getProperty("auth.bootstrap-token-expira-horas");
+        if (configurado != null && !configurado.isBlank()) {
+            try {
+                long horas = Long.parseLong(configurado.trim());
+                if (horas >= 1 && horas <= 720) {
+                    return horas;
+                }
+            } catch (NumberFormatException exception) {
+                return HORAS_BOOTSTRAP_PREDETERMINADAS;
+            }
+        }
+        return HORAS_BOOTSTRAP_PREDETERMINADAS;
     }
 
     public CompletableFuture<SesionResponseDTO> registrarAsync(final long idNegocio,
@@ -172,7 +252,9 @@ public class AutenticacionService {
             throw new IllegalStateException("El solicitante no pertenece al negocio indicado.");
         }
         validarNegocioActivo(idNegocio);
-        RolUsuario rol = resolverRol(dto.rol(), solicitante, tokenSetup);
+        RolUsuario rol = resolverRol(dto.rol());
+        boolean requiereTokenBootstrap = rol != RolUsuario.CLIENTE
+                && (solicitante == null || !solicitante.esAdmin());
         String correo = dto.correoElectronico().trim().toLowerCase();
         String dni = dto.dniCliente().trim();
         Optional<Cuenta> existente = cuentaRepositorio.buscarPorCorreo(correo);
@@ -185,6 +267,11 @@ public class AutenticacionService {
         ejecutarTransaccion(new OperacionTransaccional() {
             @Override
             public void ejecutar(Connection conexion) {
+                if (requiereTokenBootstrap && !consumirTokenBootstrap(conexion, tokenSetup)) {
+                    throw new IllegalStateException(
+                            "Solo un administrador puede crear cuentas administradoras. "
+                                    + "El token de bootstrap es inválido, ya fue utilizado o venció.");
+                }
                 Cuenta cuenta;
                 Optional<Cuenta> porCorreo = cuentaRepositorio.buscarPorCorreo(conexion, correo);
                 if (porCorreo.isPresent()) {
@@ -247,6 +334,7 @@ public class AutenticacionService {
         if (idNegocio <= 0) {
             throw new IllegalArgumentException("El negocio del ingreso no es válido.");
         }
+        validarNegocioActivo(idNegocio);
         String correo = dto.correoElectronico().trim().toLowerCase();
         Optional<Cuenta> encontrada = cuentaRepositorio.buscarPorCorreo(correo);
         if (encontrada.isEmpty()) {
@@ -461,9 +549,11 @@ public class AutenticacionService {
     }
 
     private void validarNegocioActivo(long idNegocio) {
-        Optional<Negocio> negocio = negocioRepositorio.buscarPorId(idNegocio);
-        if (negocio.isEmpty() || !negocio.get().isActivo() || negocio.get().getFechaBaja() != null) {
-            throw new IllegalStateException("El negocio solicitado no está activo.");
+        try {
+            validadorNegocio.exigirOperativo(idNegocio);
+        } catch (NegocioInactivoException error) {
+            invalidadorCache.invalidar(idNegocio);
+            throw new IllegalStateException("El negocio solicitado no está activo.", error);
         }
     }
 
@@ -479,30 +569,26 @@ public class AutenticacionService {
         }
     }
 
-    private RolUsuario resolverRol(String rolTexto, Principal solicitante, String tokenSetup) {
+    private RolUsuario resolverRol(String rolTexto) {
         if (rolTexto == null || rolTexto.trim().isEmpty()) {
             return RolUsuario.CLIENTE;
         }
-        RolUsuario rol = RolUsuario.desdeTexto(rolTexto);
-        if (rol == RolUsuario.CLIENTE) {
-            return rol;
-        }
-        if (solicitante != null && solicitante.esAdmin()) {
-            return rol;
-        }
-        if (tokenSetupValido(tokenSetup)) {
-            return rol;
-        }
-        throw new IllegalStateException("Solo un administrador puede crear cuentas administradoras.");
+        return RolUsuario.desdeTexto(rolTexto);
     }
 
-    private boolean tokenSetupValido(String tokenSetup) {
-        if (tokenBootstrap == null || tokenSetup == null || tokenSetup.isEmpty()) {
+    private boolean consumirTokenBootstrap(Connection conexion, String tokenSetup) {
+        if (tokenSetup == null || tokenSetup.isEmpty()
+                || tokenSetup.length() > MAXIMO_CARACTERES_TOKEN_BOOTSTRAP) {
             return false;
         }
-        byte[] esperado = tokenBootstrap.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        byte[] recibido = tokenSetup.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-        return java.security.MessageDigest.isEqual(esperado, recibido);
+        if (repositorioTokenBootstrap != null) {
+            return repositorioTokenBootstrap.reclamar(conexion,
+                    HuellaTokenBootstrap.calcular(tokenSetup));
+        }
+        if (!HuellaTokenBootstrap.coincide(huellaTokenBootstrap, tokenSetup)) {
+            return false;
+        }
+        return tokenBootstrapConsumido.compareAndSet(false, true);
     }
 
     private SesionResponseDTO emitirSesion(VinculoCuentaNegocio vinculo) {

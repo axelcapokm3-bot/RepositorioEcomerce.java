@@ -136,6 +136,27 @@ public class MySqlNegocioRepository implements INegocioRepository {
         }
     }
 
+    @Override
+    public void actualizarEstado(Negocio negocio) {
+        if (negocio == null) {
+            throw new IllegalArgumentException("El negocio es obligatorio.");
+        }
+        String sql = "UPDATE negocio SET activo = ?, fecha_baja = ? WHERE id = ?";
+        try (Connection connection = DatabaseConnection.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setBoolean(1, negocio.isActivo());
+            if (negocio.getFechaBaja() == null) {
+                statement.setNull(2, Types.TIMESTAMP);
+            } else {
+                statement.setTimestamp(2, Timestamp.valueOf(negocio.getFechaBaja()));
+            }
+            statement.setLong(3, negocio.getId());
+            ValidadorFilas.exigirFila(statement.executeUpdate(), "Negocio", negocio.getId());
+        } catch (SQLException e) {
+            throw new RuntimeException("Error al actualizar el estado del negocio: " + e.getMessage(), e);
+        }
+    }
+
     private Negocio mapNegocio(ResultSet rs) throws SQLException {
         Timestamp fechaAltaTs = rs.getTimestamp("fecha_alta");
         Timestamp fechaBajaTs = rs.getTimestamp("fecha_baja");

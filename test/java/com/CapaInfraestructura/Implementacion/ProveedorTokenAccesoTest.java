@@ -4,11 +4,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.CapaAplicacion.Interfaces.IRevocacionToken;
 import com.CapaAplicacion.Interfaces.IValidadorSesion;
 import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaDominio.Entidades.RolUsuario;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
@@ -43,6 +45,33 @@ class ProveedorTokenAccesoTest {
         ProveedorTokenAcceso proveedor = new ProveedorTokenAcceso(SECRETO, 1);
         String token = proveedor.emitir(1, 1, 1L, "CLIENTE");
         Thread.sleep(1100);
+        assertTrue(proveedor.validar(token).isEmpty());
+    }
+
+    @Test
+    void revocaTokenDeInmediato() {
+        ProveedorTokenAcceso proveedor = new ProveedorTokenAcceso(SECRETO, 3600);
+        String token = proveedor.emitir(7, 42, 3L, "CLIENTE");
+
+        assertTrue(proveedor.validar(token).isPresent());
+        proveedor.revocar(token);
+
+        assertTrue(proveedor.validar(token).isEmpty());
+    }
+
+    @Test
+    void revocaConElTiempoRestanteDeVidaDelToken() {
+        RegistroRevocaciones registro = new RegistroRevocaciones();
+        ProveedorTokenAcceso proveedor = new ProveedorTokenAcceso(SECRETO, 3600,
+                new ValidadorSesionFalso(true), registro);
+        long antes = Instant.now().getEpochSecond();
+
+        String token = proveedor.emitir(7, 42, 3L, "CLIENTE");
+        proveedor.revocar(token);
+
+        assertEquals(1, registro.revocaciones);
+        assertTrue(registro.expiracion >= antes + 3599);
+        assertTrue(registro.expiracion <= Instant.now().getEpochSecond() + 3600);
         assertTrue(proveedor.validar(token).isEmpty());
     }
 
@@ -94,6 +123,22 @@ class ProveedorTokenAccesoTest {
         String token = proveedor.emitir(7, 42, 3L, "CLIENTE");
 
         assertThrows(IllegalStateException.class, () -> proveedor.validar(token));
+    }
+
+    private static final class RegistroRevocaciones implements IRevocacionToken {
+        private int revocaciones;
+        private long expiracion;
+
+        @Override
+        public void revocar(String token, long idCuenta, long expiraEnEpochSegundos) {
+            revocaciones++;
+            expiracion = expiraEnEpochSegundos;
+        }
+
+        @Override
+        public boolean estaRevocado(String token) {
+            return revocaciones > 0;
+        }
     }
 
     private static final class ValidadorSesionFalso implements IValidadorSesion {

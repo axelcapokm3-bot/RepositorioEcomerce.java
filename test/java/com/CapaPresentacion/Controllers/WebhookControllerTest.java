@@ -33,7 +33,7 @@ class WebhookControllerTest {
     private static final String CLAVE_WEBHOOK_SECRET = "mercadopago.webhook-secret";
     private static final String SECRETO_PRUEBA = "secreto-local-de-prueba";
     private static final String REQUEST_ID = "request-integracion";
-    private static final String TIMESTAMP = "1728576000";
+    private static final String TIMESTAMP = String.valueOf(java.time.Instant.now().getEpochSecond());
     private static final String ORDER_ID = "order-prueba-123";
     private static final String CUERPO =
             "{\"type\":\"order\",\"data\":{\"id\":\"" + ORDER_ID + "\"}}";
@@ -92,6 +92,9 @@ class WebhookControllerTest {
         HttpResponse<String> response = enviarNotificacion("ts=" + TIMESTAMP + ",v1=00");
 
         assertEquals(401, response.statusCode());
+        assertTrue(response.body().contains("\"error\":\"Firma de Mercado Pago inválida.\""));
+        assertTrue(response.body().contains("\"codigo\":401"));
+        assertTrue(response.body().contains("\"timestamp\":"));
         verifyNoInteractions(executor);
     }
 

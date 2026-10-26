@@ -17,6 +17,7 @@ import com.CapaDominio.Excepciones.TransicionPagoInvalidaException;
 import com.CapaDominio.Excepciones.WebhookProcessingException;
 import com.CapaInfraestructura.Configuracion.ConfigLoader;
 import com.CapaInfraestructura.Configuracion.ConfiguracionMercadoPago;
+import com.CapaInfraestructura.Configuracion.SanitizadorLog;
 import com.CapaInfraestructura.Implementacion.RegistroExecutors;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -92,7 +93,7 @@ public class WebhookService {
                    Function<Long, ConfiguracionMercadoPago> configuracionFactory) {
         this(negocioRepository, pagoRepository, ventaRepository, eventBus, executor,
                 paymentClient, orderClient, configuracionFactory,
-                new PagoService(pagoRepository, ventaRepository, eventBus));
+                new PagoService(pagoRepository, ventaRepository, eventBus, null, Map.of(), null));
     }
 
     WebhookService(INegocioRepository negocioRepository, IPagoRepository pagoRepository,
@@ -160,6 +161,7 @@ public class WebhookService {
             if ("v1".equals(pair[0])) receivedHash = pair[1];
         }
         if (timestamp == null || receivedHash == null) return false;
+        if (!timestampVigente(timestamp)) return false;
 
         String manifest = "id:" + id + ";request-id:" + requestId + ";ts:" + timestamp + ";";
         byte[] actualHash;
@@ -180,10 +182,41 @@ public class WebhookService {
                     return true;
                 }
             } catch (Exception e) {
-                LOGGER.log(Level.WARNING, "No se pudo validar la firma del webhook de Mercado Pago.", e);
+                LOGGER.warning("No se pudo validar la firma del webhook de Mercado Pago: "
+                        + SanitizadorLog.error(e));
             }
         }
         return false;
+    }
+
+    private boolean timestampVigente(String timestamp) {
+        long recibido;
+        try {
+            recibido = Long.parseLong(timestamp);
+        } catch (NumberFormatException exception) {
+            return false;
+        }
+        if (recibido <= 0) {
+            return false;
+        }
+        long ahora = java.time.Instant.now().getEpochSecond();
+        long tolerancia = toleranciaFirmaSegundos();
+        return recibido <= ahora + tolerancia && recibido >= ahora - tolerancia;
+    }
+
+    private long toleranciaFirmaSegundos() {
+        String configurada = ConfigLoader.getProperty("webhook.firma-tolerancia-segundos");
+        if (configurada != null && !configurada.isBlank()) {
+            try {
+                long segundos = Long.parseLong(configurada.trim());
+                if (segundos >= 1 && segundos <= 3600) {
+                    return segundos;
+                }
+            } catch (NumberFormatException exception) {
+                return 300L;
+            }
+        }
+        return 300L;
     }
 
     private List<String> secretosFirmaCandidatos(String type, String id) {
@@ -241,7 +274,8 @@ public class WebhookService {
         try {
             procesarEvento(type, id);
         } catch (WebhookProcessingException exception) {
-            LOGGER.log(Level.SEVERE, exception.getMessage(), exception);
+            LOGGER.severe("No se pudo procesar el webhook de Mercado Pago: "
+                    + SanitizadorLog.error(exception));
         }
     }
 
@@ -357,7 +391,8 @@ public class WebhookService {
             try {
                 payment = paymentClient.get(Long.valueOf(paymentId), options);
             } catch (MPApiException | MPException e) {
-                LOGGER.log(Level.FINE, "La notificación no corresponde a un token de negocio configurado.", e);
+                LOGGER.log(Level.FINE, "La notificación no corresponde a un token de negocio configurado: "
+                        + SanitizadorLog.error(e));
                 continue;
             }
             Optional<Pago> pagoEncontrado = pagoDePayment(payment);

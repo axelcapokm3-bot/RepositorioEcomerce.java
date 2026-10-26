@@ -7,18 +7,16 @@ import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
+import com.CapaPresentacion.Utilidades.CabecerasSeguridad;
+import com.CapaPresentacion.Utilidades.DireccionClienteResolver;
 import com.CapaPresentacion.Utilidades.JsonUtils;
 import com.CapaPresentacion.Utilidades.LimitadorTasa;
 import com.CapaPresentacion.Utilidades.ResolutorNegocio;
 import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
 import com.CapaAplicacion.Seguridad.ControlAcceso;
 import com.CapaAplicacion.Seguridad.Principal;
-import com.CapaDominio.Excepciones.PagoRechazadoException;
-import com.CapaDominio.Excepciones.PasarelaNoDisponibleException;
-import com.CapaDominio.Excepciones.RecursoNoEncontradoException;
-import com.CapaDominio.Excepciones.ReglaNegocioException;
-import com.CapaDominio.Excepciones.StockInsuficienteException;
 import com.CapaInfraestructura.Configuracion.ConfigLoader;
+import com.CapaInfraestructura.Configuracion.SanitizadorLog;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import java.util.logging.Level;
@@ -31,6 +29,7 @@ public abstract class BaseController implements HttpHandler {
             "http://localhost:5500,http://127.0.0.1:5500,http://localhost:8080,http://127.0.0.1:8080";
 
     protected boolean handlePreflight(HttpExchange exchange) throws IOException {
+        CabecerasSeguridad.aplicar(exchange);
         aplicarCors(exchange);
 
         if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
@@ -78,10 +77,8 @@ public abstract class BaseController implements HttpHandler {
                 responseBytes = JsonUtils.toJson(body).getBytes(StandardCharsets.UTF_8);
             }
 
+            CabecerasSeguridad.aplicar(exchange);
             exchange.getResponseHeaders().set("Content-Type", "application/json; charset=UTF-8");
-            exchange.getResponseHeaders().set("X-Content-Type-Options", "nosniff");
-            exchange.getResponseHeaders().set("X-Frame-Options", "DENY");
-            exchange.getResponseHeaders().set("Referrer-Policy", "no-referrer");
             exchange.getResponseHeaders().set("Cache-Control", "no-store");
             exchange.sendResponseHeaders(status, responseBytes.length == 0 && status != 204 ? -1 : responseBytes.length);
             if (responseBytes.length > 0) {
@@ -97,8 +94,7 @@ public abstract class BaseController implements HttpHandler {
     }
 
     protected void sendError(HttpExchange exchange, int status, String message) {
-        String errorJson = "{\"error\":\"" + (message == null ? "Error desconocido" : message.replace("\"", "\\\"")) + "\"}";
-        sendResponse(exchange, status, errorJson);
+        sendResponse(exchange, status, ManejadorExcepcionesHttp.cuerpoError(status, message));
     }
 
     protected <T> T parseRequestBody(HttpExchange exchange, Class<T> clazz) throws IOException {
@@ -142,72 +138,24 @@ public abstract class BaseController implements HttpHandler {
                 }
             } catch (Exception e) {
                 LOGGER.log(Level.SEVERE, "Error procesando la respuesta HTTP.", e);
-                sendError(exchange, 500,
-                        "Código: ERROR_SERVIDOR | Mensaje: Error interno del servidor."
-                                + " | Causa: Fallo inesperado al procesar la operación.");
+                sendError(exchange, 500, ManejadorExcepcionesHttp.MENSAJE_ERROR_INTERNO);
             }
         }).exceptionally(ex -> {
-            Throwable cause = obtenerCausa(ex);
-            if (cause instanceof ControllerException controllerException) {
-                sendError(exchange, controllerException.status(), controllerException.respuesta());
-            } else if (cause instanceof PasarelaNoDisponibleException) {
-                LOGGER.log(Level.WARNING, "No se pudo iniciar el checkout con la pasarela.", cause);
-                sendError(exchange, 503, new ControllerException.ServicioNoDisponible(
-                        "La pasarela seleccionada no está disponible.",
-                        "Verifique la configuración del checkout y vuelva a intentarlo."
-                ).respuesta());
-            } else if (cause instanceof PagoRechazadoException) {
-                sendError(exchange, 400, new ControllerException.Validacion(
-                        cause.getMessage(),
-                        "La pasarela rechazó los datos del checkout."
-                ).respuesta());
-            } else if (cause instanceof StockInsuficienteException) {
-                sendError(exchange, 409, new ControllerException.Conflicto(
-                        cause.getMessage(),
-                        "El stock disponible ya no alcanza para completar la operación."
-                ).respuesta());
-            } else if (cause instanceof RecursoNoEncontradoException) {
-                sendError(exchange, 404, new ControllerException.NoEncontrado(
-                        cause.getMessage(),
-                        "El recurso solicitado ya no está disponible."
-                ).respuesta());
-            } else if (cause instanceof ReglaNegocioException) {
-                sendError(exchange, 409, new ControllerException.Conflicto(
-                        cause.getMessage(),
-                        "La regla de negocio impide completar la operación."
-                ).respuesta());
-            } else if (cause instanceof IllegalArgumentException) {
-                sendError(exchange, 400, new ControllerException.Validacion(
-                        "Los datos enviados no son válidos.",
-                        "El servicio rechazó uno o más valores recibidos."
-                ).respuesta());
-            } else if (cause instanceof IllegalStateException) {
-                sendError(exchange, 409, new ControllerException.Conflicto(
-                        "La operación no puede realizarse en el estado actual.",
-                        "La regla de negocio impide completar la operación."
-                ).respuesta());
-            } else if (cause instanceof java.io.IOException) {
-                sendError(exchange, 503, new ControllerException.ServicioNoDisponible(
-                        "No fue posible comunicarse con el servicio requerido.",
-                        "Se produjo un problema de red o de comunicación."
-                ).respuesta());
-            } else {
-                LOGGER.log(Level.SEVERE, "Error inesperado al procesar una solicitud asíncrona.", cause);
-                sendError(exchange, 500,
-                        "Código: ERROR_SERVIDOR | Mensaje: Error interno del servidor."
-                                + " | Causa: Fallo inesperado al procesar la operación.");
-            }
+            manejarError(exchange, ex);
             return null;
         });
     }
 
-    private Throwable obtenerCausa(Throwable exception) {        Throwable cause = exception;
-        while ((cause instanceof java.util.concurrent.CompletionException
-                || cause instanceof java.util.concurrent.ExecutionException)
-                && cause.getCause() != null) {
-            cause = cause.getCause();
+    protected void manejarError(HttpExchange exchange, Throwable error) {
+        ManejadorExcepcionesHttp.Respuesta respuesta = ManejadorExcepcionesHttp.traducir(error);
+        if (respuesta.registrarSevero()) {
+            LOGGER.severe("Error inesperado al procesar una solicitud: "
+                    + SanitizadorLog.error(respuesta.causaParaLog()));
+        } else if (respuesta.registrarAdvertencia()) {
+            LOGGER.warning("No se pudo iniciar el checkout con la pasarela: "
+                    + SanitizadorLog.error(respuesta.causaParaLog()));
         }
-        return cause;
+        sendError(exchange, respuesta.status(), respuesta.mensaje());
     }
 
     protected Principal exigirAutenticacion(HttpExchange exchange, IProveedorTokenAcceso proveedor) {
@@ -224,6 +172,10 @@ public abstract class BaseController implements HttpHandler {
         if (proveedor == null) {
             return Optional.empty();
         }
+        return extraerToken(exchange).flatMap(proveedor::validar);
+    }
+
+    protected Optional<String> extraerToken(HttpExchange exchange) {
         String autorizacion = exchange.getRequestHeaders().getFirst("Authorization");
         if (autorizacion == null || autorizacion.isEmpty()) {
             return Optional.empty();
@@ -236,7 +188,7 @@ public abstract class BaseController implements HttpHandler {
         if (token.isEmpty() || token.length() > 2048) {
             return Optional.empty();
         }
-        return proveedor.validar(token);
+        return Optional.of(token);
     }
 
     protected void exigirAdmin(Principal principal) {
@@ -275,10 +227,17 @@ public abstract class BaseController implements HttpHandler {
 
     protected long negocioAutorizado(HttpExchange exchange, Principal principal) {
         Optional<Long> solicitado = resolverNegocio(exchange);
-        if (solicitado.isPresent() && solicitado.get() != principal.idNegocio()) {
-            throw new ControllerException.Prohibido(
-                    "No tiene permisos sobre este negocio.",
-                    "El negocio solicitado no coincide con el de su sesión.");
+        if (ResolutorNegocio.tieneIndicador(exchange)) {
+            if (solicitado.isEmpty()) {
+                throw new ControllerException.Validacion(
+                        "El negocio indicado no es válido.",
+                        "El encabezado X-Negocio-Subdominio no corresponde a un negocio activo.");
+            }
+            if (solicitado.get() != principal.idNegocio()) {
+                throw new ControllerException.Prohibido(
+                        "No tiene permisos sobre este negocio.",
+                        "El negocio solicitado no coincide con el de su sesión.");
+            }
         }
         return principal.idNegocio();
     }
@@ -295,6 +254,21 @@ public abstract class BaseController implements HttpHandler {
         LimitadorTasa.Resultado resultado =
                 evaluarLimite(exchange, principal, null, ambito, limiteIp, limiteCuenta, limiteNegocio);
         return responderSiExcedido(exchange, resultado);
+    }
+
+    protected boolean limitarSolicitudPorClave(HttpExchange exchange, String clave,
+                                               int maximo, long ventanaSegundos) {
+        if (clave == null || clave.isBlank()) {
+            return false;
+        }
+        return responderSiExcedido(exchange, LimitadorTasa.evaluar(clave, maximo, ventanaSegundos));
+    }
+
+    protected boolean limitarIntentosPorIp(HttpExchange exchange, String ambito,
+                                           int maxIntentos, long bloqueoSegundos) {
+        String clave = "intentos-ip|" + direccionCliente(exchange) + "|" + ambito;
+        return responderSiExcedido(exchange, LimitadorTasa.evaluarIntento(
+                clave, maxIntentos, LimitadorTasa.ventanaSegundos(ambito), bloqueoSegundos));
     }
 
     protected boolean limitarSolicitudPublica(HttpExchange exchange, long idNegocio,
@@ -316,7 +290,7 @@ public abstract class BaseController implements HttpHandler {
         }
         aplicarRetryAfter(exchange, resultado);
         sendError(exchange, 429,
-                "Código: LIMITE_EXCEDIDO | Mensaje: Demasiadas solicitudes. | Causa: Reintente en "
+                "Demasiadas solicitudes. Reintente en "
                         + resultado.segundosParaReintentar() + " segundos.");
         return true;
     }
@@ -355,10 +329,8 @@ public abstract class BaseController implements HttpHandler {
         return masRestrictivo;
     }
 
-    private String direccionCliente(HttpExchange exchange) {
-        return exchange.getRemoteAddress() == null
-                ? "desconocida"
-                : exchange.getRemoteAddress().getAddress().getHostAddress();
+    protected String direccionCliente(HttpExchange exchange) {
+        return DireccionClienteResolver.resolver(exchange);
     }
 
     private void aplicarRetryAfter(HttpExchange exchange, LimitadorTasa.Resultado resultado) {

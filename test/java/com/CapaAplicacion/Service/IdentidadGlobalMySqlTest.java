@@ -2,6 +2,7 @@ package com.CapaAplicacion.Service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -16,6 +17,7 @@ import com.CapaAplicacion.Interfaces.TipoServicio;
 import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaDominio.Entidades.Cliente;
 import com.CapaDominio.Entidades.RolUsuario;
+import com.CapaDominio.Excepciones.IdentidadDuplicadaException;
 import com.CapaInfraestructura.Implementacion.AdaptadorContrasena;
 import com.CapaInfraestructura.Implementacion.DatabaseConnection;
 import com.CapaInfraestructura.Implementacion.JDBCTransaccion;
@@ -123,7 +125,7 @@ class IdentidadGlobalMySqlTest {
             SesionResponseDTO cambio = servicio.cambiarNegocio(principal, idNegocio);
             assertEquals(idNegocio, cambio.idNegocio());
 
-            assertThrows(IllegalStateException.class, new Executable() {
+            assertThrows(IdentidadDuplicadaException.class, new Executable() {
                 @Override
                 public void execute() {
                     servicio.registrar(idNegocio, registro, null, null);
@@ -254,6 +256,74 @@ class IdentidadGlobalMySqlTest {
             } else {
                 limpiarClienteDePruebaPorDni(idNegocio, dni);
             }
+        }
+    }
+
+    @Test
+    void permiteElMismoDniEnDosNegociosConLaMismaCuenta() throws Exception {
+        assumeTrue(hayBaseDeDatos(), "Sin MySQL local disponible: prueba de integración omitida.");
+        final long idNegocioA = buscarNegocioActivo();
+        assumeTrue(idNegocioA > 0, "No hay un negocio activo: prueba de integración omitida.");
+        final long idNegocioB = buscarOtroNegocioActivo(idNegocioA);
+        assumeTrue(idNegocioB > 0, "No hay un segundo negocio activo: prueba de integración omitida.");
+
+        final MySqlRepositorioCliente repositorioClientes = new MySqlRepositorioCliente();
+        String dni = null;
+        for (int intento = 0; intento < 20; intento++) {
+            String candidato = generarDniLibre(repositorioClientes, idNegocioA);
+            if (repositorioClientes.buscarPorDni(idNegocioB, candidato).isEmpty()) {
+                dni = candidato;
+                break;
+            }
+        }
+        assumeTrue(dni != null, "No se pudo generar un DNI libre en ambos negocios.");
+        final String dniCompartido = dni;
+
+        final ProveedorTokenAcceso proveedor = new ProveedorTokenAcceso();
+        final AutenticacionService servicio = new AutenticacionService(
+                new MySqlRepositorioCuenta(),
+                repositorioClientes,
+                new MySqlRepositorioCuentaNegocio(),
+                new MySqlNegocioRepository(),
+                new AdaptadorContrasena(),
+                proveedor,
+                new JDBCTransaccion(),
+                new EjecutorDirecto());
+
+        final String correo = "it.multitenant." + UUID.randomUUID() + "@ecommerce-test.local";
+        final CuentaRegistroDTO registro = new CuentaRegistroDTO(
+                "it_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12),
+                correo, CONTRASENIA, dniCompartido, "CLIENTE",
+                "Identidad", "Compartida", LocalDate.of(1991, 4, 12),
+                "Calle Test 456", "Localidad Test");
+
+        long idCuenta = -1;
+        try {
+            SesionResponseDTO sesionA = servicio.registrar(idNegocioA, registro, null, null);
+            idCuenta = sesionA.idCuenta();
+            SesionResponseDTO sesionB = servicio.registrar(idNegocioB, registro, null, null);
+
+            assertEquals(idCuenta, sesionB.idCuenta(),
+                    "La cuenta global debe reutilizarse por correo.");
+            assertNotEquals(sesionA.idCliente(), sesionB.idCliente(),
+                    "Cada negocio debe tener su propio perfil de cliente.");
+            assertEquals(idNegocioA, sesionA.idNegocio());
+            assertEquals(idNegocioB, sesionB.idNegocio());
+            assertTrue(existeVinculoDeCliente(idNegocioA, sesionA.idCliente()));
+            assertTrue(existeVinculoDeCliente(idNegocioB, sesionB.idCliente()));
+
+            assertThrows(IdentidadDuplicadaException.class, new Executable() {
+                @Override
+                public void execute() {
+                    servicio.registrar(idNegocioA, registro, null, null);
+                }
+            });
+        } finally {
+            if (idCuenta > 0) {
+                limpiarCuentaDePrueba(idCuenta);
+            }
+            limpiarClienteDePruebaPorDni(idNegocioA, dniCompartido);
+            limpiarClienteDePruebaPorDni(idNegocioB, dniCompartido);
         }
     }
 

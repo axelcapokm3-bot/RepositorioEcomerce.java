@@ -14,4 +14,8 @@ public interface INegocioRepository {
     Map<ConfiguracionCatalogo, String> listarConfiguracionesEfectivas(long idNegocio);
     Optional<ConfiguracionCatalogo> buscarConfiguracionPorClave(String clave);
     void guardarOActualizarValorConfiguracion(long idNegocio, long idConfiguracion, String valor);
+
+    default void actualizarEstado(Negocio negocio) {
+        throw new UnsupportedOperationException("El repositorio no admite cambios de estado del negocio.");
+    }
 }

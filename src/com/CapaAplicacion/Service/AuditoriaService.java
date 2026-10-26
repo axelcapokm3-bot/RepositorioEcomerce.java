@@ -6,6 +6,7 @@ import com.CapaDominio.Entidades.AccionAuditoria;
 import com.CapaDominio.Entidades.VentasEventos;
 import com.CapaDominio.Entidades.Venta;
 import com.CapaInfraestructura.Implementacion.RegistroExecutors;
+import com.CapaInfraestructura.Configuracion.SanitizadorLog;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
@@ -60,10 +61,12 @@ return CompletableFuture.completedFuture(null);
                     }
 
                     Auditoria registro = new Auditoria(accion, venta.getId(),"la operacion es" + tipoEvento);
+                    registro.setIdNegocio(venta.getIdNegocio());
 
                     auditoriaRepository.guardar(registro);
                 } catch (Exception e) {
-                    System.err.println("Error procesando log de auditoría: " + e.getMessage());
+                    System.err.println("Error procesando log de auditoría: "
+                            + SanitizadorLog.error(e));
                 }
             }
         });
@@ -78,7 +81,7 @@ return CompletableFuture.completedFuture(null);
                 try {
                     auditoriaRepository.guardar(auditoria);
                 } catch (Exception e) {
-                    System.err.println("Error al guardar auditoría: " + e.getMessage());
+                    System.err.println("Error al guardar auditoría: " + SanitizadorLog.error(e));
                 }
             }
         });

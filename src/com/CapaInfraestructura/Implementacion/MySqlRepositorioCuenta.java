@@ -11,6 +11,7 @@ import java.util.Optional;
 import com.CapaAplicacion.Interfaces.ICuentaRepositorio;
 import com.CapaDominio.Entidades.Cuenta;
 import com.CapaDominio.Entidades.EstadoCuenta;
+import com.CapaDominio.Excepciones.IdentidadDuplicadaException;
 
 public class MySqlRepositorioCuenta implements ICuentaRepositorio {
     private static final String COLUMNAS = "id, nombre_cuenta, correo_electronico, contrasenia, activo";
@@ -58,10 +59,12 @@ public class MySqlRepositorioCuenta implements ICuentaRepositorio {
                 }
             }
         } catch (SQLIntegrityConstraintViolationException duplicado) {
-            throw new IllegalStateException("El correo electrónico ya está registrado.", duplicado);
+            throw new IdentidadDuplicadaException(
+                    "El correo electrónico ya está registrado.", duplicado);
         } catch (SQLException exception) {
             if (esViolacionUnica(exception)) {
-                throw new IllegalStateException("El correo electrónico ya está registrado.", exception);
+                throw new IdentidadDuplicadaException(
+                        "El correo electrónico ya está registrado.", exception);
             }
             throw new IllegalStateException("Error al guardar cuenta en MySQL.", exception);
         }

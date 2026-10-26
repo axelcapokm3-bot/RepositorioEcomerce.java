@@ -35,7 +35,7 @@
 | **Base URL del Frontend** | `http://localhost:8080/api` |
 | **Content-Type (Request)** | `application/json` |
 | **Content-Type (Response)** | `application/json; charset=UTF-8` |
-| **CORS** | Origen reflejado solo si está en la allowlist (`app.cors.allowed-origins`, por defecto `http://localhost:5500,http://localhost:8080`); métodos `GET, POST, PUT, DELETE, OPTIONS`, headers `Content-Type, Authorization, Idempotency-Key` |
+| **CORS** | Origen reflejado solo si está en la allowlist (`app.cors.allowed-origins`; si no se configura, `http://localhost:5500,http://127.0.0.1:5500,http://localhost:8080,http://127.0.0.1:8080`); métodos `GET, POST, PUT, DELETE, OPTIONS`, headers `Content-Type, Authorization, Idempotency-Key` |
 | **Preflight OPTIONS** | `204 No Content` (todos los controllers lo responden automáticamente) |
 | **Autenticación** | Bearer token HMAC-SHA256 en header `Authorization: Bearer <token>`. Obtenerlo en `POST /api/auth/registro` o `POST /api/auth/ingreso` (ver [Módulo Auth](#6-módulo-auth)). Sin token → `401`; sin rol suficiente → `403`. |
 | **Roles** | `ADMIN` (gestión total) y `CLIENTE` (solo sus propios datos). Catálogo de productos en lectura y webhooks de pago son públicos; todo lo demás exige autenticación. |
@@ -72,8 +72,15 @@ El backend usa `JsonUtils` (reflexión sobre campos privados / records), no Jack
 Todas las respuestas de error usan un **objeto único**:
 
 ```json
-{ "error": "<mensaje descriptivo>" }
+{
+  "error": "<mensaje descriptivo>",
+  "codigo": 400,
+  "timestamp": "2026-10-24T12:00:00Z"
+}
 ```
+
+`codigo` repite el status HTTP y `timestamp` es la fecha ISO-8601 UTC del error.
+El campo `error` se conserva para compatibilidad con el frontend existente.
 
 ### Mapa de Códigos de Estado (global, `BaseController`)
 
@@ -82,12 +89,13 @@ Todas las respuestas de error usan un **objeto único**:
 | `200 OK` | GET/PUT/DELETE exitosos y operaciones de negocio (pago, cancelar, transferir, evaluar stock, recomendaciones) |
 | `201 Created` | POST de creación exitoso (producto, cliente, cuenta, venta, auditoría) |
 | `204 No Content` | Preflight `OPTIONS` o `DELETE /api/carrito` exitoso |
-| `400 Bad Request` | `IllegalArgumentException` / `IllegalStateException` del servicio, ID inválido en ruta, parámetro requerido ausente, JSON inválido, enum inválido |
+| `400 Bad Request` | `IllegalArgumentException` del servicio, ID inválido en ruta, parámetro requerido ausente, JSON inválido, enum inválido |
 | `401 Unauthorized` | Falta el header `Authorization` o el token es inválido/expirado |
-| `403 Forbidden` | Token válido pero sin rol o propiedad suficiente sobre el recurso |
+| `403 Forbidden` | Token válido pero sin rol o propiedad suficiente sobre el recurso, o negocio inactivo/dado de baja |
 | `404 Not Found` | Recurso no encontrado (`Optional` vacío) o ruta inexistente |
 | `405 Method Not Allowed` | Verbo HTTP no soportado en la ruta |
-| `429 Too Many Requests` | Se superó el límite configurable (`rate-limit.*`): login 10/IP, registro 20, auth-cuenta 120, productos-admin/clientes-admin/ventas-consulta 120, ventas-previsualizar 60, ventas-crear 30, catálogo público 300/IP y 600/negocio, `carrito-consulta` 240/IP, 240/cuenta y 600/negocio, `carrito-modificacion` 120/IP, 120/cuenta y 300/negocio, y webhooks 600 por ventana; incluye `Retry-After` |
+| `409 Conflict` | Duplicidad de clave única, idempotencia, stock insuficiente, transición de estado inválida o regla de negocio |
+| `429 Too Many Requests` | Se superó el límite configurable (`rate-limit.*`): login 10/min/IP y bloqueo de 60 s tras 5 intentos, registro 20/IP y 5 por correo cada 15 min, auth-cuenta 120, productos-admin/clientes-admin/ventas-consulta 120, ventas-previsualizar 60, ventas-crear 30, checkout 10/negocio y bloqueo de 60 s tras 20 intentos por IP, catálogo público 300/IP y 600/negocio, `carrito-consulta` 240/IP, 240/cuenta y 600/negocio, `carrito-modificacion` 120/IP, 120/cuenta y 300/negocio, y webhooks 600 por ventana; incluye `Retry-After` |
 | `500 Internal Server Error` | `RuntimeException` genérica no mapeada (ver [Caveats](#15-advertencias-y-caveats-importante)) |
 
 ---
@@ -137,7 +145,7 @@ libera el stock y publica `"EXPIRADA"`; no se expone un endpoint público para
 forzarla. Un pago aprobado tardío se conserva para conciliación sin reactivar la
 venta.
 
-**Toda transición no permitida lanza `IllegalStateException` → `400 Bad Request`; en `POST /api/ventas/{id}/cancelar` el estado no cancelable se traduce en `409 Conflict`.**
+**Toda transición no permitida lanza `IllegalStateException` → `409 Conflict`; en `POST /api/ventas/{id}/cancelar` el estado no cancelable también se traduce en `409 Conflict`.**
 
 ### 3.4 `EstadoStock` — Dos criterios DISTINTOS en producción
 
@@ -316,7 +324,7 @@ Posibles valores: `DISPONIBLE`, `CRITICO`, `AGOTADO`, `EN_REPOSICION` (`EN_REPOS
 
 - **Caso de uso:** Crear identidad global y vincularla al negocio del request con un perfil de cliente identificado por DNI. Si el DNI ya existe en el negocio, solo se vincula cuando `nombreCliente`, `apellidoCliente` y `fechaNacimientoCliente` coinciden con el titular registrado; los datos del cliente no se modifican. Si el DNI no existe, se crea el cliente en la tabla `clientes` con los datos enviados. La contraseña se hashea con PBKDF2-SHA256 (nunca se devuelve) y todo el alta se ejecuta en una única transacción.
 - **Negocio:** se resuelve del header `X-Negocio-Subdominio` o del subdominio del host (negocio activo); el vínculo y el cliente nuevo pertenecen solo a ese negocio.
-- **Autenticación:** no requerida. El campo `rol` solo acepta `ADMIN` si el solicitante es `ADMIN` del mismo negocio (enviar su token) o si se envía el header `X-Setup-Token` con el token de bootstrap del operador (`AUTH_BOOTSTRAP_TOKEN`); en cualquier otro caso la cuenta se crea como `CLIENTE`. Sin token de bootstrap configurado no existe registro público de administradores.
+- **Autenticación:** no requerida. El campo `rol` solo acepta `ADMIN` si el solicitante es `ADMIN` del mismo negocio (enviar su token) o si se envía el header `X-Setup-Token` con el token de bootstrap del operador (`AUTH_BOOTSTRAP_TOKEN`); en cualquier otro caso la cuenta se crea como `CLIENTE`. Sin token de bootstrap configurado no existe registro público de administradores. El token de bootstrap es de un solo uso y se persiste como huella SHA-256 en `tokens_bootstrap`; su consumo ocurre dentro de la transacción de registro y vence según `auth.bootstrap-token-expira-horas` (24 h por defecto).
 - **Correo existente:** no se duplica la cuenta y nunca se emite una sesión sin autenticar al titular. El request debe incluir la contraseña correcta de esa cuenta; si el solicitante está autenticado, la cuenta existente debe ser la suya. Un `ADMIN` no puede registrar ni vincular el correo de otra cuenta en su negocio: debe hacerlo el titular desde su propia sesión (`POST /api/auth/vincular`).
 - **Request:**
 
@@ -388,6 +396,13 @@ Posibles valores: `DISPONIBLE`, `CRITICO`, `AGOTADO`, `EN_REPOSICION` (`EN_REPOS
 - **Request:** `{ "dniCliente": "30987654", "nombreCliente": "Ana", "apellidoCliente": "Gómez", "fechaNacimientoCliente": "1992-03-10", "contraseniaPlana": "…" }` (reconfirma la contraseña; el rol otorgado es siempre `CLIENTE`, nunca `ADMIN`).
 - **Response `200 OK`:** `SesionResponseDTO` del negocio recién vinculado.
 - **Errores:** `401` token inválido; `400` datos inválidos, subdominio inexistente/inactivo o credenciales incorrectas; `409` vínculo ya existente, identidad que no coincide, perfil ya vinculado a otra cuenta, negocio inactivo o perfil inexistente; `429` por abuso.
+
+### 6.2quinquies `POST /api/auth/salida`
+
+- **Caso de uso:** Revocar el token actual de forma inmediata. Requiere `Authorization: Bearer <token>`. El token queda registrado en `tokens_revocados` por su huella SHA-256 y deja de ser válido en el siguiente request, aunque no haya expirado.
+- **Request:** sin body.
+- **Response `200 OK`:** `{ "mensaje": "Sesión cerrada." }`.
+- **Errores:** `401` token ausente/inválido/expirado; `429` por abuso.
 
 ### 6.3 `GET /api/auth/sesion`
 
@@ -543,17 +558,19 @@ Posibles valores: `DISPONIBLE`, `CRITICO`, `AGOTADO`, `EN_REPOSICION` (`EN_REPOS
 
 - **Response `201 Created`:** resultado del checkout, incluido su estado y `urlPago` cuando la pasarela devuelve una URL. Mercado Pago usa Orders API y devuelve su `checkout_url`; no crea una Preference.
 - **Configuración local de Mercado Pago:** `MERCADOPAGO_PUBLIC_BASE_URL` debe ser la URL HTTPS pública del frontend alcanzable por ngrok hacia Caddy (`localhost:8081`). Con el Caddyfile local compartido, `/api/*` se reenvía a Java (`localhost:8080`) y el resto de las rutas a Live Server (`localhost:5500`), preservando la ruta. Por eso, si Live Server sirve `src/index.html` en `/src/index.html`, usa `https://<host-ngrok-actual>/src/index.html` como base de retorno. El hostname lo asigna ngrok y puede cambiar; no lo fijes en el repositorio. El backend deriva los retornos con `payment_status=success`, `payment_status=failure` y `payment_status=pending`; el `auto_return` queda en `approved`. Como alternativa, se admiten las propiedades `mercadopago.public-base-url` o `mercadopago.checkout-return-url`.
-- **URL del webhook de Mercado Pago:** configurar en Mercado Pago `https://<host-ngrok-actual>/api/webhooks/mercado-pago`. La regla `@api path /api/*` de Caddy reenvía esa ruta al backend Java (`localhost:8080`); no usar la URL del frontend para notificaciones. La firma se valida con `MERCADOPAGO_WEBHOOK_SECRET`/`mercadopago.webhook-secret`, no con la URL. La URL del frontend recibe los retornos visibles del checkout; el webhook se procesa en el backend.
+- **URL del webhook de Mercado Pago:** configurar en Mercado Pago `https://<host-ngrok-actual>/api/webhooks/mercado-pago`. La regla `@api path /api/*` de Caddy reenvía esa ruta al backend Java (`localhost:8080`); no usar la URL del frontend para notificaciones. La firma se valida con `MERCADOPAGO_WEBHOOK_SECRET`/`mercadopago.webhook-secret`, no con la URL. La URL del frontend recibe los retornos visibles del checkout; el webhook se procesa en el backend. El `ts` de la firma debe estar dentro de `webhook.firma-tolerancia-segundos` (300 s por defecto); fuera de esa ventana se rechaza con `401` para evitar replay.
+- **Stripe:** configurar `stripe.secret-key`, `stripe.success-url` y `stripe.cancel-url`. La URL de éxito debe incluir `{CHECKOUT_SESSION_ID}`. `stripe.allowed-return-origins` (o, en su defecto, `app.frontend.url`) restringe los orígenes de retorno; con `APP_PERFIL=prod` la allowlist es obligatoria, las URLs deben ser HTTPS públicas y se rechazan localhost, IP privadas, credenciales embebidas y fragmentos. Los timeouts hacia Stripe se configuran con `stripe.connect-timeout-ms` (5000) y `stripe.read-timeout-ms` (5000). Los webhooks de Stripe se validan con la tolerancia de 300 s del SDK y se deduplican por `evento_id`.
 - **Durabilidad de webhooks:** tras validar la firma, el backend persiste el evento en `eventos_webhook` antes de responder `200`. Si falla la persistencia responde `500` para que el proveedor reintente; si el cuerpo o el identificador son inválidos responde `400`. El procesamiento posterior es asíncrono, con reintentos y dead-letter (`webhook.outbox.*`). Un evento duplicado por `(proveedor, tipo, evento_id)` no se vuelve a registrar.
 - **URL de API del frontend:** cuando se sirve detrás de Caddy (local o por ngrok), el navegador usa `/api` en el mismo origen para que Caddy aplique la regla de proxy. Al abrir Live Server directamente en `localhost:5500`, el cliente conserva el destino local `localhost:8080`.
 - **Fuente de configuración:** `ConfigLoader` busca primero propiedades del sistema Java, luego `config.properties` local o el recurso empaquetado y, por último, la variable de entorno correspondiente. Por esa precedencia, una propiedad no vacía en el archivo de configuración prevalece sobre la variable de entorno. No guardar la URL temporal de ngrok en producción ni versionarla.
-- **Errores de negocio `400`:**
-  - `"La venta debe incluir al menos un ítem."` (items vacío/nulo)
-  - `"Producto no encontrado con ID: X"` (producto inexistente)
-  - `"No hay suficiente stock para el producto: X"` (stock insuficiente)
-  - `"Stock insuficiente."` (validación interna del dominio)
-  - enum `tipoPago` inválido (→ `IllegalArgumentException`, `400`)
-  - `"El carrito no puede estar vacío para crear una venta."`
+- **Errores de negocio `400`:** datos de entrada inválidos (`idCliente` no positivo, JSON malformado o enum inválido).
+- **Errores de negocio `404`:** `"El producto ya no está disponible: X"` si el producto no existe, está inactivo o fue eliminado durante el checkout.
+- **Errores de negocio `409`:**
+  - `"No hay suficiente stock para el producto: X"` / `"Stock insuficiente."`.
+  - `"El carrito no puede estar vacío para crear una venta."`.
+  - `Idempotency-Key` ausente, reutilizada con otro contenido o tipo de pago inválido.
+  - Duplicidad de clave única o estado de venta no compatible.
+- **Error de negocio `403`:** `"El negocio no está disponible."` si el negocio se encuentra inactivo o dado de baja; la venta no se persiste.
 
 ### 7.2 `GET /api/ventas/{id}`
 
@@ -642,7 +659,7 @@ El carrito se persiste en Redis por **negocio + cliente** con TTL de 24 horas. E
 
 **Errores:**
 - `400` cantidad o producto inválido, o método no admitido en la ruta.
-- `401`/`403` token ausente, inválido o negocio no autorizado.
+- `401`/`403` token ausente, inválido, negocio no autorizado o negocio inactivo/dado de baja.
 - `404` producto inexistente o inactivo en el negocio.
 - `409` stock insuficiente o conflicto de concurrencia en Redis.
 - `429` rate limit: `carrito-consulta` 240/IP, 240/cuenta, 600/negocio; `carrito-modificacion` 120/IP, 120/cuenta, 300/negocio (ventana de 60 s).
@@ -660,6 +677,8 @@ Reglas de dominio relevantes:
 
 **Ruta base:** `/api/auditoria` · **Controller:** `AuditoriaController` · **Service:** `AuditoriaService`
 
+> Todas las consultas y registros se filtran por el negocio del token (`id_negocio`); un usuario de un negocio no puede leer ni escribir auditoría de otro. Las filas históricas sin `id_negocio` resoluble no se devuelven en consultas por negocio.
+
 ### 9.1 `GET /api/auditoria`
 
 - **Caso de uso:** Trazabilidad completa (historial de operaciones).
@@ -669,8 +688,13 @@ Reglas de dominio relevantes:
 [
   {
     "id": 1,
+    "idNegocio": 1,
     "accion": "CREAR",
+    "entidad": "Producto",
     "idEntidad": 3,
+    "usuario": "admin",
+    "ipOrigen": "203.0.113.10",
+    "resultado": "OK",
     "fecha": "2026-08-14T09:15:00.000",
     "descripcion": "Producto registrado"
   }
@@ -1016,7 +1040,7 @@ function stockHabilitado(producto) {
 | GET `/api/stock/{id}` | 200 | string enum | id inválido | producto | – |
 | POST `/api/recomendaciones` | 200 | array | payload | producto base | – |
 
-**Convenciones generales:** todo error responde `{"error":"<mensaje>"}`. Los métodos no soportados en una ruta responden `405`.
+**Convenciones generales:** todo error responde `{"error":"<mensaje>","codigo":<status>,"timestamp":"<ISO-8601>"}`. Los métodos no soportados en una ruta responden `405`.
 
 ---
 

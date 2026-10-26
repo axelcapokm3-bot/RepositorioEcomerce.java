@@ -54,7 +54,7 @@ import org.mockito.ArgumentCaptor;
 class WebhookServiceFanoutTest {
     private static final String CLAVE_SECRETO = "mercadopago.webhook-secret";
     private static final String REQUEST_ID = "request-prueba";
-    private static final String TIMESTAMP = "1728576000";
+    private static final String TIMESTAMP = String.valueOf(java.time.Instant.now().getEpochSecond());
 
     private final String secretoAnterior = System.getProperty(CLAVE_SECRETO);
 

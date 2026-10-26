@@ -8,12 +8,8 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.CapaDominio.Entidades.Carrito;
-import com.CapaDominio.Entidades.CategoriaProducto;
-import com.CapaDominio.Entidades.ItemCarrito;
-import com.CapaDominio.Entidades.Producto;
-import com.CapaDominio.Entidades.TipoDePago;
-import com.CapaDominio.Entidades.Venta;
+import com.CapaAplicacion.puerto.ProveedorPago;
+import com.CapaAplicacion.puerto.SolicitudCobro;
 import com.mercadopago.MercadoPagoConfig;
 import com.mercadopago.client.order.OrderClient;
 import com.mercadopago.client.order.OrderCreateRequest;
@@ -29,7 +25,7 @@ class PasarelaMercadoPagoCredencialesTest {
     private static final String CLAVE_BASE = "mercadopago.public-base-url";
 
     @Test
-    void procesarEnviaLaCredencialEnLasOpcionesDeLaOperacion() throws Exception {
+    void iniciarCobroEnviaLaCredencialEnLasOpcionesDeLaOperacion() throws Exception {
         String tokenAnterior = System.getProperty(CLAVE_TOKEN);
         String baseAnterior = System.getProperty(CLAVE_BASE);
         String globalAnterior = MercadoPagoConfig.getAccessToken();
@@ -40,10 +36,10 @@ class PasarelaMercadoPagoCredencialesTest {
             OrderClient orderClient = mock(OrderClient.class);
             when(orderClient.create(any(OrderCreateRequest.class), any(MPRequestOptions.class)))
                     .thenThrow(new RuntimeException("corte de prueba"));
-            PasarelaMercadoPago pasarela = new PasarelaMercadoPago(1L, null, orderClient);
+            PasarelaMercadoPago pasarela = new PasarelaMercadoPago(null, orderClient);
 
             assertThrows(RuntimeException.class,
-                    () -> pasarela.procesar(ventaConDetalle(), "clave-1"));
+                    () -> pasarela.iniciarCobro(solicitud(1L, 5, "clave-1")));
 
             ArgumentCaptor<MPRequestOptions> opciones = ArgumentCaptor.forClass(MPRequestOptions.class);
             verify(orderClient).create(any(OrderCreateRequest.class), opciones.capture());
@@ -68,10 +64,10 @@ class PasarelaMercadoPagoCredencialesTest {
             OrderClient orderClient = mock(OrderClient.class);
             when(orderClient.create(any(OrderCreateRequest.class), any(MPRequestOptions.class)))
                     .thenThrow(new RuntimeException("corte de prueba"));
-            PasarelaMercadoPago pasarela = new PasarelaMercadoPago(1L, null, orderClient);
+            PasarelaMercadoPago pasarela = new PasarelaMercadoPago(null, orderClient);
 
             assertThrows(RuntimeException.class,
-                    () -> pasarela.procesar(ventaConDetalle(), "clave-1"));
+                    () -> pasarela.iniciarCobro(solicitud(1L, 5, "clave-1")));
 
             ArgumentCaptor<OrderCreateRequest> solicitud = ArgumentCaptor.forClass(OrderCreateRequest.class);
             verify(orderClient).create(solicitud.capture(), any(MPRequestOptions.class));
@@ -93,15 +89,15 @@ class PasarelaMercadoPagoCredencialesTest {
             when(orderClient.create(any(OrderCreateRequest.class), any(MPRequestOptions.class)))
                     .thenThrow(new RuntimeException("corte de prueba"));
 
+            PasarelaMercadoPago pasarela = new PasarelaMercadoPago(null, orderClient);
+
             System.setProperty(CLAVE_TOKEN, "token-negocio-uno");
-            PasarelaMercadoPago pasarelaUno = new PasarelaMercadoPago(1L, null, orderClient);
             assertThrows(RuntimeException.class,
-                    () -> pasarelaUno.procesar(ventaConDetalle(), "clave-1"));
+                    () -> pasarela.iniciarCobro(solicitud(1L, 5, "clave-1")));
 
             System.setProperty(CLAVE_TOKEN, "token-negocio-dos");
-            PasarelaMercadoPago pasarelaDos = new PasarelaMercadoPago(2L, null, orderClient);
             assertThrows(RuntimeException.class,
-                    () -> pasarelaDos.procesar(ventaConDetalle(), "clave-2"));
+                    () -> pasarela.iniciarCobro(solicitud(2L, 6, "clave-2")));
 
             ArgumentCaptor<MPRequestOptions> opciones = ArgumentCaptor.forClass(MPRequestOptions.class);
             verify(orderClient, times(2)).create(any(OrderCreateRequest.class), opciones.capture());
@@ -116,18 +112,20 @@ class PasarelaMercadoPagoCredencialesTest {
         }
     }
 
-    private static Venta ventaConDetalle() {
-        Carrito carrito = new Carrito(1);
-        Producto producto = new Producto("Producto", new BigDecimal("100"),
-                10, 0, 1, CategoriaProducto.ELECTRONICA);
-        producto.setIdNegocio(1L);
-        carrito.agregarItem(new ItemCarrito(producto, 1));
-
-        Venta venta = new Venta(1, TipoDePago.MERCADO_PAGO);
-        venta.setIdNegocio(1L);
-        venta.cargarDetallesDesdeCarrito(carrito, null);
-        venta.setId(5);
-        return venta;
+    private static SolicitudCobro solicitud(long idNegocio, int idVenta, String clave) {
+        return new SolicitudCobro(
+                idNegocio,
+                idVenta,
+                ProveedorPago.MERCADO_PAGO,
+                new BigDecimal("100.00"),
+                "ARS",
+                "Venta " + idVenta,
+                clave,
+                List.of(new SolicitudCobro.ItemCobro(1, 1, new BigDecimal("100.00"))),
+                "https://tienda.example.com/src/index.html?payment_status=success",
+                "https://tienda.example.com/src/index.html?payment_status=failure",
+                "https://tienda.example.com/src/index.html?payment_status=pending",
+                null);
     }
 
     private static void restaurar(String clave, String valorAnterior) {
