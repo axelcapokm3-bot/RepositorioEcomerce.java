@@ -60,6 +60,7 @@ import com.CapaInfraestructura.Implementacion.ProveedorTokenAcceso;
 import com.CapaInfraestructura.Implementacion.RedisCarritoRepository;
 import com.CapaInfraestructura.Configuracion.ConfiguracionRedis;
 import com.CapaInfraestructura.Configuracion.DiagnosticoArranque;
+import com.CapaInfraestructura.Configuracion.ResolutorConfiguracion;
 import com.CapaPresentacion.Controllers.AuditoriaController;
 import com.CapaPresentacion.Controllers.AuthController;
 import com.CapaPresentacion.Controllers.CarritoController;
@@ -79,6 +80,7 @@ public class ServerMain {
 
     public static void main(String[] args) {
         try {
+            ResolutorConfiguracion.getInstancia().validarArranque();
             RegistroExecutors.validarConfiguracion();
             LimitadorTasa.iniciar();
 
@@ -169,7 +171,7 @@ public class ServerMain {
                     transaccion,
                     RegistroExecutors.obtener(
                             com.CapaAplicacion.Interfaces.TipoServicio.AUTENTICACION),
-                    com.CapaInfraestructura.Configuracion.ConfigLoader.getProperty("auth.bootstrap-token"),
+                    com.CapaInfraestructura.Configuracion.ConfigLoader.getSecretProperty("auth.bootstrap-token"),
                     invalidadorCache,
                     tokenBootstrapRepo);
             autenticacionService.prepararTokenBootstrap();

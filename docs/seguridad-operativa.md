@@ -23,7 +23,8 @@ cuentas y creación del primer administrador. No contiene valores reales.
 | `AUTH_TOKEN_SECRET` | Firma de tokens de sesión (≥ 32 caracteres) | Sí, siempre |
 | `AUTH_BOOTSTRAP_TOKEN` | Alta del primer ADMIN (un solo uso) | Solo durante bootstrap |
 | `AUTH_BOOTSTRAP_TOKEN_EXPIRA_HORAS` | Vigencia del token de bootstrap (1–720 h) | No (24 h por defecto) |
-| `APP_PERFIL` | `dev` o `prod` | `prod` en producción |
+| `ENTORNO` | `dev` o `prod`; tiene prioridad sobre `APP_PERFIL` | `prod` en producción |
+| `APP_PERFIL` | `dev` o `prod` (fallback si falta `ENTORNO`) | `prod` en producción |
 | `APP_CORS_ALLOWED_ORIGINS` | Orígenes frontend separados por coma | Sí (sin `*`) |
 | `APP_TRUSTED_PROXIES` | IPs de proxies que pueden enviar `X-Forwarded-For`/`X-Real-IP` | Sí detrás de proxy |
 | `WEBHOOK_FIRMA_TOLERANCIA_SEGUNDOS` | Ventana del `ts` firmado por Mercado Pago | No (300 s por defecto) |
@@ -32,12 +33,15 @@ cuentas y creación del primer administrador. No contiene valores reales.
 | `RATE_LIMIT_CHECKOUT_MAX_INTENTOS_IP` | Intentos de checkout por IP antes de bloquear | No (20 por defecto) |
 | `RATE_LIMIT_CHECKOUT_BLOQUEO_SEGUNDOS` | Duración del bloqueo por IP en checkout | No (60 s por defecto) |
 
-Precedencia de configuración: propiedad del sistema Java → `config.properties`
-local (solo desarrollo, ignorado por git, nunca se empaqueta en el `.jar`) →
-variable de entorno. Los secretos de pago (`STRIPE_SECRET_KEY`,
-`STRIPE_WEBHOOK_SECRET`) usan `ConfigLoader.getSecretProperty`: propiedad del
-sistema → variable de entorno → archivo, para que el entorno prevalezca en
-producción.
+Precedencia de configuración: system property → variable de entorno →
+`config.properties` local (solo desarrollo, ignorado por git, nunca se empaqueta
+en el `.jar`). Los secretos usan la misma regla mediante
+`ConfigLoader.getSecretProperty`: system property → variable de entorno →
+archivo, para que el entorno prevalezca en producción.
+
+`config.properties` solo debe existir en desarrollo. Si `ENTORNO=prod` (o
+`APP_PERFIL=prod` como fallback) y el archivo existe en el working directory, el
+servidor no inicia. En producción configure todo mediante variables de entorno.
 
 ## 2. Rotación de secretos de pago
 
@@ -61,8 +65,8 @@ estuvieron en un archivo versionado o en un artefacto compartido.
 
 - Generar uno aleatorio de al menos 32 caracteres, por ejemplo con:
   `openssl rand -base64 48`.
-- Con `APP_PERFIL=prod`, el servidor **no inicia** sin este secreto.
-- En desarrollo (sin `APP_PERFIL=prod`) se usa un secreto efímero solo local;
+- Con `ENTORNO=prod` o `APP_PERFIL=prod`, el servidor **no inicia** sin este secreto.
+- En desarrollo (sin `ENTORNO=prod` ni `APP_PERFIL=prod`) se usa un secreto efímero solo local;
   los tokens se invalidan al reiniciar. No apto para producción.
 - Rotarlo invalida todas las sesiones activas (los usuarios deben ingresar de
   nuevo). No hay lista de revocación: la expiración máxima es 72 h.

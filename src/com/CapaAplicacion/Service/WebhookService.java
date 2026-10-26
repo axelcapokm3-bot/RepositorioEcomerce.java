@@ -225,7 +225,7 @@ public class WebhookService {
             return secretosFirmaCandidatos();
         }
         List<String> secretos = new ArrayList<>();
-        String global = ConfigLoader.getProperty("mercadopago.webhook-secret");
+        String global = ConfigLoader.getSecretProperty("mercadopago.webhook-secret");
         if (global != null && !global.isBlank()) {
             secretos.add(global);
         }
@@ -251,7 +251,7 @@ public class WebhookService {
 
     private List<String> secretosFirmaCandidatos() {
         List<String> secretos = new ArrayList<>();
-        String global = ConfigLoader.getProperty("mercadopago.webhook-secret");
+        String global = ConfigLoader.getSecretProperty("mercadopago.webhook-secret");
         if (global != null && !global.isBlank()) {
             secretos.add(global);
         }

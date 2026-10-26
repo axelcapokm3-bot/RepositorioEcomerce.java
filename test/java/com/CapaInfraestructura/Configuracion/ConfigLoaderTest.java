@@ -15,4 +15,11 @@ class ConfigLoaderTest {
         assertEquals("EXECUTOR_NOTIFICACIONES_COLA",
                 ConfigLoader.obtenerNombreVariableEntorno("executor.notificaciones.cola"));
     }
+
+    @Test
+    @DisplayName("mapea el perfil y el entorno a variables de entorno")
+    void mapeaPerfilYEntornoAVariablesDeEntorno() {
+        assertEquals("APP_PERFIL", ConfigLoader.obtenerNombreVariableEntorno("app.perfil"));
+        assertEquals("ENTORNO", ConfigLoader.obtenerNombreVariableEntorno("entorno"));
+    }
 }

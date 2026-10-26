@@ -3,6 +3,7 @@ package com.CapaInfraestructura.Implementacion;
 import com.CapaAplicacion.Interfaces.INegocioRepository;
 import com.CapaAplicacion.puerto.ProveedorPago;
 import com.CapaInfraestructura.Configuracion.ConfigLoader;
+import com.CapaInfraestructura.Configuracion.ResolutorConfiguracion;
 import com.CapaInfraestructura.Configuracion.ValidadorUrlRetorno;
 import com.CapaDominio.Entidades.ConfiguracionCatalogo;
 
@@ -95,7 +96,7 @@ public final class ConfiguracionCobro implements com.CapaAplicacion.puerto.Confi
         if (vacio(origenesPermitidos)) {
             origenesPermitidos = ConfigLoader.getProperty("app.frontend.url");
         }
-        boolean produccion = "prod".equalsIgnoreCase(ConfigLoader.getProperty("app.perfil"));
+        boolean produccion = ResolutorConfiguracion.getInstancia().esProduccion();
         String exito = ValidadorUrlRetorno.validar(
                 buscarValor(idNegocio, "stripe.success-url", "stripe_success_url"),
                 "éxito",

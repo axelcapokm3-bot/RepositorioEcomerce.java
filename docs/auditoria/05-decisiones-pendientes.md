@@ -90,6 +90,8 @@ CR-01/CR-02 están implementados y documentados en `07-cierre-cr01-cr02.md`. D-0
 
 **Recomendación**: A ahora, C como evolución. Rotar las credenciales DB que aparecen en `config.properties` local si alguna fue real; no imprimir valores.
 
+**Estado**: A aprobado por el usuario e implementado el 2026-10-26. Precedencia única `system > env > archivo` para todas las claves, incluidos secretos; fail-fast con `ENTORNO=prod` si existe `config.properties` en el working directory. La rotación de las credenciales locales de pago sigue pendiente del operador (B7-07b).
+
 ### D-09 — Auditoría administrable
 
 **Opciones**:

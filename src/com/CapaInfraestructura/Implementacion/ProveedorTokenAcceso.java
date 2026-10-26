@@ -7,6 +7,7 @@ import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaAplicacion.Service.TokenBlacklistService;
 import com.CapaDominio.Entidades.RolUsuario;
 import com.CapaInfraestructura.Configuracion.ConfigLoader;
+import com.CapaInfraestructura.Configuracion.ResolutorConfiguracion;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -193,7 +194,7 @@ public class ProveedorTokenAcceso implements IProveedorTokenAcceso {
     }
 
     private static byte[] resolverSecreto() {
-        String configurado = ConfigLoader.getProperty("auth.token-secret");
+        String configurado = ConfigLoader.getSecretProperty("auth.token-secret");
         if (configurado != null && !configurado.trim().isEmpty()
                 && configurado.trim().length() >= 32) {
             return configurado.trim().getBytes(StandardCharsets.UTF_8);
@@ -212,8 +213,7 @@ public class ProveedorTokenAcceso implements IProveedorTokenAcceso {
     }
 
     static boolean esPerfilProduccion() {
-        String perfil = ConfigLoader.getProperty("app.perfil");
-        return perfil != null && "prod".equalsIgnoreCase(perfil.trim());
+        return ResolutorConfiguracion.getInstancia().esProduccion();
     }
 
     private static long resolverVida() {

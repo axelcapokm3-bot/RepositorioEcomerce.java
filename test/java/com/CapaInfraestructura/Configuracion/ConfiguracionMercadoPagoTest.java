@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.CapaAplicacion.Interfaces.INegocioRepository;
 import com.CapaDominio.Entidades.ConfiguracionCatalogo;
+import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -23,7 +24,7 @@ class ConfiguracionMercadoPagoTest {
     void priorizaPropiedadJavaSobreEntornoArchivoYBaseDeDatos() {
         ConfiguracionMercadoPago configuracion = crearConfiguracion(
                 Map.of(CLAVE_TOKEN, "valor-java"),
-                Map.of(CLAVE_TOKEN, "valor-entorno"),
+                Map.of("MERCADOPAGO_ACCESS_TOKEN", "valor-entorno"),
                 Map.of(CLAVE_TOKEN, "valor-archivo"));
         when(negocioRepository.listarConfiguracionesEfectivas(ID_NEGOCIO))
                 .thenReturn(configuracionesDb("mercado_pago_access_token", "valor-db"));
@@ -36,7 +37,7 @@ class ConfiguracionMercadoPagoTest {
     void priorizaEntornoSobreArchivoYBaseDeDatos() {
         ConfiguracionMercadoPago configuracion = crearConfiguracion(
                 Map.of(),
-                Map.of(CLAVE_TOKEN, "valor-entorno"),
+                Map.of("MERCADOPAGO_ACCESS_TOKEN", "valor-entorno"),
                 Map.of(CLAVE_TOKEN, "valor-archivo"));
         when(negocioRepository.listarConfiguracionesEfectivas(ID_NEGOCIO))
                 .thenReturn(configuracionesDb("mercado_pago_access_token", "valor-db"));
@@ -104,12 +105,15 @@ class ConfiguracionMercadoPagoTest {
             Map<String, String> propiedadesJava,
             Map<String, String> variablesEntorno,
             Map<String, String> archivo) {
+        ResolutorConfiguracion resolutor = ResolutorConfiguracion.paraPruebas(
+                propiedadesJava::get,
+                variablesEntorno::get,
+                archivo::get,
+                Path.of("config.properties.prueba"));
         return new ConfiguracionMercadoPago(
                 negocioRepository,
                 ID_NEGOCIO,
-                propiedadesJava::get,
-                variablesEntorno::get,
-                archivo::get);
+                resolutor);
     }
 
     private static Map<ConfiguracionCatalogo, String> configuracionesDb(

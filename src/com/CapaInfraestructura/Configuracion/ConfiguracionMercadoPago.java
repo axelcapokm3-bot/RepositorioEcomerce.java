@@ -14,30 +14,19 @@ public final class ConfiguracionMercadoPago {
 
     private final INegocioRepository negocioRepository;
     private final long idNegocio;
-    private final FuenteConfiguracion propiedadesJava;
-    private final FuenteConfiguracion variablesEntorno;
-    private final FuenteConfiguracion archivo;
+    private final ResolutorConfiguracion resolutor;
 
     public ConfiguracionMercadoPago(INegocioRepository negocioRepository, long idNegocio) {
-        this(
-                negocioRepository,
-                idNegocio,
-                ConfigLoader::obtenerPropiedadJava,
-                ConfigLoader::obtenerVariableEntorno,
-                ConfigLoader::obtenerPropiedadArchivo);
+        this(negocioRepository, idNegocio, ResolutorConfiguracion.getInstancia());
     }
 
     ConfiguracionMercadoPago(
             INegocioRepository negocioRepository,
             long idNegocio,
-            FuenteConfiguracion propiedadesJava,
-            FuenteConfiguracion variablesEntorno,
-            FuenteConfiguracion archivo) {
+            ResolutorConfiguracion resolutor) {
         this.negocioRepository = negocioRepository;
         this.idNegocio = idNegocio;
-        this.propiedadesJava = propiedadesJava;
-        this.variablesEntorno = variablesEntorno;
-        this.archivo = archivo;
+        this.resolutor = resolutor;
     }
 
     public String obtenerAccessToken() {
@@ -49,15 +38,7 @@ public final class ConfiguracionMercadoPago {
     }
 
     private String resolver(String clave, String claveAntiguaDb) {
-        String valor = obtenerValorNoVacio(propiedadesJava, clave);
-        if (valor != null) {
-            return valor;
-        }
-        valor = obtenerValorNoVacio(variablesEntorno, clave);
-        if (valor != null) {
-            return valor;
-        }
-        valor = obtenerValorNoVacio(archivo, clave);
+        String valor = resolutor.obtener(clave);
         if (valor != null) {
             return valor;
         }
@@ -87,15 +68,5 @@ public final class ConfiguracionMercadoPago {
             }
         }
         return null;
-    }
-
-    private static String obtenerValorNoVacio(FuenteConfiguracion fuente, String clave) {
-        String valor = fuente.obtener(clave);
-        return valor == null || valor.isBlank() ? null : valor;
-    }
-
-    @FunctionalInterface
-    interface FuenteConfiguracion {
-        String obtener(String clave);
     }
 }

@@ -1,6 +1,10 @@
-# Copiar este archivo como config.properties en la raíz del proyecto (o en
-# src/main/resources) y completar con credenciales propias. No versionar el
-# archivo resultante ni guardar secretos reales en este ejemplo.
+# Solo desarrollo local. Copiar como config.properties en la raíz del proyecto
+# y completar con credenciales propias. No versionar el archivo resultante ni
+# guardar secretos reales en este ejemplo.
+# Precedencia: system property -> variable de entorno -> este archivo.
+# En producción usar solo variables de entorno. Si ENTORNO=prod (o
+# APP_PERFIL=prod) y existe config.properties en el working directory, el
+# servidor no inicia.
 db.url=jdbc:mysql://localhost:3306/ecommerce_db?serverTimezone=UTC&useSSL=false
 db.username=root
 db.password=CAMBIAR_POR_TU_PASSWORD
@@ -116,7 +120,9 @@ rate-limit.webhook-stripe.limite=600
 # En producción (APP_PERFIL=prod) el arranque falla sin AUTH_TOKEN_SECRET.
 # auth.token-secret=REEMPLAZAR_POR_UN_SECRETO_DE_AL_MENOS_32_CARACTERES
 # auth.expiracion-horas=12
-# Perfil: dev (local) o prod. En prod, el secreto de tokens es obligatorio.
+# Entorno: dev (local) o prod. En prod, el secreto de tokens es obligatorio.
+# ENTORNO tiene prioridad; app.perfil se conserva como fallback.
+# entorno=dev
 # app.perfil=dev
 # Token de uso único para crear el primer ADMIN vía POST /api/auth/registro
 # (header X-Setup-Token). Definirlo solo durante el bootstrap y eliminarlo después.

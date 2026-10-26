@@ -229,6 +229,7 @@
 - **Impacto**: una variable de entorno o una propiedad del sistema puede ser ignorada en un componente y prevalecer en otro; el servidor puede conectarse a una base o usar credenciales distintas de las esperadas.
 - **Remediación**: una única fuente de resolución con precedencia documentada y probada; tests de las cuatro combinaciones para DB, MP, Stripe y Redis.
 - **Prueba**: definir valores distintos en archivo/env/system y verificar el valor efectivo en cada componente.
+- **Estado**: implementado el 2026-10-26 con `ResolutorConfiguracion` (system → env → archivo) para `ConfigLoader`, `DatabaseConnection`, `ConfiguracionMercadoPago`, auth, perfiles y webhooks; fail-fast en producción y 8 tests de resolución. Pendiente revalidación final de Bloque 7.
 
 ### ME-06 — Validación débil de URLs de retorno y monto en Stripe
 

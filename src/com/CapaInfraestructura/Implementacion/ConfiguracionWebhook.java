@@ -35,7 +35,7 @@ public final class ConfiguracionWebhook implements com.CapaAplicacion.puerto.Con
         if (!vacio(secreto)) {
             return secreto;
         }
-        return valorNoVacio(ConfigLoader.getProperty("mercadopago.webhook-secret"));
+        return valorNoVacio(ConfigLoader.getSecretProperty("mercadopago.webhook-secret"));
     }
 
     private String secretoStripe(long idNegocio) {
