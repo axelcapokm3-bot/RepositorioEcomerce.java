@@ -21,6 +21,7 @@ import com.CapaDominio.Entidades.ConfiguracionCatalogo;
 import com.CapaDominio.Entidades.Negocio;
 import com.CapaDominio.Entidades.Producto;
 import com.CapaDominio.Entidades.RolUsuario;
+import com.CapaPresentacion.Utilidades.CacheTenantEnMemoria;
 import com.CapaPresentacion.Utilidades.LimitadorTasa;
 import com.CapaPresentacion.Utilidades.ResolutorNegocio;
 import com.sun.net.httpserver.HttpServer;
@@ -59,11 +60,12 @@ class VentaControllerTenantTest {
         servicio = mock(VentaService.class);
         negocios = new NegocioRepositorioFalso();
         productos = new ProductoRepositorioFalso();
-        ResolutorNegocio.inicializar(negocios);
+        ResolutorNegocio resolutorNegocio = new ResolutorNegocio(
+                negocios, new CacheTenantEnMemoria());
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/api/ventas", new VentaController(
                 servicio, productos, mock(IVentaRepository.class),
-                new ProveedorTokenFalso(), negocios));
+                new ProveedorTokenFalso(), negocios, resolutorNegocio));
         server.start();
         baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
     }
@@ -74,7 +76,6 @@ class VentaControllerTenantTest {
             server.stop(0);
         }
         System.clearProperty("rate-limit.checkout.negocio");
-        ResolutorNegocio.inicializar(null);
     }
 
     @Test

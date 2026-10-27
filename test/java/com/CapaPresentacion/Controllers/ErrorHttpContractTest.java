@@ -84,6 +84,10 @@ class ErrorHttpContractTest {
 
     private static final class ControladorDeErrores extends BaseController {
 
+        private ControladorDeErrores() {
+            super(ResolutorNegocioPrueba.crear());
+        }
+
         @Override
         public void handle(HttpExchange exchange) throws IOException {
             if (handlePreflight(exchange)) {

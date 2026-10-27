@@ -5,6 +5,7 @@ import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaAplicacion.Service.CarritoService;
 import com.CapaDominio.Entidades.Carrito;
 import com.CapaDominio.Entidades.ItemCarrito;
+import com.CapaPresentacion.Utilidades.ResolutorNegocio;
 import com.sun.net.httpserver.HttpExchange;
 
 import java.io.IOException;
@@ -49,7 +50,9 @@ public class CarritoController extends BaseController {
         }
     }
 
-    public CarritoController(CarritoService servicio, IProveedorTokenAcceso proveedor) {
+    public CarritoController(CarritoService servicio, IProveedorTokenAcceso proveedor,
+                             ResolutorNegocio resolutorNegocio) {
+        super(resolutorNegocio);
         if (servicio == null || proveedor == null) {
             throw new IllegalArgumentException("Las dependencias del controlador de carrito son obligatorias.");
         }

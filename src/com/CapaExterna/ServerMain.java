@@ -57,7 +57,10 @@ import com.CapaInfraestructura.Implementacion.MySqlNegocioRepository;
 import com.CapaInfraestructura.Implementacion.PasarelaMercadoPago;
 import com.CapaInfraestructura.Implementacion.PasarelaStripe;
 import com.CapaInfraestructura.Implementacion.ProveedorTokenAcceso;
+import com.CapaInfraestructura.Implementacion.RedisCacheTenant;
 import com.CapaInfraestructura.Implementacion.RedisCarritoRepository;
+import com.CapaInfraestructura.Implementacion.RedisRateLimit;
+import com.CapaInfraestructura.Implementacion.RedisLock;
 import com.CapaInfraestructura.Configuracion.ConfiguracionRedis;
 import com.CapaInfraestructura.Configuracion.DiagnosticoArranque;
 import com.CapaInfraestructura.Configuracion.ResolutorConfiguracion;
@@ -75,6 +78,7 @@ import com.CapaPresentacion.Controllers.StripeWebhookController;
 import com.CapaPresentacion.Utilidades.LimitadorTasa;
 import com.CapaPresentacion.Utilidades.ResolutorNegocio;
 import com.sun.net.httpserver.HttpServer;
+import redis.clients.jedis.JedisPool;
 
 public class ServerMain {
 
@@ -97,8 +101,13 @@ public class ServerMain {
             IAuditoriaRepository auditoriaRepo = new MySqlRepositorioAuditoria();
             ICuentaRepositorio cuentaRepo = new MySqlRepositorioCuenta();
             ICuentaNegocioRepositorio vinculoRepo = new MySqlRepositorioCuentaNegocio();
-            RedisCarritoRepository carritoRepo = new RedisCarritoRepository(
-                    ConfiguracionRedis.desdeEntorno().crearPool());
+            JedisPool jedisPool = ConfiguracionRedis.desdeEntorno().crearPool();
+            RedisCarritoRepository carritoRepo = new RedisCarritoRepository(jedisPool);
+            RedisCacheTenant cacheTenant = new RedisCacheTenant(jedisPool);
+            RedisRateLimit redisRateLimit = new RedisRateLimit(jedisPool);
+            RedisLock redisLock = new RedisLock(jedisPool);
+            LimitadorTasa.setRepositorioRateLimit(redisRateLimit);
+            ResolutorNegocio resolutorNegocio = new ResolutorNegocio(negocioRepo, cacheTenant);
             IEventoWebhookRepository eventoWebhookRepo = new MySqlRepositorioEventoWebhook();
 
             ITransaccion transaccion = new JDBCTransaccion();
@@ -106,11 +115,10 @@ public class ServerMain {
             INotificadorEmail notificador = new NotificadorEmailMock();
             new NotificacionListener(eventBus, notificador);
 
-            ResolutorNegocio.inicializar(negocioRepo);
             IInvalidadorCacheNegocio invalidadorCache = new IInvalidadorCacheNegocio() {
                 @Override
                 public void invalidar(long idNegocio) {
-                    ResolutorNegocio.invalidarPorId(idNegocio);
+                    resolutorNegocio.invalidarPorId(String.valueOf(idNegocio));
                 }
             };
             ValidadorNegocioService validadorNegocio = new ValidadorNegocioService(negocioRepo);
@@ -148,6 +156,7 @@ public class ServerMain {
                     enteroConfiguracion("webhook.outbox.recuperacion-minutos", 5));
             JobExpiracionVentas jobExpiracionVentas = new JobExpiracionVentas(
                     ventaService,
+                    redisLock,
                     enteroConfiguracion("ventas.expiracion.intervalo-segundos", 60),
                     enteroConfiguracion("ventas.expiracion.minutos", 30),
                     enteroConfiguracion("ventas.expiracion.lote", 50));
@@ -182,20 +191,32 @@ public class ServerMain {
             HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
 
    
-            server.createContext("/api/productos", new ProductoController(productoService, proveedorToken));
-            server.createContext("/api/clientes", new ClienteController(clienteService, proveedorToken));
-            server.createContext("/api/auth", new AuthController(autenticacionService, proveedorToken));
+            server.createContext("/api/productos",
+                    new ProductoController(productoService, proveedorToken, resolutorNegocio));
+            server.createContext("/api/clientes",
+                    new ClienteController(clienteService, proveedorToken, resolutorNegocio));
+            server.createContext("/api/auth",
+                    new AuthController(autenticacionService, proveedorToken, resolutorNegocio));
             server.createContext("/api/ventas", new VentaController(
-                    ventaService, productoRepo, ventaRepo, proveedorToken, validadorNegocio));
-            server.createContext("/api/carrito", new CarritoController(carritoService, proveedorToken));
+                    ventaService, productoRepo, ventaRepo, proveedorToken, validadorNegocio,
+                    resolutorNegocio));
+            server.createContext("/api/carrito",
+                    new CarritoController(carritoService, proveedorToken, resolutorNegocio));
             server.createContext("/api/webhooks/mercado-pago",
-                    new WebhookController(mercadoPagoWebhookService, eventoWebhookService));
+                    new WebhookController(mercadoPagoWebhookService, eventoWebhookService,
+                            resolutorNegocio));
             server.createContext("/api/webhooks/stripe",
-                    new StripeWebhookController(stripeWebhookService, eventoWebhookService));
-            server.createContext("/api/negocios", new NegocioConfigController(negocioService, proveedorToken));
-            server.createContext("/api/auditoria", new AuditoriaController(auditoriaService, proveedorToken));
-            server.createContext("/api/stock", new StockController(stockService, productoRepo, proveedorToken));
-            server.createContext("/api/recomendaciones", new RecomendacionController(recomendacionService, productoRepo, proveedorToken));
+                    new StripeWebhookController(stripeWebhookService, eventoWebhookService,
+                            resolutorNegocio));
+            server.createContext("/api/negocios",
+                    new NegocioConfigController(negocioService, proveedorToken, resolutorNegocio));
+            server.createContext("/api/auditoria",
+                    new AuditoriaController(auditoriaService, proveedorToken, resolutorNegocio));
+            server.createContext("/api/stock",
+                    new StockController(stockService, productoRepo, proveedorToken, resolutorNegocio));
+            server.createContext("/api/recomendaciones",
+                    new RecomendacionController(recomendacionService, productoRepo, proveedorToken,
+                            resolutorNegocio));
 
      
             server.setExecutor(crearExecutorHttp());

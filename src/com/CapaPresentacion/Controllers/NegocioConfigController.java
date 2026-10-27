@@ -6,6 +6,7 @@ import com.CapaAplicacion.Interfaces.INegocioService;
 import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
 import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaDominio.Entidades.Negocio;
+import com.CapaPresentacion.Utilidades.ResolutorNegocio;
 import com.sun.net.httpserver.HttpExchange;
 
 import java.io.IOException;
@@ -19,7 +20,9 @@ public class NegocioConfigController extends BaseController {
     private final IProveedorTokenAcceso proveedor;
     private static final Pattern PATTERN_CONFIG = Pattern.compile("^/api/negocios/([^/]+)/configuraciones/?$");
 
-    public NegocioConfigController(INegocioService negocioService, IProveedorTokenAcceso proveedor) {
+    public NegocioConfigController(INegocioService negocioService, IProveedorTokenAcceso proveedor,
+                                   ResolutorNegocio resolutorNegocio) {
+        super(resolutorNegocio);
         if (negocioService == null || proveedor == null) {
             throw new IllegalArgumentException("El servicio y el proveedor de tokens son obligatorios.");
         }

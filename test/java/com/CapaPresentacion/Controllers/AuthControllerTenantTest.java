@@ -18,6 +18,7 @@ import com.CapaAplicacion.Service.AutenticacionService;
 import com.CapaDominio.Entidades.ConfiguracionCatalogo;
 import com.CapaDominio.Entidades.Negocio;
 import com.CapaDominio.Entidades.RolUsuario;
+import com.CapaPresentacion.Utilidades.CacheTenantEnMemoria;
 import com.CapaPresentacion.Utilidades.ResolutorNegocio;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
@@ -46,6 +47,7 @@ class AuthControllerTenantTest {
 
     private AutenticacionService servicio;
     private ProveedorTokenFalso proveedor;
+    private ResolutorNegocio resolutorNegocio;
     private HttpServer server;
     private String baseUrl;
     private final HttpClient clienteHttp = HttpClient.newHttpClient();
@@ -58,10 +60,12 @@ class AuthControllerTenantTest {
         when(servicio.vincularNegocioAsync(any(Principal.class), anyLong(), anyString(),
                 anyString(), anyString(), any(LocalDate.class), anyString()))
                 .thenReturn(CompletableFuture.completedFuture(sesion(TENANT_A)));
-        ResolutorNegocio.inicializar(new NegocioRepositorioFalso());
+        resolutorNegocio = new ResolutorNegocio(
+                new NegocioRepositorioFalso(), new CacheTenantEnMemoria());
         proveedor = new ProveedorTokenFalso();
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/api/auth", new AuthController(servicio, proveedor));
+        server.createContext("/api/auth",
+                new AuthController(servicio, proveedor, resolutorNegocio));
         server.start();
         baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
     }
@@ -71,7 +75,6 @@ class AuthControllerTenantTest {
         if (server != null) {
             server.stop(0);
         }
-        ResolutorNegocio.inicializar(null);
     }
 
     @Test

@@ -6,6 +6,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+import com.CapaAplicacion.Interfaces.RepositorioRateLimit;
 import com.CapaInfraestructura.Configuracion.ConfigLoader;
 
 public final class LimitadorTasa {
@@ -17,11 +18,16 @@ public final class LimitadorTasa {
     private static final ConcurrentHashMap<String, ContadorIntentos> intentosPorIp = new ConcurrentHashMap<>();
 
     private static ScheduledExecutorService limpieza;
+    private static RepositorioRateLimit repositorioRateLimit;
 
     private LimitadorTasa() {
     }
 
-    public record Resultado(boolean excedido, long segundosParaReintentar) {
+    public static synchronized void setRepositorioRateLimit(RepositorioRateLimit repo) {
+        repositorioRateLimit = repo;
+    }
+
+    public static record Resultado(boolean excedido, long segundosParaReintentar) {
         public static Resultado permitido() {
             return new Resultado(false, 0L);
         }
@@ -31,9 +37,21 @@ public final class LimitadorTasa {
         if (clave == null || clave.isBlank() || maxPorVentana <= 0) {
             return Resultado.permitido();
         }
-        long ventanaMs = Math.max(1L, ventanaSegundos) * 1000L;
+        long ventana = Math.max(1L, ventanaSegundos);
+        if (repositorioRateLimit != null) {
+            try {
+                long usos = repositorioRateLimit.incrementarYVerificar(clave, maxPorVentana, ventana);
+                if (usos > maxPorVentana) {
+                    return new Resultado(true, ventana);
+                }
+                return Resultado.permitido();
+            } catch (RuntimeException e) {
+                // Fail-Open: fallback a memoria local
+            }
+        }
+        long ventanaMs = ventana * 1000L;
         long ahora = System.currentTimeMillis();
-        Ventana ventana = VENTANAS.compute(clave, (k, actual) -> {
+        Ventana ventanaObj = VENTANAS.compute(clave, (k, actual) -> {
             if (actual == null || ahora - actual.inicio >= ventanaMs) {
                 return new Ventana(ahora, 1, ventanaMs);
             }
@@ -42,8 +60,8 @@ public final class LimitadorTasa {
             return actual;
         });
         mantenerCapacidad(ahora);
-        if (ventana.usos > maxPorVentana) {
-            long restanteMs = Math.max(1L, ventana.inicio + ventana.ventanaMs - ahora);
+        if (ventanaObj.usos > maxPorVentana) {
+            long restanteMs = Math.max(1L, ventanaObj.inicio + ventanaObj.ventanaMs - ahora);
             long segundos = Math.max(1L, (restanteMs + 999L) / 1000L);
             return new Resultado(true, segundos);
         }
@@ -98,20 +116,58 @@ public final class LimitadorTasa {
             return predeterminado;
         }
         if (sufijo != null && !sufijo.isBlank()) {
-            int especifico = entero("rate-limit." + ambito + "." + sufijo, -1);
+            int especifico = entero("rate.limit." + ambito + "." + sufijo, -1);
+            if (especifico <= 0) {
+                especifico = entero("rate-limit." + ambito + "." + sufijo, -1);
+            }
             if (especifico > 0) {
                 return especifico;
             }
         }
-        return entero("rate-limit." + ambito + ".limite", predeterminado);
+        int valor = entero("rate.limit." + ambito + ".limit", -1);
+        if (valor <= 0) {
+            valor = entero("rate.limit." + ambito + ".limite", -1);
+        }
+        if (valor <= 0) {
+            valor = entero("rate-limit." + ambito + ".limite", -1);
+        }
+        if (valor <= 0 && "login".equalsIgnoreCase(ambito)) {
+            valor = entero("rate.limit.login.limit", 5);
+        }
+        if (valor <= 0 && "escritura".equalsIgnoreCase(ambito)) {
+            valor = entero("rate.limit.escritura.limit", 10);
+        }
+        if (valor <= 0 && "lectura".equalsIgnoreCase(ambito)) {
+            valor = entero("rate.limit.lectura.limit", 200);
+        }
+        return valor > 0 ? valor : predeterminado;
     }
 
     public static long ventanaSegundos(String ambito) {
-        long global = segundos("rate-limit.ventana-segundos", VENTANA_PREDETERMINADA_SEGUNDOS);
+        long global = segundos("rate.limit.window", -1L);
+        if (global <= 0) {
+            global = segundos("rate-limit.ventana-segundos", VENTANA_PREDETERMINADA_SEGUNDOS);
+        }
         if (ambito == null || ambito.isBlank()) {
             return global;
         }
-        return segundos("rate-limit." + ambito + ".ventana-segundos", global);
+        long especifica = segundos("rate.limit." + ambito + ".window", -1L);
+        if (especifica <= 0) {
+            especifica = segundos("rate.limit." + ambito + ".ventana-segundos", -1L);
+        }
+        if (especifica <= 0) {
+            especifica = segundos("rate-limit." + ambito + ".ventana-segundos", -1L);
+        }
+        if (especifica <= 0 && "login".equalsIgnoreCase(ambito)) {
+            especifica = segundos("rate.limit.login.window", 60L);
+        }
+        if (especifica <= 0 && "escritura".equalsIgnoreCase(ambito)) {
+            especifica = segundos("rate.limit.escritura.window", 60L);
+        }
+        if (especifica <= 0 && "lectura".equalsIgnoreCase(ambito)) {
+            especifica = segundos("rate.limit.lectura.window", 60L);
+        }
+        return especifica > 0 ? especifica : global;
     }
 
     public static long bloqueoSegundos(String ambito, long predeterminado) {

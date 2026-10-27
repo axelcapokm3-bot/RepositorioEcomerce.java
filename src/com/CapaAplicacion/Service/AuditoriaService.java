@@ -90,12 +90,24 @@ return CompletableFuture.completedFuture(null);
  
     @Override
     public CompletableFuture<List<Auditoria>> obtenerTodosAsync(final long idNegocio) {
+        return obtenerTodosAsync(idNegocio, -1, -1);
+    }
+
+    @Override
+    public CompletableFuture<List<Auditoria>> obtenerTodosAsync(final long idNegocio, int limite, int offset) {
         return executor.ejecutar(new java.util.concurrent.Callable<List<Auditoria>>() {
             @Override
             public List<Auditoria> call() {
-                return auditoriaRepository.listarTodas(idNegocio);
+                return (limite > 0)
+                        ? auditoriaRepository.listarPaginado(idNegocio, limite, offset)
+                        : auditoriaRepository.listarTodas(idNegocio);
             }
         });
+    }
+
+    @Override
+    public CompletableFuture<Long> contarTotalAsync(final long idNegocio) {
+        return executor.ejecutar(() -> auditoriaRepository.contarTotal(idNegocio));
     }
 
  

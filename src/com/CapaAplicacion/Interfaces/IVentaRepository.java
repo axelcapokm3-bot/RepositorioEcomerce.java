@@ -36,6 +36,14 @@ public interface IVentaRepository {
         return true;
     }
     List<Venta> listarTodas(long idNegocio);
+    default long contarTotal(long idNegocio) {
+        throw new UnsupportedOperationException(
+                "El repositorio debe implementar contarTotal con SELECT COUNT(*) en la base de datos.");
+    }
+    default List<Venta> listarPaginado(long idNegocio, int limite, int offset) {
+        throw new UnsupportedOperationException(
+                "El repositorio debe implementar listarPaginado con LIMIT ? OFFSET ? en la base de datos.");
+    }
     void actualizar(long idNegocio, int id, Venta venta);
     default void actualizar(long idNegocio, int id, Venta venta, Connection connection) throws java.sql.SQLException {
         actualizar(idNegocio, id, venta);

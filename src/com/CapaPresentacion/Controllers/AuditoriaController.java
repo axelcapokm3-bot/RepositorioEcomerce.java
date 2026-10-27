@@ -1,13 +1,17 @@
 package com.CapaPresentacion.Controllers;
 
 import java.io.IOException;
-
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import com.CapaAplicacion.DTOsalida.ResultadoPaginado;
 import com.CapaAplicacion.Interfaces.IAuditoriaService;
 import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
 import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaDominio.Entidades.AccionAuditoria;
 import com.CapaDominio.Entidades.Auditoria;
+import com.CapaPresentacion.Utilidades.ResolutorNegocio;
 import com.sun.net.httpserver.HttpExchange;
+import java.util.List;
 
 public class AuditoriaController extends BaseController {
 
@@ -16,7 +20,9 @@ public class AuditoriaController extends BaseController {
 
     public record CrearAuditoriaRequest(String accion, int idEntidad, String descripcion) {}
 
-    public AuditoriaController(IAuditoriaService servicio, IProveedorTokenAcceso proveedor) {
+    public AuditoriaController(IAuditoriaService servicio, IProveedorTokenAcceso proveedor,
+                               ResolutorNegocio resolutorNegocio) {
+        super(resolutorNegocio);
         if (servicio == null || proveedor == null) {
             throw new IllegalArgumentException("El servicio y el proveedor de tokens son obligatorios.");
         }
@@ -40,7 +46,29 @@ public class AuditoriaController extends BaseController {
 
             if ("/api/auditoria".equals(path) || "/api/auditoria/".equals(path)) {
                 if ("GET".equalsIgnoreCase(method)) {
-                    handleAsync(exchange, servicio.obtenerTodosAsync(idNegocio), 200);
+                    Map<String, String> params = parseQuery(exchange.getRequestURI().getQuery());
+                    int parsedPage = 1;
+                    int parsedSize = 20;
+                    try {
+                        parsedPage = Math.max(1, Integer.parseInt(params.getOrDefault("page", "1")));
+                        parsedSize = Math.max(1, Math.min(100, Integer.parseInt(params.getOrDefault("size", "20"))));
+                    } catch (NumberFormatException e) {
+                        // Usar defaults
+                    }
+                    final int page = parsedPage;
+                    final int size = parsedSize;
+                    int offset = (page - 1) * size;
+                    
+                    CompletableFuture<List<Auditoria>> dataFuture = servicio.obtenerTodosAsync(idNegocio, size, offset);
+                    CompletableFuture<Long> totalFuture = servicio.contarTotalAsync(idNegocio);
+                    
+                    dataFuture.thenCombine(totalFuture, (data, total) -> 
+                        new ResultadoPaginado<>(data, page, size, total)
+                    ).thenAccept(result -> sendResponse(exchange, 200, result))
+                     .exceptionally(ex -> {
+                         manejarError(exchange, ex);
+                         return null;
+                     });
                 } else if ("POST".equalsIgnoreCase(method)) {
                     CrearAuditoriaRequest req = parseRequestBody(exchange, CrearAuditoriaRequest.class);
                     if (req == null || req.accion() == null || req.accion().isBlank()

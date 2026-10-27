@@ -20,13 +20,28 @@ import com.CapaDominio.Entidades.Venta;
 import com.CapaDominio.Excepciones.ReglaNegocioException;
 
 public class MySqlRepositorioVenta implements IVentaRepository {
+    @FunctionalInterface
+    interface ConnectionProvider {
+        Connection get() throws SQLException;
+    }
+
+    private final ConnectionProvider connectionProvider;
+
+    public MySqlRepositorioVenta() {
+        this(DatabaseConnection::getConnection);
+    }
+
+    MySqlRepositorioVenta(ConnectionProvider connectionProvider) {
+        this.connectionProvider = connectionProvider;
+    }
+
     private static final String DETALLE_TABLE = "detalle_ventas";
     private static final String VENTA_COLUMNS =
             "id, id_cliente, fecha_compra, id_estado_venta, id_tipo_pago, clave_idempotencia, id_negocio";
 
     @Override
     public void guardar(Venta venta) {
-        try (Connection connection = DatabaseConnection.getConnection()) {
+        try (Connection connection = connectionProvider.get()) {
             guardar(venta, connection);
         } catch (SQLException exception) {
             throw databaseError("guardar venta", exception);
@@ -42,7 +57,7 @@ public class MySqlRepositorioVenta implements IVentaRepository {
     public Optional<Venta> buscarPorId(long idNegocio, int id) {
         if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
         if (id <= 0) throw new IllegalArgumentException("El ID debe ser mayor a cero.");
-        try (Connection connection = DatabaseConnection.getConnection()) {
+        try (Connection connection = connectionProvider.get()) {
             return buscarPorId(idNegocio, id, connection);
         } catch (SQLException exception) {
             throw databaseError("buscar venta", exception);
@@ -87,7 +102,7 @@ public class MySqlRepositorioVenta implements IVentaRepository {
                 + ", ev.nombre AS estado, tp.nombre AS tipo_pago FROM ventas v "
                 + "JOIN estado_venta ev ON ev.id = v.id_estado_venta "
                 + "JOIN tipo_pago tp ON tp.id = v.id_tipo_pago WHERE v.clave_idempotencia = ? AND v.id_negocio = ?";
-        try (Connection connection = DatabaseConnection.getConnection();
+        try (Connection connection = connectionProvider.get();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, claveIdempotenciaSolicitud);
             statement.setLong(2, idNegocio);
@@ -115,7 +130,7 @@ public class MySqlRepositorioVenta implements IVentaRepository {
                 + "WHERE ev.nombre = 'PENDIENTE' AND v.fecha_compra < ? "
                 + "ORDER BY v.fecha_compra, v.id LIMIT ?";
         List<Venta> ventas = new ArrayList<>();
-        try (Connection connection = DatabaseConnection.getConnection();
+        try (Connection connection = connectionProvider.get();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setTimestamp(1, Timestamp.valueOf(limite));
             statement.setInt(2, cantidad);
@@ -137,7 +152,7 @@ public class MySqlRepositorioVenta implements IVentaRepository {
                 + "(SELECT id FROM estado_venta WHERE nombre = 'PAGADO') "
                 + "WHERE id = ? AND id_negocio = ? AND id_estado_venta = "
                 + "(SELECT id FROM estado_venta WHERE nombre = 'PENDIENTE')";
-        try (Connection connection = DatabaseConnection.getConnection();
+        try (Connection connection = connectionProvider.get();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setInt(1, id);
             statement.setLong(2, idNegocio);
@@ -148,32 +163,98 @@ public class MySqlRepositorioVenta implements IVentaRepository {
     }
 
     @Override
-    public List<Venta> listarTodas(long idNegocio) {
+    public long contarTotal(long idNegocio) {
         if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
+        String sql = "SELECT COUNT(*) FROM ventas WHERE id_negocio = ?";
+        try (Connection connection = connectionProvider.get();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, idNegocio);
+            try (ResultSet result = statement.executeQuery()) {
+                if (result.next()) return result.getLong(1);
+            }
+        } catch (SQLException exception) {
+            throw databaseError("contar total de ventas", exception);
+        }
+        return 0L;
+    }
+
+    @Override
+    public List<Venta> listarPaginado(long idNegocio, int limite, int offset) {
+        if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
+        if (limite <= 0) throw new IllegalArgumentException("El límite debe ser positivo.");
+        if (offset < 0) throw new IllegalArgumentException("El offset no puede ser negativo.");
+
         List<Venta> ventas = new ArrayList<>();
         String sql = "SELECT v." + VENTA_COLUMNS.replace(", ", ", v.")
                 + ", ev.nombre AS estado, tp.nombre AS tipo_pago FROM ventas v "
                 + "JOIN estado_venta ev ON ev.id = v.id_estado_venta "
-                + "JOIN tipo_pago tp ON tp.id = v.id_tipo_pago WHERE v.id_negocio = ? ORDER BY v.id";
-        try (Connection connection = DatabaseConnection.getConnection();
+                + "JOIN tipo_pago tp ON tp.id = v.id_tipo_pago WHERE v.id_negocio = ? ORDER BY v.id LIMIT ? OFFSET ?";
+        try (Connection connection = connectionProvider.get();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setLong(1, idNegocio);
+            statement.setInt(2, limite);
+            statement.setInt(3, offset);
             try (ResultSet result = statement.executeQuery()) {
                 while (result.next()) {
-                    Venta venta = mapVenta(result);
-                    cargarDetalles(connection, venta);
-                    ventas.add(venta);
+                    ventas.add(mapVenta(result));
                 }
+            }
+            if (!ventas.isEmpty()) {
+                cargarDetallesEnLote(connection, idNegocio, ventas);
             }
             return ventas;
         } catch (SQLException exception) {
-            throw databaseError("listar ventas", exception);
+            throw databaseError("listar ventas paginadas", exception);
+        }
+    }
+
+    private void cargarDetallesEnLote(Connection connection, long idNegocio, List<Venta> ventas) throws SQLException {
+        List<Integer> idsVenta = new ArrayList<>();
+        java.util.Map<Integer, Venta> mapaVentas = new java.util.HashMap<>();
+        for (Venta v : ventas) {
+            idsVenta.add(v.getId());
+            mapaVentas.put(v.getId(), v);
+        }
+
+        StringBuilder placeholders = new StringBuilder();
+        for (int i = 0; i < idsVenta.size(); i++) {
+            placeholders.append(i == 0 ? "?" : ", ?");
+        }
+
+        String sql = "SELECT id_venta, id_producto, cantidad, precio_unitario FROM " + DETALLE_TABLE
+                + " WHERE id_negocio = ? AND id_venta IN (" + placeholders + ") ORDER BY id";
+
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, idNegocio);
+            for (int i = 0; i < idsVenta.size(); i++) {
+                statement.setInt(2 + i, idsVenta.get(i));
+            }
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    int idVenta = result.getInt("id_venta");
+                    Venta venta = mapaVentas.get(idVenta);
+                    if (venta != null) {
+                        DetalleVenta detalle = new DetalleVenta(
+                                result.getInt("id_producto"),
+                                result.getBigDecimal("precio_unitario"),
+                                result.getInt("cantidad")
+                        );
+                        detalle.setIdNegocio(idNegocio);
+                        venta.getDetalles().add(detalle);
+                    }
+                }
+            }
         }
     }
 
     @Override
+    public List<Venta> listarTodas(long idNegocio) {
+        return listarPaginado(idNegocio, Integer.MAX_VALUE, 0);
+    }
+
+    @Override
     public void actualizar(long idNegocio, int id, Venta venta) {
-        try (Connection connection = DatabaseConnection.getConnection()) {
+        try (Connection connection = connectionProvider.get()) {
             actualizar(idNegocio, id, venta, connection);
         } catch (SQLException exception) {
             throw databaseError("actualizar venta", exception);
@@ -195,7 +276,7 @@ public class MySqlRepositorioVenta implements IVentaRepository {
                 + "id_estado_venta = (SELECT id FROM estado_venta WHERE nombre = ?), "
                 + "id_tipo_pago = (SELECT id FROM tipo_pago WHERE nombre = ?), total = ?, "
                 + "clave_idempotencia = ? WHERE id = ? AND id_negocio = ?";
-        
+
         try (PreparedStatement ventaStatement = connection.prepareStatement(
                 update ? updateVenta : insertVenta, Statement.RETURN_GENERATED_KEYS)) {
             bindVenta(ventaStatement, venta, update, id);

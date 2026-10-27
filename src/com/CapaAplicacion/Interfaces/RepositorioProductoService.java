@@ -14,8 +14,12 @@ public interface RepositorioProductoService {
     CompletableFuture<Optional<ProductoResponseDTO>> buscarActivoPorIdAsync(long idNegocio, int id);
 
     CompletableFuture<List<ProductoResponseDTO>> listarTodosAsync(long idNegocio);
+    CompletableFuture<List<ProductoResponseDTO>> listarTodosAsync(long idNegocio, int limite, int offset);
+    CompletableFuture<Long> contarTotalAsync(long idNegocio);
 
     CompletableFuture<List<ProductoResponseDTO>> listarActivosAsync(long idNegocio);
+    CompletableFuture<List<ProductoResponseDTO>> listarActivosAsync(long idNegocio, int limite, int offset);
+    CompletableFuture<Long> contarActivosAsync(long idNegocio);
 
     CompletableFuture<Void> actualizarAsync(long idNegocio, int id, ProductoRequestDTO producto);
 

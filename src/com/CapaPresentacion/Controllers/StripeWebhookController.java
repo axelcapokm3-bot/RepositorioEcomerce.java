@@ -4,6 +4,7 @@ import com.CapaAplicacion.Service.StripeWebhookService;
 import com.CapaAplicacion.Service.WebhookEventoService;
 import com.CapaDominio.Entidades.ProveedorWebhook;
 import com.CapaInfraestructura.Configuracion.SanitizadorLog;
+import com.CapaPresentacion.Utilidades.ResolutorNegocio;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Event;
 import com.sun.net.httpserver.HttpExchange;
@@ -19,12 +20,15 @@ public class StripeWebhookController extends BaseController {
     private final StripeWebhookService webhookService;
     private final WebhookEventoService eventoWebhookService;
 
-    public StripeWebhookController(StripeWebhookService webhookService) {
-        this(webhookService, null);
+    public StripeWebhookController(StripeWebhookService webhookService,
+                                   ResolutorNegocio resolutorNegocio) {
+        this(webhookService, null, resolutorNegocio);
     }
 
     public StripeWebhookController(StripeWebhookService webhookService,
-                                   WebhookEventoService eventoWebhookService) {
+                                   WebhookEventoService eventoWebhookService,
+                                   ResolutorNegocio resolutorNegocio) {
+        super(resolutorNegocio);
         if (webhookService == null) throw new IllegalArgumentException("StripeWebhookService es obligatorio.");
         this.webhookService = webhookService;
         this.eventoWebhookService = eventoWebhookService;

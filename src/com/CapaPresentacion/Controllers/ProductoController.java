@@ -2,12 +2,17 @@ package com.CapaPresentacion.Controllers;
 
 import java.io.IOException;
 import java.util.Optional;
-
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import com.CapaAplicacion.DTOentrada.ProductoRequestDTO;
+import com.CapaAplicacion.DTOsalida.ResultadoPaginado;
+import com.CapaAplicacion.DTOsalida.ProductoResponseDTO;
+import java.util.List;
 import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
 import com.CapaAplicacion.Interfaces.RepositorioProductoService;
 import com.CapaAplicacion.Seguridad.ControlAcceso;
 import com.CapaAplicacion.Seguridad.Principal;
+import com.CapaPresentacion.Utilidades.ResolutorNegocio;
 import com.sun.net.httpserver.HttpExchange;
 
 public class ProductoController extends BaseController {
@@ -18,7 +23,9 @@ public class ProductoController extends BaseController {
     private final RepositorioProductoService servicio;
     private final IProveedorTokenAcceso proveedor;
 
-    public ProductoController(RepositorioProductoService servicio, IProveedorTokenAcceso proveedor) {
+    public ProductoController(RepositorioProductoService servicio, IProveedorTokenAcceso proveedor,
+                              ResolutorNegocio resolutorNegocio) {
+        super(resolutorNegocio);
         if (servicio == null || proveedor == null) {
             throw new IllegalArgumentException("El servicio y el proveedor de tokens son obligatorios.");
         }
@@ -43,9 +50,38 @@ public class ProductoController extends BaseController {
                     if (limitarSolicitudPublica(exchange, idNegocio, "catalogo", LIMITE_PUBLICO_POR_MINUTO)) {
                         return;
                     }
-                    handleAsync(exchange, esAdmin(exchange)
-                            ? servicio.listarTodosAsync(idNegocio)
-                            : servicio.listarActivosAsync(idNegocio), 200);
+                    
+                    Map<String, String> params = parseQuery(exchange.getRequestURI().getQuery());
+                    int parsedPage = 1;
+                    int parsedSize = 20;
+                    try {
+                        parsedPage = Math.max(1, Integer.parseInt(params.getOrDefault("page", "1")));
+                        parsedSize = Math.max(1, Math.min(100, Integer.parseInt(params.getOrDefault("size", "20"))));
+                    } catch (NumberFormatException e) {
+                        // Usar defaults
+                    }
+                    final int page = parsedPage;
+                    final int size = parsedSize;
+                    
+                    int offset = (page - 1) * size;
+                    boolean admin = esAdmin(exchange);
+                    
+                    CompletableFuture<List<ProductoResponseDTO>> dataFuture = admin
+                            ? servicio.listarTodosAsync(idNegocio, size, offset)
+                            : servicio.listarActivosAsync(idNegocio, size, offset);
+                    
+                    CompletableFuture<Long> totalFuture = admin
+                            ? servicio.contarTotalAsync(idNegocio)
+                            : servicio.contarActivosAsync(idNegocio);
+                    
+                    dataFuture.thenCombine(totalFuture, (data, total) -> 
+                        new ResultadoPaginado<>(data, page, size, total)
+                    ).thenAccept(result -> sendResponse(exchange, 200, result))
+                     .exceptionally(ex -> {
+                         manejarError(exchange, ex);
+                         return null;
+                     });
+
                 } else if ("POST".equalsIgnoreCase(method)) {
                     Principal principal = exigirAutenticacion(exchange, proveedor);
                     exigirAdmin(principal);

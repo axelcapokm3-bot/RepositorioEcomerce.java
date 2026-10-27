@@ -1,57 +1,40 @@
 package com.CapaPresentacion.Utilidades;
 
 import com.CapaAplicacion.Interfaces.INegocioRepository;
+import com.CapaAplicacion.Interfaces.RepositorioCacheTenant;
 import com.CapaDominio.Entidades.Negocio;
 import com.CapaInfraestructura.Configuracion.ConfigLoader;
 import com.sun.net.httpserver.HttpExchange;
 
 import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 /** Resuelve el negocio (tenant) de una solicitud HTTP. */
 public final class ResolutorNegocio {
     public static final String HEADER_NEGOCIO = "X-Negocio-Subdominio";
+    private static final Logger LOGGER = Logger.getLogger(ResolutorNegocio.class.getName());
     private static final String CLAVE_TTL = "negocio.cache.ttl-segundos";
     private static final long TTL_PREDETERMINADO_SEGUNDOS = 60L;
     private static final Pattern PATRON_SUBDOMINIO =
             Pattern.compile("^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$");
 
-    private record EntradaCache(long idNegocio, long expiraEn) {
-    }
+    private final INegocioRepository repositorio;
+    private final RepositorioCacheTenant cache;
 
-    private static volatile INegocioRepository repositorio;
-    private static final Map<String, EntradaCache> CACHE = new ConcurrentHashMap<>();
-
-    private ResolutorNegocio() {
-    }
-
-    public static void inicializar(INegocioRepository repo) {
-        repositorio = repo;
-        CACHE.clear();
-    }
-
-    public static void invalidar(String subdominio) {
-        if (subdominio == null || subdominio.isBlank()) {
-            return;
+    public ResolutorNegocio(INegocioRepository repositorio, RepositorioCacheTenant cache) {
+        if (repositorio == null) {
+            throw new IllegalArgumentException("El repositorio de negocios es obligatorio.");
         }
-        CACHE.remove(subdominio.trim().toLowerCase(Locale.ROOT));
-    }
-
-    public static void invalidarPorId(long idNegocio) {
-        if (idNegocio <= 0) {
-            return;
+        if (cache == null) {
+            throw new IllegalArgumentException("La cache de tenant es obligatoria.");
         }
-        CACHE.entrySet().removeIf(entrada -> entrada.getValue().idNegocio() == idNegocio);
+        this.repositorio = repositorio;
+        this.cache = cache;
     }
 
-    public static void invalidarTodo() {
-        CACHE.clear();
-    }
-
-    public static Optional<Long> resolver(HttpExchange exchange) {
+    public Optional<Long> resolver(HttpExchange exchange) {
         String subdominio = exchange.getRequestHeaders().getFirst(HEADER_NEGOCIO);
         if (subdominio != null && !subdominio.isBlank()) {
             return resolverSubdominio(normalizarSubdominio(subdominio));
@@ -60,38 +43,102 @@ public final class ResolutorNegocio {
     }
 
     /** Indica si la solicitud trae el encabezado explícito de negocio. */
-    public static boolean tieneIndicador(HttpExchange exchange) {
+    public boolean tieneIndicador(HttpExchange exchange) {
         String subdominio = exchange.getRequestHeaders().getFirst(HEADER_NEGOCIO);
         return subdominio != null && !subdominio.isBlank();
     }
 
-    private static Optional<Long> resolverSubdominio(Optional<String> subdominio) {
+    public void invalidar(String subdominio) {
+        Optional<String> normalizado = normalizarSubdominio(subdominio);
+        if (normalizado.isEmpty()) {
+            return;
+        }
+        try {
+            cache.invalidar(normalizado.get());
+        } catch (RuntimeException e) {
+            LOGGER.warning("No se pudo invalidar la cache de tenant; se continua sin cache: "
+                    + e.getMessage());
+        }
+    }
+
+    public void invalidarPorId(String idNegocio) {
+        Long id = parsearId(idNegocio);
+        if (id == null) {
+            return;
+        }
+        Optional<Negocio> negocio;
+        try {
+            negocio = repositorio.buscarPorId(id);
+        } catch (RuntimeException e) {
+            LOGGER.warning("No se pudo consultar el negocio para invalidar la cache de tenant: "
+                    + e.getMessage());
+            return;
+        }
+        if (negocio.isPresent()) {
+            invalidar(negocio.get().getSubdominio());
+        }
+    }
+
+    private Optional<Long> resolverSubdominio(Optional<String> subdominio) {
         if (subdominio.isEmpty()) {
             return Optional.empty();
         }
         String clave = subdominio.get();
-        long ahora = System.currentTimeMillis();
-        EntradaCache cached = CACHE.get(clave);
-        if (cached != null && cached.expiraEn() > ahora) {
-            return Optional.of(cached.idNegocio());
+        Optional<Long> cacheado = obtenerDeCache(clave);
+        if (cacheado.isPresent()) {
+            return cacheado;
         }
-        if (cached != null) {
-            CACHE.remove(clave, cached);
-        }
-        INegocioRepository repo = repositorio;
-        if (repo == null) {
-            return Optional.empty();
-        }
-        Optional<Negocio> negocio = repo.buscarPorSubdominio(clave);
+        Optional<Negocio> negocio = repositorio.buscarPorSubdominio(clave);
         if (negocio.isEmpty() || !negocio.get().estaOperativo()) {
             return Optional.empty();
         }
-        CACHE.put(clave, new EntradaCache(
-                negocio.get().getId(), ahora + ttlMilisegundos()));
-        return Optional.of(negocio.get().getId());
+        Long idNegocio = negocio.get().getId();
+        guardarEnCache(clave, idNegocio);
+        return Optional.of(idNegocio);
     }
 
-    static Optional<String> normalizarSubdominio(String subdominio) {
+    private Optional<Long> obtenerDeCache(String subdominio) {
+        String valor;
+        try {
+            valor = cache.obtener(subdominio);
+        } catch (RuntimeException e) {
+            LOGGER.warning("Redis no disponible al leer el tenant; se consulta MySQL: "
+                    + e.getMessage());
+            return Optional.empty();
+        }
+        Long id = parsearId(valor);
+        if (id != null) {
+            return Optional.of(id);
+        }
+        if (valor != null && !valor.isBlank()) {
+            LOGGER.warning("La cache de tenant contiene un id invalido; se invalida la entrada.");
+            invalidar(subdominio);
+        }
+        return Optional.empty();
+    }
+
+    private void guardarEnCache(String subdominio, long idNegocio) {
+        try {
+            cache.guardar(subdominio, String.valueOf(idNegocio), ttlSegundos());
+        } catch (RuntimeException e) {
+            LOGGER.warning("No se pudo guardar el tenant en cache; se continua con MySQL: "
+                    + e.getMessage());
+        }
+    }
+
+    private Long parsearId(String valor) {
+        if (valor == null || valor.isBlank()) {
+            return null;
+        }
+        try {
+            long id = Long.parseLong(valor.trim());
+            return id > 0 ? id : null;
+        } catch (NumberFormatException exception) {
+            return null;
+        }
+    }
+
+    Optional<String> normalizarSubdominio(String subdominio) {
         if (subdominio == null || subdominio.isBlank()) {
             return Optional.empty();
         }
@@ -102,22 +149,22 @@ public final class ResolutorNegocio {
         return Optional.of(normalizado);
     }
 
-    private static long ttlMilisegundos() {
+    private long ttlSegundos() {
         String configurado = ConfigLoader.getProperty(CLAVE_TTL);
         if (configurado != null && !configurado.trim().isEmpty()) {
             try {
                 long segundos = Long.parseLong(configurado.trim());
                 if (segundos > 0) {
-                    return segundos * 1000L;
+                    return segundos;
                 }
             } catch (NumberFormatException exception) {
-                return TTL_PREDETERMINADO_SEGUNDOS * 1000L;
+                return TTL_PREDETERMINADO_SEGUNDOS;
             }
         }
-        return TTL_PREDETERMINADO_SEGUNDOS * 1000L;
+        return TTL_PREDETERMINADO_SEGUNDOS;
     }
 
-    static String subdominioDeHost(HttpExchange exchange) {
+    private String subdominioDeHost(HttpExchange exchange) {
         String host = exchange.getRequestHeaders().getFirst("Host");
         if (host == null || host.isBlank()) {
             return null;
@@ -126,7 +173,7 @@ public final class ResolutorNegocio {
         if (dosPuntos >= 0) {
             host = host.substring(0, dosPuntos);
         }
-        host = host.trim().toLowerCase();
+        host = host.trim().toLowerCase(Locale.ROOT);
         String[] partes = host.split("\\.");
         if (partes.length < 2) {
             return null;

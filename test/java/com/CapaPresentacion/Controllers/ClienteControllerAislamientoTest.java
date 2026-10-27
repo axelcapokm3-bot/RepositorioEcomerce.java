@@ -13,6 +13,7 @@ import com.CapaDominio.Entidades.Negocio;
 import com.CapaDominio.Entidades.RolUsuario;
 import com.CapaInfraestructura.Implementacion.RegistroExecutors;
 import com.CapaInfraestructura.Implementacion.RepositorioCliente;
+import com.CapaPresentacion.Utilidades.CacheTenantEnMemoria;
 import com.CapaPresentacion.Utilidades.ResolutorNegocio;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
@@ -47,10 +48,12 @@ class ClienteControllerAislamientoTest {
         clienteTenantB = crearCliente("30222222", "Beto", "Benitez", TENANT_B);
         repositorio.guardar(crearCliente("30111111", "Ana", "Alvarez", TENANT_A));
         repositorio.guardar(clienteTenantB);
-        ResolutorNegocio.inicializar(new NegocioRepositorioFalso());
+        ResolutorNegocio resolutorNegocio = new ResolutorNegocio(
+                new NegocioRepositorioFalso(), new CacheTenantEnMemoria());
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/api/clientes",
-                new ClienteController(new ClienteService(repositorio), new ProveedorTokenFalso()));
+                new ClienteController(new ClienteService(repositorio), new ProveedorTokenFalso(),
+                        resolutorNegocio));
         server.start();
         baseUrl = "http://127.0.0.1:" + server.getAddress().getPort();
     }
@@ -60,7 +63,6 @@ class ClienteControllerAislamientoTest {
         if (server != null) {
             server.stop(0);
         }
-        ResolutorNegocio.inicializar(null);
     }
 
     @AfterAll

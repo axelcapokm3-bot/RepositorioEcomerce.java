@@ -3,6 +3,7 @@ package com.CapaPresentacion.Controllers;
 import com.CapaAplicacion.Service.WebhookEventoService;
 import com.CapaAplicacion.Service.WebhookService;
 import com.CapaDominio.Entidades.ProveedorWebhook;
+import com.CapaPresentacion.Utilidades.ResolutorNegocio;
 import com.CapaInfraestructura.Configuracion.SanitizadorLog;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -19,11 +20,13 @@ public class WebhookController extends BaseController {
     private final WebhookService webhookService;
     private final WebhookEventoService eventoWebhookService;
 
-    public WebhookController(WebhookService webhookService) {
-        this(webhookService, null);
+    public WebhookController(WebhookService webhookService, ResolutorNegocio resolutorNegocio) {
+        this(webhookService, null, resolutorNegocio);
     }
 
-    public WebhookController(WebhookService webhookService, WebhookEventoService eventoWebhookService) {
+    public WebhookController(WebhookService webhookService, WebhookEventoService eventoWebhookService,
+                             ResolutorNegocio resolutorNegocio) {
+        super(resolutorNegocio);
         if (webhookService == null) throw new IllegalArgumentException("WebhookService es obligatorio.");
         this.webhookService = webhookService;
         this.eventoWebhookService = eventoWebhookService;

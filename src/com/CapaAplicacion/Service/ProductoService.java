@@ -66,22 +66,40 @@ public class ProductoService implements RepositorioProductoService {
 
     @Override
     public CompletableFuture<List<ProductoResponseDTO>> listarTodosAsync(final long idNegocio) {
-        return listarAsync(idNegocio, false);
+        return listarAsync(idNegocio, false, -1, -1);
+    }
+
+    @Override
+    public CompletableFuture<List<ProductoResponseDTO>> listarTodosAsync(final long idNegocio, int limite, int offset) {
+        return listarAsync(idNegocio, false, limite, offset);
     }
 
     @Override
     public CompletableFuture<List<ProductoResponseDTO>> listarActivosAsync(final long idNegocio) {
-        return listarAsync(idNegocio, true);
+        return listarAsync(idNegocio, true, -1, -1);
+    }
+
+    @Override
+    public CompletableFuture<List<ProductoResponseDTO>> listarActivosAsync(final long idNegocio, int limite, int offset) {
+        return listarAsync(idNegocio, true, limite, offset);
     }
 
     private CompletableFuture<List<ProductoResponseDTO>> listarAsync(
-            final long idNegocio, final boolean soloActivos) {
+            final long idNegocio, final boolean soloActivos, final int limite, final int offset) {
         return executor.ejecutar(new java.util.concurrent.Callable<List<ProductoResponseDTO>>() {
             @Override
             public List<ProductoResponseDTO> call() {
-                List<Producto> listaEntidades = soloActivos
+                List<Producto> listaEntidades;
+                if (limite > 0) {
+                     listaEntidades = soloActivos
+                        ? repository.listarActivosPaginado(idNegocio, limite, offset)
+                        : repository.listarPaginado(idNegocio, limite, offset);
+                } else {
+                     listaEntidades = soloActivos
                         ? repository.listarActivos(idNegocio)
                         : repository.listarTodos(idNegocio);
+                }
+                
                 List<ProductoResponseDTO> listaDTOs = new ArrayList<>();
                 for (Producto p : listaEntidades) {
                     listaDTOs.add(ProductoMapper.toResponseDTO(p));
@@ -118,6 +136,16 @@ public class ProductoService implements RepositorioProductoService {
                 repository.eliminar(idNegocio, id);
             }
         });
+    }
+
+    @Override
+    public CompletableFuture<Long> contarTotalAsync(final long idNegocio) {
+        return executor.ejecutar(() -> repository.contarTotal(idNegocio));
+    }
+
+    @Override
+    public CompletableFuture<Long> contarActivosAsync(final long idNegocio) {
+        return executor.ejecutar(() -> repository.contarActivos(idNegocio));
     }
 
 

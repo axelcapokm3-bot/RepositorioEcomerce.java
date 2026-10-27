@@ -28,6 +28,15 @@ public abstract class BaseController implements HttpHandler {
     private static final String ORIGENES_PREDETERMINADOS =
             "http://localhost:5500,http://127.0.0.1:5500,http://localhost:8080,http://127.0.0.1:8080";
 
+    private final ResolutorNegocio resolutorNegocio;
+
+    protected BaseController(ResolutorNegocio resolutorNegocio) {
+        if (resolutorNegocio == null) {
+            throw new IllegalArgumentException("El resolutor de negocio es obligatorio.");
+        }
+        this.resolutorNegocio = resolutorNegocio;
+    }
+
     protected boolean handlePreflight(HttpExchange exchange) throws IOException {
         CabecerasSeguridad.aplicar(exchange);
         aplicarCors(exchange);
@@ -208,7 +217,7 @@ public abstract class BaseController implements HttpHandler {
     }
 
     protected Optional<Long> resolverNegocio(HttpExchange exchange) {
-        return ResolutorNegocio.resolver(exchange);
+        return resolutorNegocio.resolver(exchange);
     }
 
     protected long exigirNegocio(HttpExchange exchange) {
@@ -227,7 +236,7 @@ public abstract class BaseController implements HttpHandler {
 
     protected long negocioAutorizado(HttpExchange exchange, Principal principal) {
         Optional<Long> solicitado = resolverNegocio(exchange);
-        if (ResolutorNegocio.tieneIndicador(exchange)) {
+        if (resolutorNegocio.tieneIndicador(exchange)) {
             if (solicitado.isEmpty()) {
                 throw new ControllerException.Validacion(
                         "El negocio indicado no es válido.",
@@ -352,5 +361,20 @@ public abstract class BaseController implements HttpHandler {
             }
         }
         return null;
+    }
+
+    protected java.util.Map<String, String> parseQuery(String query) {
+        java.util.Map<String, String> params = new java.util.HashMap<>();
+        if (query != null) {
+            for (String param : query.split("&")) {
+                String[] pair = param.split("=");
+                if (pair.length > 1) {
+                    params.put(pair[0], pair[1]);
+                } else if (pair.length == 1) {
+                    params.put(pair[0], "");
+                }
+            }
+        }
+        return params;
     }
 }

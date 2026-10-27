@@ -38,7 +38,8 @@ class StripeWebhookControllerTest {
         StripeWebhookService servicio = new StripeWebhookService(
                 null, null, null, null, ejecutor, null);
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/api/webhooks/stripe", new StripeWebhookController(servicio));
+        server.createContext("/api/webhooks/stripe",
+                new StripeWebhookController(servicio, ResolutorNegocioPrueba.crear()));
         server.start();
     }
 

@@ -59,7 +59,8 @@ class WebhookControllerOutboxTest {
                 null);
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/api/webhooks/mercado-pago",
-                new WebhookController(webhookService, eventoService));
+                new WebhookController(webhookService, eventoService,
+                        ResolutorNegocioPrueba.crear()));
         server.start();
     }
 

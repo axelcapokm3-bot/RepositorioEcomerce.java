@@ -128,19 +128,45 @@ public class MySqlRepositorioCliente implements IClienteRepositorio {
     }
 
     @Override
-    public List<Cliente> listarTodos(long idNegocio) {
+    public long contarTotal(long idNegocio) {
         if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
-        List<Cliente> clientes = new ArrayList<>();
+        String sql = "SELECT COUNT(*) FROM clientes WHERE id_negocio = ?";
         try (Connection connection = proveedorConexion.obtener();
-             PreparedStatement statement = connection.prepareStatement("SELECT " + COLUMNS + " FROM clientes WHERE id_negocio = ? ORDER BY id")) {
+             PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setLong(1, idNegocio);
+            try (ResultSet result = statement.executeQuery()) {
+                if (result.next()) return result.getLong(1);
+            }
+        } catch (SQLException exception) {
+            throw databaseError("contar total de clientes", exception);
+        }
+        return 0L;
+    }
+
+    @Override
+    public List<Cliente> listarPaginado(long idNegocio, int limite, int offset) {
+        if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
+        if (limite <= 0) throw new IllegalArgumentException("El límite debe ser positivo.");
+        if (offset < 0) throw new IllegalArgumentException("El offset no puede ser negativo.");
+        List<Cliente> clientes = new ArrayList<>();
+        String sql = "SELECT " + COLUMNS + " FROM clientes WHERE id_negocio = ? ORDER BY id LIMIT ? OFFSET ?";
+        try (Connection connection = proveedorConexion.obtener();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, idNegocio);
+            statement.setInt(2, limite);
+            statement.setInt(3, offset);
             try (ResultSet result = statement.executeQuery()) {
                 while (result.next()) clientes.add(map(result));
             }
             return clientes;
         } catch (SQLException exception) {
-            throw databaseError("listar clientes", exception);
+            throw databaseError("listar clientes paginados", exception);
         }
+    }
+
+    @Override
+    public List<Cliente> listarTodos(long idNegocio) {
+        return listarPaginado(idNegocio, Integer.MAX_VALUE, 0);
     }
 
     @Override

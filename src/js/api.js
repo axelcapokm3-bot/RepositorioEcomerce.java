@@ -171,14 +171,14 @@ export const api = {
         }
     },
     productos: {
-        listar: () => request('/productos'),
+        listar: (page = 1, size = 20) => request(`/productos?page=${page}&size=${size}`),
         obtener: (id) => request(`/productos/${id}`),
         crear: (payload) => request('/productos', { method: 'POST', body: payload }),
         actualizar: (id, payload) => request(`/productos/${id}`, { method: 'PUT', body: payload }),
         eliminar: (id) => request(`/productos/${id}`, { method: 'DELETE' })
     },
     clientes: {
-        listar: () => request('/clientes'),
+        listar: (page = 1, size = 20) => request(`/clientes?page=${page}&size=${size}`),
         obtener: (id) => request(`/clientes/${id}`),
         crear: (payload) => request('/clientes', { method: 'POST', body: payload }),
         actualizar: (id, payload) => request(`/clientes/${id}`, { method: 'PUT', body: payload }),
@@ -209,7 +209,7 @@ export const api = {
         obtener: (payload) => request('/recomendaciones', { method: 'POST', body: payload })
     },
     auditoria: {
-        listar: () => request('/auditoria'),
+        listar: (page = 1, size = 20) => request(`/auditoria?page=${page}&size=${size}`),
         crear: (payload) => request('/auditoria', { method: 'POST', body: payload }),
         porProducto: (id) => request(`/auditoria/producto/${id}`),
         porAccion: (accion) => request(`/auditoria/accion/${accion}`)

@@ -5,6 +5,7 @@ import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
 import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaAplicacion.Service.StockService;
 import com.CapaDominio.Entidades.Producto;
+import com.CapaPresentacion.Utilidades.ResolutorNegocio;
 import com.sun.net.httpserver.HttpExchange;
 import java.io.IOException;
 import java.util.Optional;
@@ -19,7 +20,8 @@ public class StockController extends BaseController {
     public record EvaluarStockRequest(int idProducto) {}
 
     public StockController(StockService servicio, IProductoRepository productoRepository,
-                           IProveedorTokenAcceso proveedor) {
+                           IProveedorTokenAcceso proveedor, ResolutorNegocio resolutorNegocio) {
+        super(resolutorNegocio);
         if (servicio == null || productoRepository == null || proveedor == null) {
             throw new IllegalArgumentException("Las dependencias del controlador de stock son obligatorias.");
         }

@@ -11,6 +11,8 @@ public interface IAuditoriaService {
 
 
     CompletableFuture<List<Auditoria>> obtenerTodosAsync(long idNegocio);
+    CompletableFuture<List<Auditoria>> obtenerTodosAsync(long idNegocio, int limite, int offset);
+    CompletableFuture<Long> contarTotalAsync(long idNegocio);
 
     CompletableFuture<List<Auditoria>> obtenerPorProductoAsync(long idNegocio, int idProducto);
 

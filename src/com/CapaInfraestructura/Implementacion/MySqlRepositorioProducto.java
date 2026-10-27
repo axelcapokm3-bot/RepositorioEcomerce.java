@@ -15,6 +15,20 @@ import com.CapaDominio.Entidades.CategoriaProducto;
 import com.CapaDominio.Entidades.Producto;
 
 public class MySqlRepositorioProducto implements IProductoRepository {
+    @FunctionalInterface
+    interface ConnectionProvider {
+        Connection get() throws SQLException;
+    }
+
+    private final ConnectionProvider connectionProvider;
+
+    public MySqlRepositorioProducto() {
+        this(DatabaseConnection::getConnection);
+    }
+
+    MySqlRepositorioProducto(ConnectionProvider connectionProvider) {
+        this.connectionProvider = connectionProvider;
+    }
 
     private static final Logger LOGGER = Logger.getLogger(MySqlRepositorioProducto.class.getName());
 
@@ -30,7 +44,7 @@ public class MySqlRepositorioProducto implements IProductoRepository {
 
     @Override
     public void guardar(Producto producto) {
-        try (Connection connection = DatabaseConnection.getConnection()) {
+        try (Connection connection = connectionProvider.get()) {
             guardar(producto, connection);
         } catch (SQLException exception) {
             throw databaseError("guardar producto", exception);
@@ -42,7 +56,7 @@ public class MySqlRepositorioProducto implements IProductoRepository {
         String sql = producto.getId() == 0
                 ? INSERT
                 : "INSERT INTO productos (id, nombre, precio, stock_fisico, stock_reservado, id_categoria, id_negocio, activo) "
-                + "VALUES (?, ?, ?, ?, ?, (SELECT id FROM categorias WHERE id_negocio = ? AND " + CATEGORIA_NORMALIZADA + " = ?)), ?, ?)";
+                + "VALUES (?, ?, ?, ?, ?, (SELECT id FROM categorias WHERE id_negocio = ? AND " + CATEGORIA_NORMALIZADA + " = ?)), ?, ?";
         try (PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
             int index = 1;
             if (producto.getId() != 0) {
@@ -71,7 +85,7 @@ public class MySqlRepositorioProducto implements IProductoRepository {
     public Optional<Producto> buscarPorId(long idNegocio, int id) {
         if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
         if (id <= 0) throw new IllegalArgumentException("El ID debe ser mayor a cero.");
-        try (Connection connection = DatabaseConnection.getConnection()) {
+        try (Connection connection = connectionProvider.get()) {
             return buscarPorId(idNegocio, id, connection);
         } catch (SQLException exception) {
             throw databaseError("buscar producto", exception);
@@ -102,36 +116,84 @@ public class MySqlRepositorioProducto implements IProductoRepository {
     }
 
     @Override
-    public List<Producto> listarTodos(long idNegocio) {
+    public long contarTotal(long idNegocio) {
         if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
-        return listar(idNegocio, false);
+        String sql = "SELECT COUNT(*) FROM productos WHERE id_negocio = ?";
+        try (Connection connection = connectionProvider.get();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, idNegocio);
+            try (ResultSet result = statement.executeQuery()) {
+                if (result.next()) return result.getLong(1);
+            }
+        } catch (SQLException exception) {
+            throw databaseError("contar total de productos", exception);
+        }
+        return 0L;
     }
 
     @Override
-    public List<Producto> listarActivos(long idNegocio) {
+    public List<Producto> listarPaginado(long idNegocio, int limite, int offset) {
         if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
-        return listar(idNegocio, true);
+        if (limite <= 0) throw new IllegalArgumentException("El límite debe ser positivo.");
+        if (offset < 0) throw new IllegalArgumentException("El offset no puede ser negativo.");
+        return listarPaginadoInterno(idNegocio, limite, offset, false);
     }
 
-    private List<Producto> listar(long idNegocio, boolean soloActivos) {
+    @Override
+    public long contarActivos(long idNegocio) {
+        if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
+        String sql = "SELECT COUNT(*) FROM productos WHERE id_negocio = ? AND activo = 1";
+        try (Connection connection = connectionProvider.get();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setLong(1, idNegocio);
+            try (ResultSet result = statement.executeQuery()) {
+                if (result.next()) return result.getLong(1);
+            }
+        } catch (SQLException exception) {
+            throw databaseError("contar productos activos", exception);
+        }
+        return 0L;
+    }
+
+    @Override
+    public List<Producto> listarActivosPaginado(long idNegocio, int limite, int offset) {
+        if (idNegocio <= 0) throw new IllegalArgumentException("El ID de negocio debe ser mayor a cero.");
+        if (limite <= 0) throw new IllegalArgumentException("El límite debe ser positivo.");
+        if (offset < 0) throw new IllegalArgumentException("El offset no puede ser negativo.");
+        return listarPaginadoInterno(idNegocio, limite, offset, true);
+    }
+
+    private List<Producto> listarPaginadoInterno(long idNegocio, int limite, int offset, boolean soloActivos) {
         List<Producto> productos = new ArrayList<>();
         String filtro = soloActivos ? " AND p.activo = 1" : "";
-        try (Connection connection = DatabaseConnection.getConnection();
-              PreparedStatement statement = connection.prepareStatement(
-                      SELECT_BASE + "WHERE p.id_negocio = ?" + filtro + " ORDER BY p.id")) {
+        String sql = SELECT_BASE + "WHERE p.id_negocio = ?" + filtro + " ORDER BY p.id LIMIT ? OFFSET ?";
+        try (Connection connection = connectionProvider.get();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setLong(1, idNegocio);
+            statement.setInt(2, limite);
+            statement.setInt(3, offset);
             try (ResultSet result = statement.executeQuery()) {
                 while (result.next()) productos.add(map(result));
             }
             return productos;
         } catch (SQLException exception) {
-            throw databaseError("listar productos", exception);
+            throw databaseError("listar productos paginados", exception);
         }
     }
 
     @Override
+    public List<Producto> listarTodos(long idNegocio) {
+        return listarPaginado(idNegocio, Integer.MAX_VALUE, 0);
+    }
+
+    @Override
+    public List<Producto> listarActivos(long idNegocio) {
+        return listarActivosPaginado(idNegocio, Integer.MAX_VALUE, 0);
+    }
+
+    @Override
     public void actualizar(long idNegocio, int id, Producto producto) {
-        try (Connection connection = DatabaseConnection.getConnection()) {
+        try (Connection connection = connectionProvider.get()) {
             actualizar(idNegocio, id, producto, connection);
         } catch (SQLException exception) {
             throw databaseError("actualizar producto", exception);
@@ -158,7 +220,7 @@ public class MySqlRepositorioProducto implements IProductoRepository {
 
     @Override
     public void eliminar(long idNegocio, int id) {
-        try (Connection connection = DatabaseConnection.getConnection()) {
+        try (Connection connection = connectionProvider.get()) {
             eliminar(idNegocio, id, connection);
         } catch (SQLException exception) {
             throw databaseError("eliminar producto", exception);
@@ -184,10 +246,10 @@ private Producto map(ResultSet result) throws SQLException {
         }
 
         Producto producto = new Producto(
-                result.getString("nombre"), 
+                result.getString("nombre"),
                 result.getBigDecimal("precio"),
-                result.getInt("stock_fisico"), 
-                result.getInt("stock_reservado"), 
+                result.getInt("stock_fisico"),
+                result.getInt("stock_reservado"),
                 result.getInt("id"),
                 categoriaEnum
         );

@@ -13,6 +13,22 @@ public interface IProductoRepository {
     // READ
     public Optional<Producto> buscarPorId(long idNegocio, int id);
   public  List<Producto> listarTodos(long idNegocio);
+    default long contarTotal(long idNegocio) {
+        throw new UnsupportedOperationException(
+                "El repositorio debe implementar contarTotal con SELECT COUNT(*) en la base de datos.");
+    }
+    default List<Producto> listarPaginado(long idNegocio, int limite, int offset) {
+        throw new UnsupportedOperationException(
+                "El repositorio debe implementar listarPaginado con LIMIT ? OFFSET ? en la base de datos.");
+    }
+    default long contarActivos(long idNegocio) {
+        throw new UnsupportedOperationException(
+                "El repositorio debe implementar contarActivos con SELECT COUNT(*) en la base de datos.");
+    }
+    default List<Producto> listarActivosPaginado(long idNegocio, int limite, int offset) {
+        throw new UnsupportedOperationException(
+                "El repositorio debe implementar listarActivosPaginado con LIMIT ? OFFSET ? en la base de datos.");
+    }
 
     default List<Producto> listarActivos(long idNegocio) {
         List<Producto> activos = new ArrayList<>();

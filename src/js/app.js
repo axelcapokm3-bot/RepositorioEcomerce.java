@@ -230,15 +230,26 @@ function mostrarResultadoCheckout() {
     }
 }
 
+async function fetchPaginated(apiFn, page = 1) {
+    const response = await apiFn(page);
+    if (Array.isArray(response)) {
+        return { datos: response, totalPaginas: 1, paginaActual: 1 };
+    }
+    return response;
+}
+
 // ---------------------------------------------------------------------
 // 1. DASHBOARD GENERAL CON D3.JS VISUALIZATIONS
 // ---------------------------------------------------------------------
 async function renderDashboard(container) {
-    const [productos, clientes, auditoria] = await Promise.all([
-        api.productos.listar(),
-        api.clientes.listar(),
-        api.auditoria.listar()
+    const [resProductos, resClientes, resAuditoria] = await Promise.all([
+        fetchPaginated(api.productos.listar),
+        fetchPaginated(api.clientes.listar),
+        fetchPaginated(api.auditoria.listar)
     ]);
+    const productos = resProductos.datos;
+    const clientes = resClientes.datos;
+    const auditoria = resAuditoria.datos;
 
     const totalStock = productos.reduce((sum, p) => sum + (p.stockFisico || 0), 0);
     const productosCriticos = productos.filter(p => (p.stockDisponible ?? p.stockFisico) <= 10 && (p.stockDisponible ?? p.stockFisico) > 0);
@@ -807,18 +818,24 @@ function escaparHtml(texto) {
     }[c]));
 }
 
-async function renderCatalogo(container) {
-    const productos = await api.productos.listar();
+async function renderCatalogo(container, page = 1) {
+    const response = await fetchPaginated(api.productos.listar, page);
+    const productos = response.datos;
+    
     container.innerHTML = `
         <div class="flex items-center justify-between gap-4 pb-6 border-b border-carbon-700/80">
             <div>
                 <h1 class="text-2xl font-bold text-white tracking-tight">Catálogo</h1>
-                <p class="text-xs text-slate-400 mt-1">${productos.length} productos en el negocio activo.</p>
+                <p class="text-xs text-slate-400 mt-1">${productos.length} productos (Pág. ${response.paginaActual}/${response.totalPaginas})</p>
             </div>
-            <button id="catalogo-ver-carrito" class="px-4 py-2.5 bg-brand hover:bg-brand-hover text-white rounded-xl text-xs font-bold transition-all shadow-glow-orange flex items-center gap-2 cursor-pointer">
-                <span class="material-symbols-outlined text-[18px]">shopping_cart</span>
-                <span>Ver Carrito</span>
-            </button>
+            <div class="flex gap-2">
+                <button id="btn-prev" class="px-3 py-2 bg-carbon-800 rounded-xl text-xs font-bold ${response.paginaActual <= 1 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}">Anterior</button>
+                <button id="btn-next" class="px-3 py-2 bg-carbon-800 rounded-xl text-xs font-bold ${response.paginaActual >= response.totalPaginas ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}">Siguiente</button>
+                <button id="catalogo-ver-carrito" class="px-4 py-2.5 bg-brand hover:bg-brand-hover text-white rounded-xl text-xs font-bold transition-all shadow-glow-orange flex items-center gap-2 cursor-pointer">
+                    <span class="material-symbols-outlined text-[18px]">shopping_cart</span>
+                    <span>Ver Carrito</span>
+                </button>
+            </div>
         </div>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
             ${productos.map((p) => `
@@ -830,6 +847,10 @@ async function renderCatalogo(container) {
                     <button class="catalogo-agregar mt-2 px-3 py-2 bg-carbon-800 hover:bg-carbon-750 text-white rounded-xl text-xs font-bold border border-carbon-700 transition-colors" data-id="${p.id}" ${p.stockDisponible <= 0 ? 'disabled' : ''}>Agregar al Carrito</button>
                 </div>`).join('') || '<p class="text-xs text-slate-400">Sin productos en este negocio.</p>'}
         </div>`;
+    
+    container.querySelector('#btn-prev')?.addEventListener('click', () => { if(response.paginaActual > 1) renderCatalogo(container, response.paginaActual - 1); });
+    container.querySelector('#btn-next')?.addEventListener('click', () => { if(response.paginaActual < response.totalPaginas) renderCatalogo(container, response.paginaActual + 1); });
+
     const porId = new Map(productos.map((p) => [Number(p.id), p]));
     container.querySelector('#catalogo-ver-carrito')?.addEventListener('click', toggleCart);
     container.querySelectorAll('.catalogo-agregar').forEach((boton) => {
@@ -943,12 +964,19 @@ async function renderTerminal(container) {
     });
 }
 
-async function renderClientes(container) {
-    const clientes = await api.clientes.listar();
+async function renderClientes(container, page = 1) {
+    const response = await fetchPaginated(api.clientes.listar, page);
+    const clientes = response.datos;
     container.innerHTML = `
-        <div class="pb-6 border-b border-carbon-700/80">
-            <h1 class="text-2xl font-bold text-white tracking-tight">Clientes</h1>
-            <p class="text-xs text-slate-400 mt-1">${clientes.length} clientes en el negocio activo.</p>
+        <div class="pb-6 border-b border-carbon-700/80 flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold text-white tracking-tight">Clientes</h1>
+                <p class="text-xs text-slate-400 mt-1">${clientes.length} clientes (Pág. ${response.paginaActual}/${response.totalPaginas})</p>
+            </div>
+            <div class="flex gap-2">
+                <button id="btn-prev" class="px-3 py-2 bg-carbon-800 rounded-xl text-xs font-bold ${response.paginaActual <= 1 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}">Anterior</button>
+                <button id="btn-next" class="px-3 py-2 bg-carbon-800 rounded-xl text-xs font-bold ${response.paginaActual >= response.totalPaginas ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}">Siguiente</button>
+            </div>
         </div>
         <div class="mt-6 overflow-x-auto bg-carbon-900/60 border border-carbon-700 rounded-2xl">
             <table class="w-full text-xs text-left">
@@ -973,14 +1001,24 @@ async function renderClientes(container) {
                 </tbody>
             </table>
         </div>`;
+    container.querySelector('#btn-prev')?.addEventListener('click', () => { if(response.paginaActual > 1) renderClientes(container, response.paginaActual - 1); });
+    container.querySelector('#btn-next')?.addEventListener('click', () => { if(response.paginaActual < response.totalPaginas) renderClientes(container, response.paginaActual + 1); });
 }
 
-async function renderAuditoria(container) {
-    const registros = await api.auditoria.listar();
+async function renderAuditoria(container, page = 1) {
+    const response = await fetchPaginated(api.auditoria.listar, page);
+    const registros = response.datos;
+    
     container.innerHTML = `
-        <div class="pb-6 border-b border-carbon-700/80">
-            <h1 class="text-2xl font-bold text-white tracking-tight">Auditoría y Ventas</h1>
-            <p class="text-xs text-slate-400 mt-1">Trazabilidad del negocio activo y gestión de ventas por ID.</p>
+        <div class="pb-6 border-b border-carbon-700/80 flex justify-between items-center">
+            <div>
+                <h1 class="text-2xl font-bold text-white tracking-tight">Auditoría y Ventas</h1>
+                <p class="text-xs text-slate-400 mt-1">Pág. ${response.paginaActual}/${response.totalPaginas}</p>
+            </div>
+            <div class="flex gap-2">
+                <button id="btn-prev" class="px-3 py-2 bg-carbon-800 rounded-xl text-xs font-bold ${response.paginaActual <= 1 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}">Anterior</button>
+                <button id="btn-next" class="px-3 py-2 bg-carbon-800 rounded-xl text-xs font-bold ${response.paginaActual >= response.totalPaginas ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}">Siguiente</button>
+            </div>
         </div>
         <div class="mt-6 bg-carbon-900/60 border border-carbon-700 rounded-2xl p-5">
             <div id="auditoria-ventas"></div>
@@ -988,7 +1026,7 @@ async function renderAuditoria(container) {
         <div class="mt-4 bg-carbon-900/60 border border-carbon-700 rounded-2xl p-5">
             <h3 class="text-sm font-bold text-white mb-3">Registros recientes</h3>
             <div class="flex flex-col gap-2 max-h-96 overflow-y-auto">
-                ${registros.slice(0, 50).map((r) => `
+                ${registros.map((r) => `
                     <div class="text-[11px] text-slate-300 border-b border-carbon-700/30 pb-2">
                         <span class="font-bold text-white">${escaparHtml(r.accion)}</span>
                         <span class="text-slate-500">· ${escaparHtml(r.entidad)} #${r.idEntidad}</span>
@@ -997,6 +1035,10 @@ async function renderAuditoria(container) {
                     </div>`).join('') || '<p class="text-[11px] text-slate-500">Sin registros.</p>'}
             </div>
         </div>`;
+    
+    container.querySelector('#btn-prev')?.addEventListener('click', () => { if(response.paginaActual > 1) renderAuditoria(container, response.paginaActual - 1); });
+    container.querySelector('#btn-next')?.addEventListener('click', () => { if(response.paginaActual < response.totalPaginas) renderAuditoria(container, response.paginaActual + 1); });
+    
     const ventasEl = container.querySelector('#auditoria-ventas');
     if (ventasEl) {
         renderSalesList(ventasEl);

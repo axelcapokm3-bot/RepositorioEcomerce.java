@@ -55,10 +55,17 @@ public CompletableFuture<Void> guardarAsync(final long idNegocio, final ClienteR
 
     @Override
     public CompletableFuture<List<ClienteResponseDTO>> listarTodosAsync(final long idNegocio) {
+        return listarTodosAsync(idNegocio, -1, -1);
+    }
+
+    @Override
+    public CompletableFuture<List<ClienteResponseDTO>> listarTodosAsync(final long idNegocio, final int limite, final int offset) {
         return executor.ejecutar(new java.util.concurrent.Callable<List<ClienteResponseDTO>>() {
             @Override
             public List<ClienteResponseDTO> call() {
-                List<Cliente> listaEntidades = repository.listarTodos(idNegocio);
+                List<Cliente> listaEntidades = (limite > 0) 
+                        ? repository.listarPaginado(idNegocio, limite, offset)
+                        : repository.listarTodos(idNegocio);
                 List<ClienteResponseDTO> listaDTOs = new ArrayList<>();
                 for (Cliente c : listaEntidades) {
                     listaDTOs.add(ClienteMapper.toResponseDTO(c));
@@ -66,6 +73,11 @@ public CompletableFuture<Void> guardarAsync(final long idNegocio, final ClienteR
                 return listaDTOs;
             }
         });
+    }
+
+    @Override
+    public CompletableFuture<Long> contarTotalAsync(final long idNegocio) {
+        return executor.ejecutar(() -> repository.contarTotal(idNegocio));
     }
 
     @Override

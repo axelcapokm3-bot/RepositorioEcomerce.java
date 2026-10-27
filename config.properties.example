@@ -114,6 +114,15 @@ rate-limit.catalogo.negocio=600
 rate-limit.webhook-mercado-pago.limite=600
 rate-limit.webhook-stripe.limite=600
 
+# Rate Limiting (Reglas ES-02)
+rate.limit.login.limit=5
+rate.limit.login.window=60
+rate.limit.escritura.limit=10
+rate.limit.escritura.window=60
+rate.limit.lectura.limit=200
+rate.limit.lectura.window=60
+
+
 # Autenticación: preferir las variables de entorno AUTH_TOKEN_SECRET y AUTH_EXPIRACION_HORAS.
 # El secreto debe tener al menos 32 caracteres. Si no se configura, el servidor genera
 # uno efímero SOLO en perfil desarrollo y los tokens se invalidan al reiniciar.

@@ -20,6 +20,7 @@ import com.CapaDominio.Entidades.Producto;
 import com.CapaDominio.Entidades.Venta;
 import com.CapaDominio.Excepciones.NegocioInactivoException;
 import com.CapaPresentacion.Utilidades.LimitadorTasa;
+import com.CapaPresentacion.Utilidades.ResolutorNegocio;
 import com.sun.net.httpserver.HttpExchange;
 
 public class VentaController extends BaseController {
@@ -56,14 +57,15 @@ public class VentaController extends BaseController {
 
     public VentaController(VentaService servicio, IProductoRepository productoRepository,
                            IVentaRepository ventaRepository, IProveedorTokenAcceso proveedor,
-                           INegocioRepository negocioRepository) {
+                           INegocioRepository negocioRepository, ResolutorNegocio resolutorNegocio) {
         this(servicio, productoRepository, ventaRepository, proveedor,
-                new ValidadorNegocioService(negocioRepository));
+                new ValidadorNegocioService(negocioRepository), resolutorNegocio);
     }
 
     public VentaController(VentaService servicio, IProductoRepository productoRepository,
                            IVentaRepository ventaRepository, IProveedorTokenAcceso proveedor,
-                           ValidadorNegocioService validadorNegocio) {
+                           ValidadorNegocioService validadorNegocio, ResolutorNegocio resolutorNegocio) {
+        super(resolutorNegocio);
         if (servicio == null || productoRepository == null
                 || ventaRepository == null || proveedor == null || validadorNegocio == null) {
             throw new IllegalArgumentException("Las dependencias del controlador de ventas son obligatorias.");

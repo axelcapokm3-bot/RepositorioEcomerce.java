@@ -108,6 +108,10 @@ class BaseControllerCabecerasTest {
 
     private static final class ControladorDePrueba extends BaseController {
 
+        private ControladorDePrueba() {
+            super(ResolutorNegocioPrueba.crear());
+        }
+
         @Override
         public void handle(HttpExchange exchange) throws IOException {
             if (handlePreflight(exchange)) {

@@ -12,8 +12,8 @@ public interface IServiceCliente {
     CompletableFuture<Optional<ClienteResponseDTO>> buscarPorIdAsync(long idNegocio, int id);
 
     CompletableFuture<List<ClienteResponseDTO>> listarTodosAsync(long idNegocio);
-
-
+    CompletableFuture<List<ClienteResponseDTO>> listarTodosAsync(long idNegocio, int limite, int offset);
+    CompletableFuture<Long> contarTotalAsync(long idNegocio);
 
     CompletableFuture<Void> actualizarAsync(long idNegocio, int id, ClienteRequestDTO clienteRequestDTO);
 

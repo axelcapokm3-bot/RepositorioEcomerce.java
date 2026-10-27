@@ -78,7 +78,8 @@ public class MySqlRepositorioEventoWebhook implements IEventoWebhookRepository {
     public List<EventoWebhook> listarPendientes(int limite) {
         if (limite <= 0) throw new IllegalArgumentException("El límite debe ser positivo.");
         String sql = "SELECT " + COLUMNAS + " FROM eventos_webhook "
-                + "WHERE estado = ? ORDER BY fecha_recepcion, id LIMIT ?";
+                + "WHERE estado = ? ORDER BY fecha_recepcion, id LIMIT ? "
+                + "FOR UPDATE SKIP LOCKED";
         List<EventoWebhook> eventos = new ArrayList<>();
         try (Connection connection = connectionProvider.get();
              PreparedStatement statement = connection.prepareStatement(sql)) {

@@ -13,6 +13,14 @@ public interface IClienteRepositorio {
     Optional<Cliente> buscarPorId(long idNegocio, int id);
     Optional<Cliente> buscarPorDni(long idNegocio, String dni);
     List<Cliente> listarTodos(long idNegocio);
+    default long contarTotal(long idNegocio) {
+        throw new UnsupportedOperationException(
+                "El repositorio debe implementar contarTotal con SELECT COUNT(*) en la base de datos.");
+    }
+    default List<Cliente> listarPaginado(long idNegocio, int limite, int offset) {
+        throw new UnsupportedOperationException(
+                "El repositorio debe implementar listarPaginado con LIMIT ? OFFSET ? en la base de datos.");
+    }
  
 
     // UPDATE

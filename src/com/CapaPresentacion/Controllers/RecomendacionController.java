@@ -11,6 +11,7 @@ import com.CapaAplicacion.Interfaces.IProveedorTokenAcceso;
 import com.CapaAplicacion.Seguridad.Principal;
 import com.CapaAplicacion.Service.RecomendacionService;
 import com.CapaDominio.Entidades.Producto;
+import com.CapaPresentacion.Utilidades.ResolutorNegocio;
 import com.sun.net.httpserver.HttpExchange;
 
 public class RecomendacionController extends BaseController {
@@ -25,7 +26,8 @@ public class RecomendacionController extends BaseController {
         BigDecimal precioMax
     ) {}
     public RecomendacionController(RecomendacionService servicio, IProductoRepository productoRepository,
-                                   IProveedorTokenAcceso proveedor) {
+                                   IProveedorTokenAcceso proveedor, ResolutorNegocio resolutorNegocio) {
+        super(resolutorNegocio);
         if (servicio == null || productoRepository == null || proveedor == null) {
             throw new IllegalArgumentException("Las dependencias del controlador son obligatorias.");
         }

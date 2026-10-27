@@ -30,7 +30,9 @@ public class AuthController extends BaseController {
     private final AutenticacionService servicio;
     private final IProveedorTokenAcceso proveedor;
 
-    public AuthController(AutenticacionService servicio, IProveedorTokenAcceso proveedor) {
+    public AuthController(AutenticacionService servicio, IProveedorTokenAcceso proveedor,
+                          ResolutorNegocio resolutorNegocio) {
+        super(resolutorNegocio);
         if (servicio == null || proveedor == null) {
             throw new IllegalArgumentException("El servicio de autenticación es obligatorio.");
         }
